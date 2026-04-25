@@ -1,6 +1,6 @@
 # uzustack
 
-UZUMAKI 社の OSS。経営者・少人数のエンジニアが **ほぼ一人ユニコーン** になるのを助ける Claude Code スキル集です。
+[UZUMAKI 社](https://uzumaki-inc.jp/) の OSS。経営者・少人数のエンジニアが **ほぼ一人ユニコーン** になるのを助ける Claude Code スキル集です。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -33,7 +33,7 @@ uzustack は [`garrytan/gstack`](https://github.com/garrytan/gstack) を **subtr
 
 ゼロから Claude Code のスキルを設計するより、Garry Tan 氏という巨人の肩に乗り、その思考の延長で磨くほうが学びが深く、実用的です。gstack は YC スケール志向の開発チーム向けに設計されていますが、その本質的な型（ロール別スキル + 構造化ハンドオフ + freshness CI）は経営者・少人数の会社にも応用できます。
 
-メンテナーである [@ToraDady](https://github.com/ToraDady) が株式会社UZUMAKIのCEOとして、個人実践として始めましたが、同じような課題感を持つ日本の経営者・開発者にも役立つよう、UZUMAKI 社の OSS 活動として公開しています。
+メンテナーである [@ToraDady](https://github.com/ToraDady) が [株式会社UZUMAKI](https://uzumaki-inc.jp/) のCEOとして、個人実践として始めましたが、同じような課題感を持つ日本の経営者・開発者にも役立つよう、UZUMAKI 社の OSS 活動として公開しています。
 
 ---
 
@@ -57,7 +57,7 @@ cd ~/.claude/skills/uzustack && bun install
 
 ```bash
 cd ~/path/to/your-project
-~/.claude/skills/uzustack/bin/uzustack-team-init
+~/.claude/skills/uzustack/setup
 ```
 
 これで `.claude/settings.json` と `.claude/CLAUDE.md` に skill 呼び出し設定が追加され、`.claude/skills/uzustack/` から uzustack が見えるようになります。
@@ -98,7 +98,7 @@ uzustack は **3 つの場所** に分散して動作します：
 <your-project>/                       ← Claude Code を起動する場所
 ├── CLAUDE.md                          ← プロジェクト固有の文脈
 ├── .claude/
-│   ├── settings.json                  ← uzustack-team-init で追加
+│   ├── settings.json                  ← ./setup で追加
 │   ├── CLAUDE.md                      ← skill を呼び出す設定
 │   └── skills/
 │       ├── uzustack/                  ← symlink → ~/.claude/skills/uzustack/skills/
