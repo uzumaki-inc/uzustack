@@ -1,22 +1,26 @@
 name: Skill Docs Freshness
 
-# Scope: skills/{translated,native}/ only. _upstream/gstack/ is a subtree
-# owned by upstream gstack — excluded so upstream churn doesn't break our CI.
+# Scope: skill directories at the repo top (those containing SKILL.md.tmpl).
+# Type 1/3 区別は SKILL.md.tmpl の frontmatter `type:` で表現される（ディレクトリ
+# 階層では分離しない）。_upstream/gstack/ は subtree なので本家 gstack の責任範囲、
+# nested な _upstream/gstack/<skill>/SKILL.md.tmpl は path filter にかからない。
+# `*/SKILL.md` も filter に含めるのは、`.md` だけ手動編集された drift（.tmpl と
+# 不整合）を CI で捕まえるため（defense-in-depth）。
 
 on:
   push:
     branches: [main]
     paths:
-      - 'skills/translated/**'
-      - 'skills/native/**'
+      - '*/SKILL.md.tmpl'
+      - '*/SKILL.md'
       - 'scripts/**'
       - 'package.json'
       - 'bun.lock'
       - '.github/workflows/skill-docs.yml'
   pull_request:
     paths:
-      - 'skills/translated/**'
-      - 'skills/native/**'
+      - '*/SKILL.md.tmpl'
+      - '*/SKILL.md'
       - 'scripts/**'
       - 'package.json'
       - 'bun.lock'

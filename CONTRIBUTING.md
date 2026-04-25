@@ -72,23 +72,29 @@ symlink を貼ったプロジェクトで Claude Code を起動し、`/investiga
 ```
 <your-project>/                       ← Claude Code を起動する場所
 ├── .claude/
-│   └── skills/
-│       ├── uzustack/                  ← symlink → ~/src/uzustack/skills/
-│       └── personal/                  ← Type 2: 個人固有スキル
+│   └── skills/                        ← Claude Code が skill を探索するディレクトリ（フラット配置）
+│       ├── investigate/               ← uzustack 由来 skill（dev-setup が展開）
+│       │   └── SKILL.md
+│       ├── obsidian-audit-tac/        ← Type 2: 個人固有スキル
+│       │   └── SKILL.md
+│       └── ...                        ← skill ごとに 1 ディレクトリ
 
 ~/src/uzustack/                        ← 開発用 clone（メンテナーはこれ 1 つだけ）
-├── skills/
-│   ├── translated/                    ← Type 1: gstack 由来翻訳済み
-│   └── native/                        ← Type 3: uzustack 独自・汎用
-└── _upstream/
-    └── gstack/                        ← gstack を subtree で保持（git subtree pull で最新化）
+├── investigate/                       ← skill 1 個 = 1 ディレクトリ（frontmatter: type: translated）
+│   ├── SKILL.md.tmpl                  ← 一次ソース（メンテナーが編集）
+│   └── SKILL.md                       ← 生成物（gen:skill-docs で再生成）
+├── <other-skills>/                    ← repo top に直接配置
+├── _upstream/
+│   └── gstack/                        ← gstack を subtree で保持（git subtree pull で最新化）
+├── bin/dev-setup                      ← .claude/skills/ への symlink + flat 展開
+└── setup                              ← end user 向け（メンテナーは使わない）
    ※ ~/.claude/skills/uzustack/ は作らない
 
 ~/.uzustack/                           ← 生成物・状態保存（end user と同じ）
 ```
 
-- **skill 本体の場所**：`~/src/uzustack/`（開発用 clone、end user での `~/.claude/skills/uzustack/` に相当）
-- **symlink を貼る作業**：`bin/dev-setup` が自動化（gstack から継承）
+- **skill 本体の場所**：`~/src/uzustack/`（開発用 clone、end user での `~/.claude/skills/uzustack/` に相当）。各 skill は repo top に直接配置（`<skill>/SKILL.md`）、Type 1/3 の区別は SKILL.md frontmatter の `type:` フィールドで表現
+- **symlink を貼る作業**：`bin/dev-setup` が自動化（gstack の `setup` から `link_claude_skill_dirs` ロジックを継承）。Claude Code が `.claude/skills/<skill>/SKILL.md` をフラットに探索する仕様に合わせるための展開
 - **メリット**：開発した skill が即座にプロジェクトで使える。バージョンずれゼロ・pull 重複なし
 
 end user 視点の Architecture は [README.md](README.md#architecture) を参照してください。
@@ -180,7 +186,22 @@ push / PR ごとに以下を実行：
 
 ## 翻訳ガイド（gstack の英語スキルを翻訳する場合）
 
+### 配置とメタデータ
+
+- 翻訳済みは uzustack repo top の `<skill>/` に直接配置（例：`investigate/SKILL.md.tmpl`）、未翻訳は `_upstream/gstack/<skill>/` のまま
+- SKILL.md frontmatter に **`type: translated`** を必ず付与（Type 1 識別。`type: native` は uzustack 独自・汎用スキル用）
+
+### 翻訳の粒度（守破離の段階的移行）
+
 - 翻訳は **「守」段階では原文に忠実に**（用語のみ日本語化）
 - 経営者コンテキストへの翻案は **「破」段階で**（数ヶ月後）
-- 翻訳済みは `skills/translated/` に、未翻訳は `_upstream/` に
-- 詳細は [守破離方針](README.md#守破離uzustack-の進化段階) 参照
+- ただし **gstack 専用機構** は機械的踏襲ができないため、Phase 1 では以下を **削除** して取り込みを段階化：
+  - `{{PREAMBLE}}`、`{{LEARNINGS_SEARCH}}`、`{{LEARNINGS_LOG}}`、`{{GBRAIN_CONTEXT_LOAD}}`、`{{GBRAIN_SAVE_RESULTS}}` の placeholder
+  - `hooks:` frontmatter（`freeze` 等の他 skill との連携）
+  - bash 内の `~/.claude/skills/gstack/bin/*` 呼び出し（uzustack に対応バイナリが未実装のため）
+- これらは uzustack 版バイナリ（`bin/uzustack-config` 等）が整備された後の Phase 3 以降で段階的に再取り込み（メンテナーの草案ノート参照）
+- **メソッド本体**（Iron Law、Phase 構造、Important Rules、レポート形式 等）は **原文忠実に翻訳**
+
+### 詳細
+
+- 守破離方針：[README.md](README.md#守破離uzustack-の進化段階) 参照
