@@ -28,3 +28,8 @@ Thumbs.db
 
 # bun
 .bun/
+
+# Claude Code（個人マシン状態 / dev-setup の生成物）
+.claude/skills/
+.claude/settings.local.json
+.claude/*.lock

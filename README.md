@@ -100,17 +100,22 @@ uzustack は **3 つの場所** に分散して動作します：
 ├── .claude/
 │   ├── settings.json                  ← ./setup で追加
 │   ├── CLAUDE.md                      ← skill を呼び出す設定
-│   └── skills/
-│       ├── uzustack/                  ← symlink → ~/.claude/skills/uzustack/skills/
-│       └── personal/                  ← Type 2: 個人固有スキル（OSS 非公開）
+│   └── skills/                        ← Claude Code が skill を探索するディレクトリ（フラット配置）
+│       ├── investigate/               ← Type 1: uzustack 由来の翻訳スキル
+│       │   └── SKILL.md
+│       ├── obsidian-audit-tac/        ← Type 2: 個人固有スキル（OSS 非公開、各ユーザー固有）
+│       │   └── SKILL.md
+│       └── ...                        ← skill ごとに 1 ディレクトリ（frontmatter で type 区別）
 └── ...（プロジェクトのファイル）
 
-~/.claude/skills/uzustack/             ← uzustack のグローバル install
-├── skills/
-│   ├── translated/                    ← Type 1: gstack 由来翻訳済み
-│   └── native/                        ← Type 3: uzustack 独自・汎用
-└── _upstream/
-    └── gstack/                        ← gstack を subtree で保持（git subtree pull で最新化）
+~/.claude/skills/uzustack/             ← uzustack のグローバル install（repo がそのまま入る）
+├── investigate/                       ← skill 1 個 = 1 ディレクトリ
+│   ├── SKILL.md.tmpl                  ← 一次ソース（メンテナーが編集）
+│   └── SKILL.md                       ← 生成物（gen:skill-docs で再生成）
+├── <other-skills>/
+├── _upstream/
+│   └── gstack/                        ← gstack を subtree で保持（git subtree pull で最新化）
+└── setup                              ← end user 向けセットアップスクリプト
 
 ~/.uzustack/                           ← 生成物・状態保存
 └── projects/
@@ -120,8 +125,8 @@ uzustack は **3 つの場所** に分散して動作します：
         └── ...
 ```
 
-- **A. skill 本体**（`~/.claude/skills/uzustack/`）：uzustack のスキル群を install する場所。`skills/translated/`（Type 1）と `skills/native/`（Type 3）に加えて、`_upstream/gstack/` に gstack の subtree を保持
-- **B. skill 本体への接続点**（`<your-project>/.claude/`）：A への symlink と、skill を呼び出す `CLAUDE.md`
+- **A. skill 本体**（`~/.claude/skills/uzustack/`）：uzustack のスキル群を install する場所。各 skill は repo top に直接配置（`<skill>/SKILL.md`）。Type 1/2/3 の区別は SKILL.md frontmatter の `type:` フィールドで表現。`_upstream/gstack/` に gstack の subtree を保持
+- **B. skill 本体への接続点**（`<your-project>/.claude/skills/`）：`./setup` が各 skill を `<your-project>/.claude/skills/<skill>/` に展開（real dir + SKILL.md symlink）。Claude Code は `.claude/skills/<skill>/SKILL.md` を skill discovery する仕様のため、フラット配置が必須
 - **C. 生成物・状態保存**（`~/.uzustack/projects/{SLUG}/`）：スキル実行の中間成果物（checkpoint, timeline 等）を、プロジェクト別 namespace で保存
 
 > 📝 **C の補足**：スキルが checkpoint・タイムラインログ・学習履歴などの中間成果物を `~/.uzustack/projects/{SLUG}/` に書き出します。Claude Code セッションを跨いだ状態の永続化が目的で、プロジェクト本体（コードリポジトリやドキュメント）を汚しません。この設計は [`gstack`](https://github.com/garrytan/gstack) のパターンを踏襲しています。
@@ -134,13 +139,15 @@ uzustack は **3 つの場所** に分散して動作します：
 
 uzustack のスキルは 3 タイプに分かれます：
 
-| Type       | 由来                  | 配置                   | OSS 公開 |
-| ---------- | ------------------- | -------------------- | ------ |
-| **Type 1** | gstack を翻訳・検証したスキル  | `skills/translated/` | ◯      |
-| **Type 2** | 個人運用で熟成中の固有スキル      | 各ユーザーのプロジェクト内        | ✗      |
-| **Type 3** | Type 2 から属人性を抜いた汎用版 | `skills/native/`     | ◯      |
+| Type       | 由来                  | repo 内配置                | SKILL.md frontmatter | OSS 公開 |
+| ---------- | ------------------- | ----------------------- | -------------------- | ------ |
+| **Type 1** | gstack を翻訳・検証したスキル  | uzustack repo top の `<skill>/`     | `type: translated`   | ◯      |
+| **Type 2** | 個人運用で熟成中の固有スキル      | 各ユーザーのプロジェクト `.claude/skills/<skill>/` | （任意。属人化を許容）           | ✗      |
+| **Type 3** | Type 2 から属人性を抜いた汎用版 | uzustack repo top の `<skill>/`     | `type: native`       | ◯      |
 
 OSS 公開対象は **Type 1 と Type 3** のみ。Type 2 は各ユーザーが自由に試行錯誤する個人領域。これにより「個人依存スキルが OSS を侵さない」構造的な分離を実現しています。
+
+> 📝 **`type:` の意義**：Claude Code は `.claude/skills/<skill>/SKILL.md` をフラットに探索する仕様のため、Type 1 と Type 3 を別フォルダに分けても、配布時には同じディレクトリに混在します。区別はメタデータ（frontmatter）で表現します。
 
 
 現状の、開発状況は以下の通りです。

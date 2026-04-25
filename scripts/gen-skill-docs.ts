@@ -1,42 +1,36 @@
 #!/usr/bin/env bun
 /**
- * Generate SKILL.md from SKILL.md.tmpl under skills/{translated,native}/.
- * Every skill directory must have a SKILL.md.tmpl as its source of truth;
- * the .md is regenerated from it and freshness is verified in CI.
- *
- * _upstream/gstack/ is intentionally excluded — it's a subtree owned by
- * upstream gstack and re-pulled wholesale on updates.
+ * Generate SKILL.md from each <skill>/SKILL.md.tmpl at the repo top.
+ * `.tmpl` is the source of truth; type 1/3 lives in its frontmatter `type:`.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dir, '..');
-const SKILL_ROOTS = ['skills/translated', 'skills/native'] as const;
+// Non-dotfile dirs that aren't skills. Dotfiles are filtered separately below.
+const EXCLUDE = new Set(['_upstream', 'scripts', 'bin', 'node_modules', 'dist', 'build']);
+
+const candidates = fs.readdirSync(ROOT, { withFileTypes: true })
+  .filter(e => e.isDirectory() && !e.name.startsWith('.') && !EXCLUDE.has(e.name));
 
 const errors: string[] = [];
 let generated = 0;
 
-for (const skillRoot of SKILL_ROOTS) {
-  const absRoot = path.join(ROOT, skillRoot);
-  if (!fs.existsSync(absRoot)) continue;
+for (const dir of candidates) {
+  const skillPath = path.join(ROOT, dir.name);
+  const tmplPath = path.join(skillPath, 'SKILL.md.tmpl');
+  const outPath = path.join(skillPath, 'SKILL.md');
 
-  const entries = fs.readdirSync(absRoot, { withFileTypes: true });
-  const skillDirs = entries.filter(e => e.isDirectory() && !e.name.startsWith('.'));
-
-  for (const dir of skillDirs) {
-    const skillPath = path.join(absRoot, dir.name);
-    const tmplPath = path.join(skillPath, 'SKILL.md.tmpl');
-    const outPath = path.join(skillPath, 'SKILL.md');
-
-    if (!fs.existsSync(tmplPath)) {
-      errors.push(`${path.relative(ROOT, skillPath)}/ has no SKILL.md.tmpl`);
-      continue;
+  if (!fs.existsSync(tmplPath)) {
+    if (fs.existsSync(outPath)) {
+      errors.push(`${dir.name}/ has SKILL.md but no SKILL.md.tmpl (.tmpl is the source of truth)`);
     }
-
-    fs.copyFileSync(tmplPath, outPath);
-    generated++;
+    continue;
   }
+
+  fs.copyFileSync(tmplPath, outPath);
+  generated++;
 }
 
 console.log(`[gen-skill-docs] generated=${generated} errors=${errors.length}`);
