@@ -1,0 +1,39 @@
+name: Skill Docs Freshness
+
+# Scope: skills/{translated,native}/ only. _upstream/gstack/ is a subtree
+# owned by upstream gstack — excluded so upstream churn doesn't break our CI.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'skills/translated/**'
+      - 'skills/native/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'bun.lock'
+      - '.github/workflows/skill-docs.yml'
+  pull_request:
+    paths:
+      - 'skills/translated/**'
+      - 'skills/native/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'bun.lock'
+      - '.github/workflows/skill-docs.yml'
+
+jobs:
+  check-freshness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: Regenerate SKILL.md files
+        run: bun run gen:skill-docs
+      - name: Verify working tree is clean
+        run: |
+          git diff --exit-code || {
+            echo "::error::Generated files are stale or gen:skill-docs wrote outside skills/. Run: bun run gen:skill-docs"
+            exit 1
+          }
