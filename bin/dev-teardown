@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# uzustack dev mode teardown: remove flat-expanded skill dirs from .claude/skills/.
+# Only removes entries whose SKILL.md symlink points inside the repo
+# (i.e. created by dev-setup; foreign skills under .claude/skills/ are preserved).
+#
+# Usage: bin/dev-teardown
+set -euo pipefail
+shopt -s nullglob
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+CLAUDE_SKILLS="$REPO_ROOT/.claude/skills"
+
+[[ -d "$CLAUDE_SKILLS" ]] || { echo "No dev mode active."; exit 0; }
+
+removed=()
+
+for entry in "$CLAUDE_SKILLS"/*/; do
+  entry="${entry%/}"
+  name="${entry##*/}"
+  link_target="$(readlink "$entry/SKILL.md" 2>/dev/null || true)"
+  if [[ "$link_target" == "$REPO_ROOT"/* ]]; then
+    rm -rf "$entry"
+    removed+=("$name")
+  fi
+done
+
+rmdir "$CLAUDE_SKILLS" 2>/dev/null || true
+rmdir "$REPO_ROOT/.claude" 2>/dev/null || true
+
+if (( ${#removed[@]} > 0 )); then
+  echo "Removed: ${removed[*]}"
+else
+  echo "No dev-mode symlinks found."
+fi

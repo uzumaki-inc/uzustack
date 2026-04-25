@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# uzustack dev mode: flat-expand repo-top skill dirs into .claude/skills/<skill>/.
+# Claude Code only discovers .claude/skills/<name>/SKILL.md (no nesting).
+#
+# Usage:
+#   bin/dev-setup       # set up
+#   bin/dev-teardown    # remove
+set -euo pipefail
+shopt -s nullglob
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+if [[ ! -d "$REPO_ROOT/node_modules" ]]; then
+  echo "Installing dependencies..."
+  bun install --cwd "$REPO_ROOT"
+fi
+
+mkdir -p "$REPO_ROOT/.claude/skills"
+
+# Keep in sync with EXCLUDE in scripts/gen-skill-docs.ts
+EXCLUDE=(_upstream scripts bin node_modules dist build)
+
+linked=()
+for skill_dir in "$REPO_ROOT"/*/; do
+  skill_name="${skill_dir%/}"
+  skill_name="${skill_name##*/}"
+  [[ " ${EXCLUDE[*]} " == *" $skill_name "* ]] && continue
+  [[ -f "$skill_dir/SKILL.md" ]] || continue
+
+  target="$REPO_ROOT/.claude/skills/$skill_name"
+
+  if [[ -L "$target" ]]; then
+    rm "$target"
+  elif [[ -d "$target" ]]; then
+    if [[ -L "$target/SKILL.md" ]]; then
+      rm -rf "$target"
+    else
+      echo "Error: $target is a real directory with non-symlink SKILL.md." >&2
+      echo "Remove it manually before running dev-setup." >&2
+      exit 1
+    fi
+  fi
+
+  mkdir -p "$target"
+  ln -s "${skill_dir%/}/SKILL.md" "$target/SKILL.md"
+  linked+=("$skill_name")
+done
+
+if (( ${#linked[@]} > 0 )); then
+  echo "Dev mode active. Linked skills: ${linked[*]}"
+else
+  echo "Dev mode active. (No skills found at repo top yet.)"
+fi
+echo "  $REPO_ROOT/.claude/skills/"
+echo "To tear down: bin/dev-teardown"
