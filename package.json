@@ -1,0 +1,17 @@
+{
+  "name": "uzustack",
+  "version": "0.1.0",
+  "private": true,
+  "description": "UZUMAKI 社の Claude Code スキル集（gstack subtree ベース、日本語化 + 経営者コンテキスト）",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "gen:skill-docs": "bun run scripts/gen-skill-docs.ts"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
