@@ -35,18 +35,33 @@ cd ~/src/uzustack && bun install
 
 （任意の場所に clone してよいが、本ガイドは `~/src/uzustack/` を例として使用）
 
-### 2. dev-setup でプロジェクトに symlink を貼る
+### 2. dev-setup で symlink を貼る
+
+`bin/dev-setup` には 2 つのモードがあります：
+
+#### モード A：引数なし（uzustack repo 自身でセルフ symlink）
 
 ```bash
 cd ~/src/uzustack
 bin/dev-setup
 ```
 
-これでテスト用プロジェクトの `.claude/skills/uzustack/` が `~/src/uzustack/` への symlink になり、開発した skill が即座に反映されます（git pull 不要）。
+`~/src/uzustack/.claude/skills/uzustack/` を repo root への自己 symlink として作成。これで **uzustack repo の中で Claude Code を起動** して、開発中の skill を即座にテストできます。
+
+#### モード B：引数あり（外部プロジェクトに開発中 symlink）
+
+```bash
+cd ~/src/uzustack
+bin/dev-setup ~/path/to/your-project
+```
+
+任意の外部プロジェクト（例：自分の Obsidian vault や開発リポジトリ）の `.claude/skills/uzustack/` を `~/src/uzustack/` への symlink として作成。実プロジェクトで開発中の skill をテストする用途。
+
+> 💡 **end user 向けの正式 install は `./setup`** を使います（`bin/dev-setup` はメンテナー向けの開発用）。
 
 ### 3. 動作確認
 
-任意のプロジェクトで Claude Code を起動し、`/investigate` 等のスキルが呼び出せることを確認してください。
+symlink を貼ったプロジェクトで Claude Code を起動し、`/investigate` 等のスキルが呼び出せることを確認してください。
 
 ---
 
