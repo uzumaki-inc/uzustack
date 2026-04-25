@@ -1,8 +1,7 @@
 name: Skill Docs Freshness
 
-# 論点 4 合意：CI 対象は skills/translated/ と skills/native/ のみ。
-# _upstream/gstack/ は subtree として本家 gstack の責任範囲なので除外する。
-# これにより上流の壊れで uzustack の CI が赤くなる構造的負債を回避する。
+# Scope: skills/{translated,native}/ only. _upstream/gstack/ is a subtree
+# owned by upstream gstack — excluded so upstream churn doesn't break our CI.
 
 on:
   push:
@@ -32,9 +31,9 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Regenerate SKILL.md files
         run: bun run gen:skill-docs
-      - name: Verify SKILL.md files are fresh
+      - name: Verify working tree is clean
         run: |
-          git diff --exit-code -- skills/translated/ skills/native/ || {
-            echo "::error::Generated SKILL.md files are stale. Run: bun run gen:skill-docs"
+          git diff --exit-code || {
+            echo "::error::Generated files are stale or gen:skill-docs wrote outside skills/. Run: bun run gen:skill-docs"
             exit 1
           }
