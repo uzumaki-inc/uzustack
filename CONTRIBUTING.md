@@ -158,9 +158,7 @@ gh pr create
 
 ### 取込み後の翻訳 rebase
 
-1. 翻訳済み skill（`type: translated`）を最新の `_upstream/gstack/<skill>/` と `git diff` で比較
-2. 差分があれば翻訳を更新（`feature/sync-gstack-<日付>` ブランチで作業 → PR）
-3. uzustack 独自部分（`type: native`）は gstack 更新と無関係
+自動 PR の中に翻訳済み skill（`type: translated`）の上流変更が含まれていたら、[翻訳ガイド](#翻訳ガイドgstack-の英語スキルを翻訳する場合) の「rebase の手順」を参照して再翻訳します。uzustack 独自部分（`type: native`）は gstack 更新と無関係。
 
 ---
 
@@ -205,21 +203,67 @@ push / PR ごとに以下を実行：
 
 ## 翻訳ガイド（gstack の英語スキルを翻訳する場合）
 
-### 配置とメタデータ
+このセクションは「新規に翻訳する」と「既存翻訳が上流更新された時に rebase する」の 2 種類の作業をカバーします。step 15（`investigate` 初翻訳、PR #5）の経験を型化したものです。
+
+### 配置とメタデータ（共通）
 
 - 翻訳済みは uzustack repo top の `<skill>/` に直接配置（例：`investigate/SKILL.md.tmpl`）、未翻訳は `_upstream/gstack/<skill>/` のまま
-- SKILL.md frontmatter に **`type: translated`** を必ず付与（Type 1 識別。`type: native` は uzustack 独自・汎用スキル用）
+- `SKILL.md.tmpl` frontmatter に **`type: translated`** を必ず付与（Type 1 識別。`type: native` は uzustack 独自・汎用スキル用）
+- 自動起動 trigger は日本語の発動語彙（「デバッグして」「このバグを直して」等）を frontmatter の `description` に含める
 
 ### 翻訳の粒度（守破離の段階的移行）
 
 - 翻訳は **「守」段階では原文に忠実に**（用語のみ日本語化）
 - 経営者コンテキストへの翻案は **「破」段階で**（数ヶ月後）
-- ただし **gstack 専用機構** は機械的踏襲ができないため、Phase 1 では以下を **削除** して取り込みを段階化：
+- **gstack 専用機構** は機械的踏襲ができないため、Phase 1 では削除（論点 5、段階的取り込み）：
   - `{{PREAMBLE}}`、`{{LEARNINGS_SEARCH}}`、`{{LEARNINGS_LOG}}`、`{{GBRAIN_CONTEXT_LOAD}}`、`{{GBRAIN_SAVE_RESULTS}}` の placeholder
   - `hooks:` frontmatter（`freeze` 等の他 skill との連携）
   - bash 内の `~/.claude/skills/gstack/bin/*` 呼び出し（uzustack に対応バイナリが未実装のため）
-- これらは uzustack 版バイナリ（`bin/uzustack-config` 等）が整備された後の Phase 3 以降で段階的に再取り込み（メンテナーの草案ノート参照）
+- これらは uzustack 版バイナリ（`bin/uzustack-config` 等）が整備された後の Phase 3 以降で段階的に再取り込み
 - **メソッド本体**（Iron Law、Phase 構造、Important Rules、レポート形式 等）は **原文忠実に翻訳**
+
+### 新規翻訳の手順
+
+1. **ベース確認**：`_upstream/gstack/<skill>/SKILL.md.tmpl` を読む
+2. **翻訳作業**：
+   - repo top に `<skill>/SKILL.md.tmpl` を新規作成
+   - メソッド本体を原文忠実に日本語訳
+   - gstack 専用機構（上記）を削除
+   - frontmatter に `type: translated` + 日本語 trigger 語彙を追加
+3. **生成 / 動作確認**：
+   - `bun run gen:skill-docs` で `<skill>/SKILL.md` を生成
+   - `bin/dev-setup` で symlink を貼り、Claude Code で skill が呼べることを確認
+4. **`/simplify` を 2 周**（過剰な翻訳調整・機構残骸がないか）
+5. **PR**：`feature/translate-<skill>` ブランチで作成
+
+### rebase の手順（既存翻訳が gstack 側で更新された時）
+
+step 22 の自動 subtree pull PR が来た時、翻訳済み skill が変更されているか確認：
+
+1. **影響判定**：
+
+   ```bash
+   gh pr diff <auto-PR-number> -- _upstream/gstack/<翻訳済み skill>/SKILL.md.tmpl
+   ```
+
+   - 変更なし → rebase 不要、auto PR をそのまま merge
+   - 変更あり → 以下の rebase 作業へ
+
+2. **rebase 作業**：
+   - auto PR を先に merge → main で `feature/sync-gstack-<日付>-<skill>` ブランチを切る
+   - 翻訳済み `<skill>/SKILL.md.tmpl` を上流差分に合わせて更新
+   - メソッド本体の変更：**原文忠実に再翻訳**
+   - 機構関連の追加（`{{PREAMBLE}}` 等）：引き続き **削除** する方針（Phase 3+ まで）
+   - 既存の日本語 trigger は維持
+3. **検証**：
+   - `bun run gen:skill-docs` を実行 → `git diff` が clean（または期待通りの差分のみ）
+   - `bin/dev-setup` で動作確認
+4. **`/simplify` を 2 周**
+5. **PR**：別 PR として作成、auto PR とは独立した commit に
+
+### bulk rebase（翻訳済み skill が ≥3 件になったら）
+
+複数の翻訳済み skill が同じ自動 PR で上流更新を受けた場合、1 件ずつではなく月次 batch でまとめて rebase する運用も検討します（将来の改善ポイント）。今は 1 件のみなので個別対応で十分。
 
 ### 詳細
 
