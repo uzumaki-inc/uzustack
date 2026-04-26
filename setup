@@ -29,7 +29,8 @@ SKILLS_DIR="$PROJECT_DIR/.claude/skills"
 mkdir -p "$SKILLS_DIR"
 
 # Keep in sync with EXCLUDE in bin/dev-setup and scripts/gen-skill-docs.ts.
-EXCLUDE=(_upstream scripts bin node_modules dist build .claude .git .github)
+# .claude / .git / .github are dotfile dirs and already excluded by the */ glob.
+EXCLUDE=(_upstream scripts bin node_modules dist build)
 
 linked=()
 already=()
@@ -39,15 +40,7 @@ for skill_dir in "$UZUSTACK_DIR"/*/; do
   skill_name="${skill_dir%/}"
   skill_name="${skill_name##*/}"
 
-  excluded=0
-  for ex in "${EXCLUDE[@]}"; do
-    if [[ "$skill_name" == "$ex" ]]; then
-      excluded=1
-      break
-    fi
-  done
-  (( excluded )) && continue
-
+  [[ " ${EXCLUDE[*]} " == *" $skill_name "* ]] && continue
   [[ -f "$skill_dir/SKILL.md" ]] || continue
 
   target_dir="$SKILLS_DIR/$skill_name"
@@ -59,11 +52,17 @@ for skill_dir in "$UZUSTACK_DIR"/*/; do
     continue
   fi
 
+  # Replace stale uzustack-managed entries; refuse to touch user-managed real dirs.
   if [[ -L "$target_dir" ]]; then
+    # Legacy: whole-dir symlink from earlier uzustack layouts.
+    echo "  warn: replacing legacy directory symlink at $target_dir" >&2
     rm "$target_dir"
   elif [[ -L "$target_link" ]]; then
+    # Stale SKILL.md symlink (e.g., uzustack moved, or user pointed it elsewhere).
+    echo "  warn: replacing existing SKILL.md symlink at $target_link (was $(readlink "$target_link"))" >&2
     rm "$target_link"
   elif [[ -d "$target_dir" ]]; then
+    # User-managed directory (Type 2 skill etc.) — leave alone.
     echo "  warn: $target_dir exists and is not managed by uzustack — skipped" >&2
     skipped+=("$skill_name")
     continue
