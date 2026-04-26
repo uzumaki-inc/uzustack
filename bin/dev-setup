@@ -28,11 +28,16 @@ for skill_dir in "$REPO_ROOT"/*/; do
   [[ -f "$skill_dir/SKILL.md" ]] || continue
 
   target="$REPO_ROOT/.claude/skills/$skill_name"
+  expected_link="${skill_dir%/}/SKILL.md"
 
   if [[ -L "$target" ]]; then
     rm "$target"
   elif [[ -d "$target" ]]; then
     if [[ -L "$target/SKILL.md" ]]; then
+      if [[ "$(readlink "$target/SKILL.md")" == "$expected_link" ]]; then
+        linked+=("$skill_name")
+        continue
+      fi
       rm -rf "$target"
     else
       echo "Error: $target is a real directory with non-symlink SKILL.md." >&2
@@ -42,7 +47,7 @@ for skill_dir in "$REPO_ROOT"/*/; do
   fi
 
   mkdir -p "$target"
-  ln -s "${skill_dir%/}/SKILL.md" "$target/SKILL.md"
+  ln -s "$expected_link" "$target/SKILL.md"
   linked+=("$skill_name")
 done
 
