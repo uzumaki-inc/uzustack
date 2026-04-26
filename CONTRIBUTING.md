@@ -57,7 +57,7 @@ bin/dev-setup ~/path/to/your-project
 
 任意の外部プロジェクト（例：自前の開発リポジトリ）の `.claude/skills/<skill>/SKILL.md` を uzustack repo 配下の各 skill への symlink として展開。実プロジェクトで開発中の skill をテストする用途。存在しないパスを渡すと error で exit。
 
-> 💡 **teardown**：モード A は `bin/dev-teardown` で一括削除。モード B は当面手動で `rm -rf <project>/.claude/skills/<skill>/` を実施（dev-teardown 引数あり版は別 issue で予定）。
+> 💡 **teardown**：モード A は `bin/dev-teardown`、モード B は `bin/dev-teardown ~/path/to/your-project` で対応（uzustack 由来 symlink のみ削除、ユーザー独自 skill は保護されます）。
 
 > 💡 **end user 向けの正式 install は `./setup`** を使います（`bin/dev-setup` はメンテナー向けの開発用）。
 
