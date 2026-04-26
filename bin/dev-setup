@@ -1,23 +1,36 @@
 #!/usr/bin/env bash
-# uzustack dev mode: flat-expand repo-top skill dirs into .claude/skills/<skill>/.
+# uzustack dev mode: flat-expand repo-top skill dirs into <target>/.claude/skills/.
 # Claude Code only discovers .claude/skills/<name>/SKILL.md (no nesting).
 #
 # Usage:
-#   bin/dev-setup       # set up
-#   bin/dev-teardown    # remove
+#   bin/dev-setup                       # mode A: set up self (uzustack repo)
+#   bin/dev-setup <path-to-project>     # mode B: set up external project
+#   bin/dev-teardown                    # remove (self only; external is manual rm for now)
 set -euo pipefail
 shopt -s nullglob
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+if (( $# > 0 )); then
+  TARGET_DIR="$1"
+  if [[ ! -d "$TARGET_DIR" ]]; then
+    echo "Error: target directory not found: $TARGET_DIR" >&2
+    echo "  bin/dev-setup expects an existing project directory as the first argument." >&2
+    exit 1
+  fi
+  TARGET_DIR="$(cd "$TARGET_DIR" && pwd -P)"
+else
+  TARGET_DIR="$REPO_ROOT"
+fi
 
 if [[ ! -d "$REPO_ROOT/node_modules" ]]; then
   echo "Installing dependencies..."
   bun install --cwd "$REPO_ROOT"
 fi
 
-mkdir -p "$REPO_ROOT/.claude/skills"
+mkdir -p "$TARGET_DIR/.claude/skills"
 
-# Keep in sync with EXCLUDE in scripts/gen-skill-docs.ts
+# Keep in sync with EXCLUDE in setup and scripts/gen-skill-docs.ts.
 EXCLUDE=(_upstream scripts bin node_modules dist build)
 
 linked=()
@@ -27,7 +40,7 @@ for skill_dir in "$REPO_ROOT"/*/; do
   [[ " ${EXCLUDE[*]} " == *" $skill_name "* ]] && continue
   [[ -f "$skill_dir/SKILL.md" ]] || continue
 
-  target="$REPO_ROOT/.claude/skills/$skill_name"
+  target="$TARGET_DIR/.claude/skills/$skill_name"
   expected_link="${skill_dir%/}/SKILL.md"
 
   if [[ -L "$target/SKILL.md" && "$(readlink "$target/SKILL.md")" == "$expected_link" ]]; then
@@ -57,5 +70,9 @@ if (( ${#linked[@]} > 0 )); then
 else
   echo "Dev mode active. (No skills found at repo top yet.)"
 fi
-echo "  $REPO_ROOT/.claude/skills/"
-echo "To tear down: bin/dev-teardown"
+echo "  $TARGET_DIR/.claude/skills/"
+if [[ "$TARGET_DIR" == "$REPO_ROOT" ]]; then
+  echo "To tear down: bin/dev-teardown"
+else
+  echo "To tear down (manual for now): rm -rf \"$TARGET_DIR/.claude/skills/<skill>\""
+fi
