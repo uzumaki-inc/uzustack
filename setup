@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# uzustack setup — install uzustack skills into the current project's .claude/skills/.
+#
+# Usage:
+#   cd <your-project>
+#   ~/.claude/skills/uzustack/setup
+#
+# Phase 1 scope: symlink uzustack の各 skill を <project>/.claude/skills/<skill>/SKILL.md へ展開する。
+# settings.json / CLAUDE.md には触れない（Phase 3 以降で機構取り込みと一緒に着手予定）。
+#
+# Maintainers should use bin/dev-setup instead — it links the dev clone in place
+# without requiring a separate ~/.claude/skills/uzustack/ install.
+
+set -euo pipefail
+shopt -s nullglob
+
+UZUSTACK_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+PROJECT_DIR="$(pwd -P)"
+
+if [[ "$UZUSTACK_DIR" == "$PROJECT_DIR" ]]; then
+  echo "Error: setup is meant for end users to install into their own project." >&2
+  echo "  You appear to be inside the uzustack repo itself." >&2
+  echo "  Maintainers: use bin/dev-setup instead." >&2
+  echo "  End users: cd to your own project, then re-run this script." >&2
+  exit 1
+fi
+
+SKILLS_DIR="$PROJECT_DIR/.claude/skills"
+mkdir -p "$SKILLS_DIR"
+
+# Keep in sync with EXCLUDE in bin/dev-setup and scripts/gen-skill-docs.ts.
+EXCLUDE=(_upstream scripts bin node_modules dist build .claude .git .github)
+
+linked=()
+already=()
+skipped=()
+
+for skill_dir in "$UZUSTACK_DIR"/*/; do
+  skill_name="${skill_dir%/}"
+  skill_name="${skill_name##*/}"
+
+  excluded=0
+  for ex in "${EXCLUDE[@]}"; do
+    if [[ "$skill_name" == "$ex" ]]; then
+      excluded=1
+      break
+    fi
+  done
+  (( excluded )) && continue
+
+  [[ -f "$skill_dir/SKILL.md" ]] || continue
+
+  target_dir="$SKILLS_DIR/$skill_name"
+  target_link="$target_dir/SKILL.md"
+  expected_target="${skill_dir%/}/SKILL.md"
+
+  if [[ -L "$target_link" && "$(readlink "$target_link")" == "$expected_target" ]]; then
+    already+=("$skill_name")
+    continue
+  fi
+
+  if [[ -L "$target_dir" ]]; then
+    rm "$target_dir"
+  elif [[ -L "$target_link" ]]; then
+    rm "$target_link"
+  elif [[ -d "$target_dir" ]]; then
+    echo "  warn: $target_dir exists and is not managed by uzustack — skipped" >&2
+    skipped+=("$skill_name")
+    continue
+  fi
+
+  mkdir -p "$target_dir"
+  ln -snf "$expected_target" "$target_link"
+  linked+=("$skill_name")
+done
+
+echo ""
+echo "uzustack setup complete in $PROJECT_DIR/.claude/skills/"
+if (( ${#linked[@]} > 0 )); then
+  echo "  Linked:         ${linked[*]}"
+fi
+if (( ${#already[@]} > 0 )); then
+  echo "  Already linked: ${already[*]}"
+fi
+if (( ${#skipped[@]} > 0 )); then
+  echo "  Skipped:        ${skipped[*]}"
+fi
+
+if (( ${#linked[@]} == 0 && ${#already[@]} == 0 && ${#skipped[@]} == 0 )); then
+  echo "  warn: no uzustack skills found at $UZUSTACK_DIR" >&2
+fi
