@@ -60,7 +60,9 @@ cd ~/path/to/your-project
 ~/.claude/skills/uzustack/setup
 ```
 
-これで `.claude/settings.json` と `.claude/CLAUDE.md` に skill 呼び出し設定が追加され、`.claude/skills/uzustack/` から uzustack が見えるようになります。
+これで `<your-project>/.claude/skills/<skill>/SKILL.md` 配下に uzustack の各スキルが symlink として配置され、Claude Code から呼び出せるようになります。
+
+> 📝 **現在のスコープ**：`./setup` は `.claude/skills/` への symlink 配備のみ行います。`.claude/settings.json` / `.claude/CLAUDE.md` への自動追記は Phase 3 以降で対応予定（既存ファイルは破壊しません）。
 
 ### 3. Claude Code でスキルを呼ぶ
 
@@ -98,9 +100,9 @@ uzustack は **3 つの場所** に分散して動作します：
 <your-project>/                       ← Claude Code を起動する場所
 ├── CLAUDE.md                          ← プロジェクト固有の文脈
 ├── .claude/
-│   ├── settings.json                  ← ./setup で追加
-│   ├── CLAUDE.md                      ← skill を呼び出す設定
-│   └── skills/                        ← Claude Code が skill を探索するディレクトリ（フラット配置）
+│   ├── settings.json                  ← （あれば既存のまま。setup では触らない）
+│   ├── CLAUDE.md                      ← （あれば既存のまま。setup では触らない）
+│   └── skills/                        ← ./setup が管理（フラット配置で skill を symlink）
 │       ├── investigate/               ← Type 1: uzustack 由来の翻訳スキル
 │       │   └── SKILL.md
 │       ├── obsidian-audit-tac/        ← Type 2: 個人固有スキル（OSS 非公開、各ユーザー固有）
