@@ -42,26 +42,33 @@ for skill_dir in "$REPO_ROOT"/*/; do
 
   target="$TARGET_DIR/.claude/skills/$skill_name"
   expected_link="${skill_dir%/}/SKILL.md"
-
-  if [[ -L "$target/SKILL.md" && "$(readlink "$target/SKILL.md")" == "$expected_link" ]]; then
-    linked+=("$skill_name")
-    continue
-  fi
+  expected_bin_link="${skill_dir%/}/bin"
 
   if [[ -L "$target" ]]; then
     rm "$target"
-  elif [[ -d "$target" ]]; then
-    if [[ -L "$target/SKILL.md" ]]; then
-      rm -rf "$target"
-    else
-      echo "Error: $target is a real directory with non-symlink SKILL.md." >&2
-      echo "Remove it manually before running dev-setup." >&2
-      exit 1
-    fi
+  elif [[ -e "$target/SKILL.md" && ! -L "$target/SKILL.md" ]]; then
+    echo "Error: $target/SKILL.md is a real file, not a symlink." >&2
+    echo "Remove it manually before running dev-setup." >&2
+    exit 1
   fi
 
   mkdir -p "$target"
-  ln -s "$expected_link" "$target/SKILL.md"
+
+  if [[ ! -L "$target/SKILL.md" || "$(readlink "$target/SKILL.md")" != "$expected_link" ]]; then
+    rm -f "$target/SKILL.md"
+    ln -s "$expected_link" "$target/SKILL.md"
+  fi
+
+  # bin/ symlink for hook-bearing skills (e.g. careful's PreToolUse hook
+  # references ${CLAUDE_SKILL_DIR}/bin/...; symlinking the bin dir ensures
+  # hooks resolve regardless of how Claude Code resolves CLAUDE_SKILL_DIR).
+  if [[ -d "$skill_dir/bin" ]]; then
+    if [[ ! -L "$target/bin" || "$(readlink "$target/bin")" != "$expected_bin_link" ]]; then
+      [[ -e "$target/bin" || -L "$target/bin" ]] && rm -rf "$target/bin"
+      ln -s "$expected_bin_link" "$target/bin"
+    fi
+  fi
+
   linked+=("$skill_name")
 done
 
