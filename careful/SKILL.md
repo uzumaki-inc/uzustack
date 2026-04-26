@@ -22,7 +22,7 @@ hooks:
     - matcher: "Bash"
       hooks:
         - type: command
-          command: "bash ${CLAUDE_SKILL_DIR}/bin/check-careful.sh"
+          command: "bash $CLAUDE_PROJECT_DIR/.claude/skills/careful/bin/check-careful.sh"
           statusMessage: "危険コマンドをチェック中..."
 sensitive: true
 ---
