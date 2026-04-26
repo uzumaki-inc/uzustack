@@ -1,16 +1,31 @@
 #!/usr/bin/env bash
-# uzustack dev mode teardown: remove flat-expanded skill dirs from .claude/skills/.
-# Only removes entries whose SKILL.md symlink points inside the repo
+# uzustack dev mode teardown: remove flat-expanded skill dirs from <target>/.claude/skills/.
+# Only removes entries whose SKILL.md symlink points inside the uzustack repo
 # (i.e. created by dev-setup; foreign skills under .claude/skills/ are preserved).
 #
-# Usage: bin/dev-teardown
+# Usage:
+#   bin/dev-teardown                    # mode A: tear down self (uzustack repo)
+#   bin/dev-teardown <path-to-project>  # mode B: tear down external project
 set -euo pipefail
 shopt -s nullglob
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CLAUDE_SKILLS="$REPO_ROOT/.claude/skills"
 
-[[ -d "$CLAUDE_SKILLS" ]] || { echo "No dev mode active."; exit 0; }
+if (( $# > 0 )); then
+  TARGET_DIR="$1"
+  if [[ ! -d "$TARGET_DIR" ]]; then
+    echo "Error: target directory not found: $TARGET_DIR" >&2
+    echo "  bin/dev-teardown expects an existing project directory as the first argument." >&2
+    exit 1
+  fi
+  TARGET_DIR="$(cd "$TARGET_DIR" && pwd -P)"
+else
+  TARGET_DIR="$REPO_ROOT"
+fi
+
+CLAUDE_SKILLS="$TARGET_DIR/.claude/skills"
+
+[[ -d "$CLAUDE_SKILLS" ]] || { echo "No dev mode active in $TARGET_DIR."; exit 0; }
 
 removed=()
 
@@ -25,10 +40,11 @@ for entry in "$CLAUDE_SKILLS"/*/; do
 done
 
 rmdir "$CLAUDE_SKILLS" 2>/dev/null || true
-rmdir "$REPO_ROOT/.claude" 2>/dev/null || true
+rmdir "$TARGET_DIR/.claude" 2>/dev/null || true
 
 if (( ${#removed[@]} > 0 )); then
-  echo "Removed: ${removed[*]}"
+  echo "Removed from $CLAUDE_SKILLS:"
+  echo "  ${removed[*]}"
 else
-  echo "No dev-mode symlinks found."
+  echo "No dev-mode symlinks found in $TARGET_DIR."
 fi
