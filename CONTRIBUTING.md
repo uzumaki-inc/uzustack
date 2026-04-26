@@ -222,7 +222,9 @@ push / PR ごとに以下を実行：
 - これらは uzustack 版バイナリ（`bin/uzustack-config` 等）が整備された後の Phase 3 以降で段階的に再取り込み
 - **メソッド本体**（Iron Law、Phase 構造、Important Rules、レポート形式 等）は **原文忠実に翻訳**
 
-### 新規翻訳の手順
+### 新規翻訳の手順（1 個ずつ、緊急時 / 単発の場合）
+
+緊急で 1 個だけ翻訳したい場合や、cluster に収まらない isolated な skill の場合に使う。継続的に翻訳を進める場合は、後述の **small batch アプローチ** を推奨。
 
 1. **ベース確認**：`_upstream/gstack/<skill>/SKILL.md.tmpl` を読む
 2. **翻訳作業**：
@@ -235,6 +237,30 @@ push / PR ごとに以下を実行：
    - `bin/dev-setup` で symlink を貼り、Claude Code で skill が呼べることを確認
 4. **`/simplify` を 2 周**（過剰な翻訳調整・機構残骸がないか）
 5. **PR**：`feature/translate-<skill>` ブランチで作成
+
+### small batch アプローチ（推奨：cluster 単位 3-5 個）
+
+役割が似た skill を **3-5 個まとめて** 翻訳する。1 個ずつだと mode switch コストが高く、完全 batch（数十個）は「翻訳の整合性ドリフト」「trigger 語彙の干渉」「機構削除の影響伝播」「上流追跡との混戦」のリスクが高まる。中間サイズが最も効率的。
+
+**手順**：
+
+1. **cluster 選定**：似た役割の skill 3-5 個を選ぶ（後述の cluster 例）
+2. **batch 翻訳**：cluster 内の skill を順番に翻訳（用語・構造の整合性を維持）
+3. **batch 動作確認**：cluster 全体に対して `bun run gen:skill-docs` + `bin/dev-setup` を一気に実行、Claude Code で各 skill の起動を確認
+4. **`/simplify` を 2 周**：cluster 全体を 1 セッションでレビュー
+5. **PR**：`feature/translate-cluster-<cluster-name>` ブランチで作成、cluster 全体を 1 PR に
+
+**学習 loop**：cluster 内で見つかった改善点（用語選択、機構削除の漏れ、trigger 語彙の干渉等）を次 cluster に反映する。最初の cluster は時間がかかるが、cluster を重ねるごとに効率が上がる。
+
+**cluster 例**（gstack の skill から、完全な分類は実際の翻訳着手前に整理）：
+
+- **investigation 系**：`investigate`（既翻訳）、`retro`、`careful`（3 件）
+- **context 系**：`context-save`、`context-restore`、`learn`、`freeze`、`unfreeze`、`autoplan`（6 件 → 3 + 3 等に再分割推奨）
+- **ship 系**：`ship`、`land-and-deploy`、`document-release`、`canary`、`landing-report`（5 件）
+- **review 系**：`plan-ceo-review`、`plan-eng-review`、`design-review`、`qa`、`qa-only` ほか（10 件 → `plan-*` と `qa-*` に再分割）
+- **design 系**：`design-consultation`、`design-shotgun`、`design-html`（3 件）
+
+cluster サイズが 5 を超える場合は sub-cluster に分割（例：`plan-*` 系と `qa-*` 系）。
 
 ### rebase の手順（既存翻訳が gstack 側で更新された時）
 
