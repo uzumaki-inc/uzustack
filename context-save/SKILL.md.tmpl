@@ -1,0 +1,246 @@
+---
+name: context-save
+type: translated
+version: 1.0.0
+description: |
+  作業 context を保存する skill。git state、決定事項、残タスクを記録し、
+  将来のセッション（別ブランチ・別 worktree・別マシンでも）が `/context-restore` で
+  そこから再開できるようにする。
+  「進捗を保存」「状態を保存」「作業を保存」「context save」「context-save」
+  と要求されたときに使用する。pair で `/context-restore` を使う。
+allowed-tools:
+  - Bash
+  - Read
+  - Write
+  - Glob
+  - Grep
+  - AskUserQuestion
+triggers:
+  - 進捗を保存
+  - 状態を保存
+  - 作業を保存
+  - context save
+  - context-save
+---
+
+# /context-save — 作業 context を保存
+
+あなたは **丁寧なセッションノートを残す Staff Engineer** である。何を作業しているか、どんな決定をしたか、何が残っているか — 完全な作業 context を捉えて、将来のセッション（別ブランチ・別 worktree・別マシンでも）が `/context-restore` で途切れなく再開できるようにする。
+
+**HARD GATE：コードを書き換えてはならない。** 本 skill は state を保存するだけ。
+
+---
+
+## コマンド判定
+
+ユーザーの入力を解析してモードを決定する：
+
+- `/context-save` または `/context-save <タイトル>` → **保存**
+- `/context-save list` → **一覧**
+
+ユーザーがコマンドの後にタイトルを指定した場合（例：`/context-save 認証リファクタ`）、それをタイトルとして使う。指定がなければ現在の作業内容から推論する。
+
+ユーザーが `/context-save resume` または `/context-save restore` と入力した場合は次のように伝える：「`/context-restore` を使ってください — 保存と復元は別 skill です」。
+
+---
+
+## 保存フロー
+
+### Step 1：state を集める
+
+```bash
+SLUG=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || basename "$(pwd)")
+```
+
+現在の作業 state を収集する：
+
+```bash
+echo "=== BRANCH ==="
+git rev-parse --abbrev-ref HEAD 2>/dev/null
+echo "=== STATUS ==="
+git status --short 2>/dev/null
+echo "=== DIFF STAT ==="
+git diff --stat 2>/dev/null
+echo "=== STAGED DIFF STAT ==="
+git diff --cached --stat 2>/dev/null
+echo "=== RECENT LOG ==="
+git log --oneline -10 2>/dev/null
+```
+
+### Step 2：context を要約する
+
+集めた state と会話履歴を使って、以下をカバーする要約を作成する：
+
+1. **何に取り組んでいるか** — 高レベルのゴール・機能
+2. **下した決定** — アーキテクチャ選択、トレードオフ、選んだアプローチとその理由
+3. **残作業** — 具体的な次の手順、優先度順
+4. **メモ** — 将来のセッションが知っておくべきこと（落とし穴、ブロック中の項目、未解決の質問、試したけれど駄目だったこと）
+
+ユーザーがタイトルを提供した場合はそれを使う。なければ作業内容から簡潔なタイトル（3-6 語）を推論する。
+
+### Step 3：セッション時間を計算する
+
+このセッションがどれくらいアクティブだったかを判定する：
+
+```bash
+if [ -n "$_TEL_START" ]; then
+  START_EPOCH="$_TEL_START"
+elif [ -n "$PPID" ]; then
+  START_EPOCH=$(ps -o lstart= -p $PPID 2>/dev/null | xargs -I{} date -jf "%c" "{}" "+%s" 2>/dev/null || echo "")
+fi
+if [ -n "$START_EPOCH" ]; then
+  NOW=$(date +%s)
+  DURATION=$((NOW - START_EPOCH))
+  echo "SESSION_DURATION_S=$DURATION"
+else
+  echo "SESSION_DURATION_S=unknown"
+fi
+```
+
+判定できない場合は、保存ファイルの `session_duration_s` フィールドを省略する。
+
+### Step 4：保存ファイルを書き出す
+
+パスは bash 側で計算する（LLM プロンプトでは計算しない）。これによりユーザー指定タイトルが後続コマンドに shell metacharacter を注入できないようにする。サニタイズは allowlist 方式：`a-z 0-9 - .` のみ通す。
+
+```bash
+SLUG=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || basename "$(pwd)")
+CHECKPOINT_DIR="$HOME/.uzustack/projects/$SLUG/checkpoints"
+mkdir -p "$CHECKPOINT_DIR"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+# bash 側でタイトルをサニタイズ。raw タイトルを $1 として渡す。
+# 例：TITLE_RAW="wintermute progress" bash -c '...'
+RAW="${TITLE_RAW:-untitled}"
+# 小文字化、空白をハイフンに、allowlist にない文字を除去、長さ制限。
+TITLE_SLUG=$(printf '%s' "$RAW" | tr '[:upper:]' '[:lower:]' | tr -s ' \t' '-' | tr -cd 'a-z0-9.-' | cut -c1-60)
+TITLE_SLUG="${TITLE_SLUG:-untitled}"
+# 衝突回避：${TIMESTAMP}-${SLUG}.md が既に存在する場合（同一秒に同タイトルで
+# 二重保存）、短いランダム suffix を追加。ファイル名は append-only — 上書き禁止。
+FILE="${CHECKPOINT_DIR}/${TIMESTAMP}-${TITLE_SLUG}.md"
+if [ -e "$FILE" ]; then
+  SUFFIX=$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom 2>/dev/null | head -c 4 || printf '%04x' "$$")
+  FILE="${CHECKPOINT_DIR}/${TIMESTAMP}-${TITLE_SLUG}-${SUFFIX}.md"
+fi
+echo "CHECKPOINT_DIR=$CHECKPOINT_DIR"
+echo "TIMESTAMP=$TIMESTAMP"
+echo "FILE=$FILE"
+```
+
+上で出力された `$FILE` パスにファイルを書く（その文字列をそのまま使うこと — LLM 層で再構成しない）。
+
+ファイルフォーマット：
+
+```markdown
+---
+status: in-progress
+branch: {現在のブランチ名}
+timestamp: {ISO-8601 タイムスタンプ、例：2026-04-18T14:30:00-07:00}
+title_raw: {ユーザーが指定または推論した raw タイトル（日本語含む、サニタイズ前）}
+session_duration_s: {計算済み duration、不明なら省略}
+files_modified:
+  - path/to/file1
+  - path/to/file2
+---
+
+## 取り組み内容：{タイトル}
+
+### Summary
+
+{高レベルのゴールと現在の進捗を 1-3 文で}
+
+### Decisions Made
+
+{アーキテクチャ選択、トレードオフ、推論を bullet list で}
+
+### Remaining Work
+
+{具体的な次の手順を優先度順の番号付きリストで}
+
+### Notes
+
+{落とし穴、ブロック中の項目、未解決の質問、試したけれど駄目だったこと}
+```
+
+`files_modified` リストは `git status --short`（staged + unstaged 両方）から取る。repo root からの相対パスを使う。
+
+`title_raw` フィールドはユーザーが指定または推論した **生のタイトル**（日本語含む）を保存する。ファイル名側の slug は ASCII 限定の allowlist（`a-z 0-9 - .`）でサニタイズされるため、日本語タイトルは file 名で `untitled` に潰れる。`title_raw` を frontmatter に持たせることで、`/context-restore` および `/context-save list` で生のタイトルを表示できる。`title_raw` は **必ず書く**（推論不可なら "untitled"）。
+
+書き終わったらユーザーに確認メッセージを表示する：
+
+```
+CONTEXT 保存完了
+════════════════════════════════════════
+タイトル： {title}
+ブランチ： {branch}
+ファイル： {保存ファイルのパス}
+変更数：　 {N} ファイル
+所要時間： {duration または "unknown"}
+════════════════════════════════════════
+
+後で `/context-restore` で復元できます。
+```
+
+---
+
+## 一覧フロー
+
+### Step 1：保存済み context を集める
+
+```bash
+SLUG=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || basename "$(pwd)")
+CHECKPOINT_DIR="$HOME/.uzustack/projects/$SLUG/checkpoints"
+if [ -d "$CHECKPOINT_DIR" ]; then
+  echo "CHECKPOINT_DIR=$CHECKPOINT_DIR"
+  # ls -1t ではなく find + sort を使う：ファイル名 YYYYMMDD-HHMMSS prefix が
+  # 正規順序（コピー / rsync 後も安定、mtime は安定でない）。空結果の振る舞いも
+  # クリーン（ファイルなし → 出力なし、cwd を ls する fallback なし）。
+  find "$CHECKPOINT_DIR" -maxdepth 1 -name "*.md" -type f 2>/dev/null | sort -r
+else
+  echo "NO_CHECKPOINTS"
+fi
+```
+
+### Step 2：テーブル表示
+
+**デフォルト挙動：現在のブランチの保存済み context のみ表示する。**
+
+ユーザーが `--all` を渡した場合（例：`/context-save list --all`）、**全ブランチ** の context を表示する。
+
+各ファイルの frontmatter を読んで `status`、`branch`、`timestamp`、`title_raw` を抽出する。タイトル表示は `title_raw` を優先し、無ければファイル名から取る（タイムスタンプ以降の部分、後方互換）。
+
+テーブル形式で表示：
+
+```
+保存済み CONTEXT（{branch} ブランチ）
+════════════════════════════════════════
+#  日付         タイトル                 状態
+─  ──────────  ───────────────────────  ───────────
+1  2026-04-18  auth-refactor            in-progress
+2  2026-04-17  api-pagination           completed
+3  2026-04-15  db-migration-setup       in-progress
+════════════════════════════════════════
+```
+
+`--all` の場合は Branch 列を追加：
+
+```
+保存済み CONTEXT（全ブランチ）
+════════════════════════════════════════
+#  日付         タイトル                 ブランチ            状態
+─  ──────────  ───────────────────────  ──────────────────  ───────────
+1  2026-04-18  auth-refactor            feat/auth           in-progress
+2  2026-04-17  api-pagination           main                completed
+3  2026-04-15  db-migration-setup       feat/db-migration   in-progress
+════════════════════════════════════════
+```
+
+保存済み context がない場合は次のように伝える：「保存済み context がありません。`/context-save` で現在の作業 state を保存してください。」
+
+---
+
+## 重要なルール
+
+- **コードを書き換えない。** 本 skill は state を読んで context ファイルを書くだけ。
+- **frontmatter にブランチ名を必ず含める** — cross-branch `/context-restore` のために critical。
+- **保存ファイルは append-only。** 既存ファイルを上書き・削除しない。各保存は新ファイルを作る。
+- **推論する、訊問しない。** git state と会話 context を使ってファイルを埋める。タイトルが本当に推論できない場合のみ AskUserQuestion を使う。
