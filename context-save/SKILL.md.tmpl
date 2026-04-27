@@ -135,6 +135,7 @@ echo "FILE=$FILE"
 status: in-progress
 branch: {現在のブランチ名}
 timestamp: {ISO-8601 タイムスタンプ、例：2026-04-18T14:30:00-07:00}
+title_raw: {ユーザーが指定または推論した raw タイトル（日本語含む、サニタイズ前）}
 session_duration_s: {計算済み duration、不明なら省略}
 files_modified:
   - path/to/file1
@@ -161,6 +162,8 @@ files_modified:
 ```
 
 `files_modified` リストは `git status --short`（staged + unstaged 両方）から取る。repo root からの相対パスを使う。
+
+`title_raw` フィールドはユーザーが指定または推論した **生のタイトル**（日本語含む）を保存する。ファイル名側の slug は ASCII 限定の allowlist（`a-z 0-9 - .`）でサニタイズされるため、日本語タイトルは file 名で `untitled` に潰れる。`title_raw` を frontmatter に持たせることで、`/context-restore` および `/context-save list` で生のタイトルを表示できる。`title_raw` は **必ず書く**（推論不可なら "untitled"）。
 
 書き終わったらユーザーに確認メッセージを表示する：
 
@@ -203,7 +206,7 @@ fi
 
 ユーザーが `--all` を渡した場合（例：`/context-save list --all`）、**全ブランチ** の context を表示する。
 
-各ファイルの frontmatter を読んで `status`、`branch`、`timestamp` を抽出する。タイトルはファイル名から取る（タイムスタンプ以降の部分）。
+各ファイルの frontmatter を読んで `status`、`branch`、`timestamp`、`title_raw` を抽出する。タイトル表示は `title_raw` を優先し、無ければファイル名から取る（タイムスタンプ以降の部分、後方互換）。
 
 テーブル形式で表示：
 
