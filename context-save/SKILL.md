@@ -49,7 +49,7 @@ triggers:
 ### Step 1：state を集める
 
 ```bash
-SLUG=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || basename "$(pwd)")
+eval "$(~/.claude/skills/uzustack/bin/uzustack-slug 2>/dev/null)" && mkdir -p ~/.uzustack/projects/$SLUG
 ```
 
 現在の作業 state を収集する：
@@ -104,8 +104,8 @@ fi
 パスは bash 側で計算する（LLM プロンプトでは計算しない）。これによりユーザー指定タイトルが後続コマンドに shell metacharacter を注入できないようにする。サニタイズは allowlist 方式：`a-z 0-9 - .` のみ通す。
 
 ```bash
-SLUG=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || basename "$(pwd)")
-CHECKPOINT_DIR="$HOME/.uzustack/projects/$SLUG/checkpoints"
+eval "$(~/.claude/skills/uzustack/bin/uzustack-slug 2>/dev/null)" && mkdir -p ~/.uzustack/projects/$SLUG
+CHECKPOINT_DIR="${UZUSTACK_HOME:-$HOME/.uzustack}/projects/$SLUG/checkpoints"
 mkdir -p "$CHECKPOINT_DIR"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 # bash 側でタイトルをサニタイズ。raw タイトルを $1 として渡す。
@@ -187,8 +187,8 @@ CONTEXT 保存完了
 ### Step 1：保存済み context を集める
 
 ```bash
-SLUG=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || basename "$(pwd)")
-CHECKPOINT_DIR="$HOME/.uzustack/projects/$SLUG/checkpoints"
+eval "$(~/.claude/skills/uzustack/bin/uzustack-slug 2>/dev/null)" && mkdir -p ~/.uzustack/projects/$SLUG
+CHECKPOINT_DIR="${UZUSTACK_HOME:-$HOME/.uzustack}/projects/$SLUG/checkpoints"
 if [ -d "$CHECKPOINT_DIR" ]; then
   echo "CHECKPOINT_DIR=$CHECKPOINT_DIR"
   # ls -1t ではなく find + sort を使う：ファイル名 YYYYMMDD-HHMMSS prefix が
