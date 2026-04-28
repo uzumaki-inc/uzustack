@@ -222,6 +222,46 @@ push / PR ごとに以下を実行：
 - これらは uzustack 版バイナリ（`bin/uzustack-config` 等）が整備された後の Phase 3 以降で段階的に再取り込み
 - **メソッド本体**（Iron Law、Phase 構造、Important Rules、レポート形式 等）は **原文忠実に翻訳**
 
+### 置換ルール表 v1
+
+step-35 以降の bin 機械翻訳と既存 skill の .tmpl 化が「**置換ルール表を見るだけ**」で進むよう、`gstack` → `uzustack` の機械置換ルールを明文化する。step-32 で確定した型と申し送りを出発点に、3 軸構成で整理。
+
+#### 文字列軸（パス・bin 名・URL 等）
+
+| gstack | uzustack |
+|---|---|
+| `~/.gstack/` | `~/.uzustack/` |
+| `$GSTACK_HOME` | `$UZUSTACK_HOME` |
+| `gstack-*` | `uzustack-*` |
+| https://github.com/garrytan/gstack | https://github.com/uzumaki-inc/uzustack |
+| `~/.claude/skills/gstack/` | `~/.claude/skills/uzustack/` |
+
+**注意**：長いパターンから先に置換すること。`gstack-config` → `uzustack-config` を先、`gstack` → `uzustack` を後。逆順だと `uzustackconfig` のような壊れ方をする。
+
+#### 固有名詞軸
+
+| gstack | uzustack |
+|---|---|
+| Garry Tan | uzustack 開発者 |
+| Y Combinator / YC | スタートアップ |
+| Garry Tan 個人を指す箇所 | OSS メンテナー |
+
+#### voice 軸（思想・規律の翻案）
+
+原文を尊重する目的で、訳語と併記する形で残す。
+
+| gstack | uzustack |
+|---|---|
+| Boil the Lake | 一晩でやり切る（Boil the Lake） |
+| Search Before Building | 作る前に探す（Search Before Building） |
+| "the gstack way" | "uzustack の流儀"（"the gstack way"） |
+
+#### 周辺ルール
+
+- **CONFIG_HEADER の日本語化方針**：gstack `gstack-config` の英語コメント約 70 行は、step-32 で英語のままコピーで保留。本ルール表整備後、step-37（DEFAULTS 連動チェック）と整合させて日本語化する
+- **DEFAULTS の意味論判断は step-37 集中**：gstack 文字を含まない key（例：`gbrain_sync_mode`）は機械置換せず、step-37 の brain 系翻訳時に集中判断
+- **v1 で完璧を目指さない**：翻訳作業中に増えるケースは追記して育てる方針。迷ったら `v2 で見直し` フラグ付きで暫定採用し、翻訳作業を止めない
+
 ### 新規翻訳の手順（1 個ずつ、緊急時 / 単発の場合）
 
 緊急で 1 個だけ翻訳したい場合や、cluster に収まらない isolated な skill の場合に使う。継続的に翻訳を進める場合は、後述の **small batch アプローチ** を推奨。
