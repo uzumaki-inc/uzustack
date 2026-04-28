@@ -26,6 +26,8 @@ triggers:
   - 根本原因分析
   - このエラーを調査して
 ---
+<!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
+<!-- Regenerate: bun run gen:skill-docs -->
 
 # 体系的デバッグ
 

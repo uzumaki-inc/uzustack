@@ -24,8 +24,9 @@ hooks:
         - type: command
           command: "bash $CLAUDE_PROJECT_DIR/.claude/skills/careful/bin/check-careful.sh"
           statusMessage: "危険コマンドをチェック中..."
-sensitive: true
 ---
+<!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
+<!-- Regenerate: bun run gen:skill-docs -->
 
 # /careful — destructive コマンドのガードレール
 

@@ -20,6 +20,8 @@ triggers:
   - context restore
   - context-restore
 ---
+<!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
+<!-- Regenerate: bun run gen:skill-docs -->
 
 # /context-restore — 保存済み context を復元
 

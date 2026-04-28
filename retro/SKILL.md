@@ -20,6 +20,8 @@ triggers:
   - 週次振り返り
   - エンジニアリングの振り返り
 ---
+<!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
+<!-- Regenerate: bun run gen:skill-docs -->
 
 # /retro — 週次エンジニアリング振り返り
 
