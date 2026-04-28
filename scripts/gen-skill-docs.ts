@@ -1,38 +1,314 @@
 #!/usr/bin/env bun
 /**
- * Generate SKILL.md from each <skill>/SKILL.md.tmpl at the repo top.
- * `.tmpl` is the source of truth; type 1/3 lives in its frontmatter `type:`.
+ * Generate SKILL.md files from .tmpl templates.
+ *
+ * Pipeline:
+ *   read .tmpl → find {{PLACEHOLDERS}} → resolve from registry → format → write .md
+ *
+ * Phase 3 status:
+ *   - Claude のみ enabled (hosts/index.ts の ALL_HOST_CONFIGS で他 host を未登録)
+ *   - resolver は空 stub (resolvers/index.ts 参照、Phase 4+ で本体に置換)
+ *   - frontmatter は denylist mode のみ実装、allowlist は Phase 4+ で fail-loud
+ *
+ * Supports --dry-run: regenerate to memory, exit 1 if different from committed file.
+ * Used by .github/workflows/skill-docs.yml の check-freshness job.
  */
 
-import fs from 'node:fs';
-import path from 'node:path';
+import * as fs from 'fs';
+import * as path from 'path';
+import { discoverTemplates } from './discover-skills';
+import { RESOLVERS } from './resolvers/index';
+import type { Host, TemplateContext } from './resolvers/types';
+import { HOST_PATHS } from './resolvers/types';
+import { ALL_HOST_NAMES, resolveHostArg, getHostConfig } from '../hosts/index';
 
 const ROOT = path.resolve(import.meta.dir, '..');
-// Non-dotfile dirs that aren't skills. Dotfiles are filtered separately below.
-const EXCLUDE = new Set(['_upstream', 'scripts', 'bin', 'node_modules', 'dist', 'build']);
+const DRY_RUN = process.argv.includes('--dry-run');
 
-const candidates = fs.readdirSync(ROOT, { withFileTypes: true })
-  .filter(e => e.isDirectory() && !e.name.startsWith('.') && !EXCLUDE.has(e.name));
+// ─── Host Detection (config-driven) ─────────────────────────
 
-const errors: string[] = [];
-let generated = 0;
+const HOST_ARG = process.argv.find(a => a.startsWith('--host'));
+type HostArg = Host | 'all';
+const HOST_ARG_VAL: HostArg = (() => {
+  if (!HOST_ARG) return 'claude' as Host;
+  const val = HOST_ARG.includes('=') ? HOST_ARG.split('=')[1] : process.argv[process.argv.indexOf(HOST_ARG) + 1];
+  if (val === 'all') return 'all';
+  try {
+    return resolveHostArg(val) as Host;
+  } catch {
+    throw new Error(`Unknown host: ${val}. Use ${ALL_HOST_NAMES.join(', ')}, or all.`);
+  }
+})();
 
-for (const dir of candidates) {
-  const skillPath = path.join(ROOT, dir.name);
-  const tmplPath = path.join(skillPath, 'SKILL.md.tmpl');
-  const outPath = path.join(skillPath, 'SKILL.md');
+let HOST: Host = HOST_ARG_VAL === 'all' ? ('claude' as Host) : HOST_ARG_VAL;
 
-  if (!fs.existsSync(tmplPath)) {
-    if (fs.existsSync(outPath)) {
-      errors.push(`${dir.name}/ has SKILL.md but no SKILL.md.tmpl (.tmpl is the source of truth)`);
+// ─── Frontmatter Helpers ────────────────────────────────────
+
+function extractNameAndDescription(content: string): { name: string; description: string } {
+  const fmStart = content.indexOf('---\n');
+  if (fmStart !== 0) return { name: '', description: '' };
+  const fmEnd = content.indexOf('\n---', fmStart + 4);
+  if (fmEnd === -1) return { name: '', description: '' };
+
+  const frontmatter = content.slice(fmStart + 4, fmEnd);
+  const nameMatch = frontmatter.match(/^name:\s*(.+)$/m);
+  const name = nameMatch ? nameMatch[1].trim() : '';
+
+  let description = '';
+  const lines = frontmatter.split('\n');
+  let inDescription = false;
+  const descLines: string[] = [];
+  for (const line of lines) {
+    if (line.match(/^description:\s*\|?\s*$/)) {
+      inDescription = true;
+      continue;
     }
-    continue;
+    if (line.match(/^description:\s*\S/)) {
+      description = line.replace(/^description:\s*/, '').trim();
+      break;
+    }
+    if (inDescription) {
+      if (line === '' || line.match(/^\s/)) {
+        descLines.push(line.replace(/^  /, ''));
+      } else {
+        break;
+      }
+    }
+  }
+  if (descLines.length > 0) {
+    description = descLines.join('\n').trim();
   }
 
-  fs.copyFileSync(tmplPath, outPath);
-  generated++;
+  return { name, description };
 }
 
-console.log(`[gen-skill-docs] generated=${generated} errors=${errors.length}`);
-for (const err of errors) console.error(`  - ${err}`);
-process.exit(errors.length > 0 ? 1 : 0);
+// ─── Voice Trigger Processing ───────────────────────────────
+
+function extractVoiceTriggers(content: string): string[] {
+  const fmStart = content.indexOf('---\n');
+  if (fmStart !== 0) return [];
+  const fmEnd = content.indexOf('\n---', fmStart + 4);
+  if (fmEnd === -1) return [];
+  const frontmatter = content.slice(fmStart + 4, fmEnd);
+
+  const triggers: string[] = [];
+  let inVoice = false;
+  for (const line of frontmatter.split('\n')) {
+    if (/^voice-triggers:/.test(line)) { inVoice = true; continue; }
+    if (inVoice) {
+      const m = line.match(/^\s+-\s+"(.+)"$/);
+      if (m) triggers.push(m[1]);
+      else if (!/^\s/.test(line)) break;
+    }
+  }
+  return triggers;
+}
+
+/**
+ * Fold voice-triggers YAML field into description, then strip the field
+ * from frontmatter. Must run BEFORE transformFrontmatter so all hosts see
+ * the updated description.
+ */
+function processVoiceTriggers(content: string): string {
+  const triggers = extractVoiceTriggers(content);
+  if (triggers.length === 0) return content;
+
+  content = content.replace(/^voice-triggers:\n(?:\s+-\s+"[^"]*"\n?)*/m, '');
+
+  const { description } = extractNameAndDescription(content);
+  if (!description) return content;
+
+  const voiceLine = `Voice triggers (speech-to-text aliases): ${triggers.map(t => `"${t}"`).join(', ')}.`;
+  const newDescription = description + '\n' + voiceLine;
+
+  const oldIndented = description.split('\n').map(l => `  ${l}`).join('\n');
+  const newIndented = newDescription.split('\n').map(l => `  ${l}`).join('\n');
+  content = content.replace(oldIndented, newIndented);
+
+  return content;
+}
+
+export { extractVoiceTriggers, processVoiceTriggers };
+
+// ─── Frontmatter Transformation ─────────────────────────────
+
+/**
+ * Transform frontmatter for the target host.
+ *
+ * Phase 3: denylist mode のみ実装。allowlist は Phase 4+ で外部 host を
+ * enable する時に追加（gstack 本家の実装を voice 翻案して移植する）。
+ */
+function transformFrontmatter(content: string, host: Host): string {
+  const hostConfig = getHostConfig(host);
+  const fm = hostConfig.frontmatter;
+
+  if (fm.mode === 'denylist') {
+    for (const field of fm.stripFields || []) {
+      if (field === 'voice-triggers') {
+        content = content.replace(/^voice-triggers:\n(?:\s+-\s+"[^"]*"\n?)*/m, '');
+      } else {
+        content = content.replace(new RegExp(`^${field}:\\s*.*\\n`, 'm'), '');
+      }
+    }
+    return content;
+  }
+
+  if (fm.mode === 'allowlist') {
+    throw new Error(
+      `frontmatter.mode='allowlist' is not implemented yet (Phase 4+). ` +
+      `Host: ${hostConfig.name}. ` +
+      `Port the allowlist branch from _upstream/gstack/scripts/gen-skill-docs.ts when enabling external hosts.`
+    );
+  }
+
+  throw new Error(`Unknown frontmatter.mode: ${fm.mode}`);
+}
+
+// ─── Template Processing ────────────────────────────────────
+
+const GENERATED_HEADER = `<!-- AUTO-GENERATED from {{SOURCE}} — do not edit directly -->\n<!-- Regenerate: bun run gen:skill-docs -->\n`;
+
+function processTemplate(tmplPath: string, host: Host = 'claude' as Host): { outputPath: string; content: string } {
+  const tmplContent = fs.readFileSync(tmplPath, 'utf-8');
+  const relTmplPath = path.relative(ROOT, tmplPath);
+  const outputPath = tmplPath.replace(/\.tmpl$/, '');
+
+  const { name: extractedName } = extractNameAndDescription(tmplContent);
+  const skillName = extractedName || path.basename(path.dirname(tmplPath));
+
+  const benefitsMatch = tmplContent.match(/^benefits-from:\s*\[([^\]]*)\]/m);
+  const benefitsFrom = benefitsMatch
+    ? benefitsMatch[1].split(',').map(s => s.trim()).filter(Boolean)
+    : undefined;
+
+  const tierMatch = tmplContent.match(/^preamble-tier:\s*(\d+)$/m);
+  const preambleTier = tierMatch ? parseInt(tierMatch[1], 10) : undefined;
+
+  const interactiveMatch = tmplContent.match(/^interactive:\s*(true|false)\s*$/m);
+  const interactive = interactiveMatch ? interactiveMatch[1] === 'true' : undefined;
+
+  const ctx: TemplateContext = {
+    skillName,
+    tmplPath,
+    benefitsFrom,
+    host,
+    paths: HOST_PATHS[host],
+    preambleTier,
+    interactive,
+  };
+
+  // Replace placeholders (supports parameterized: {{NAME:arg1:arg2}})
+  const currentHostConfig = getHostConfig(host);
+  const suppressed = new Set(currentHostConfig.suppressedResolvers || []);
+  let content = tmplContent.replace(/\{\{(\w+(?::[^}]+)?)\}\}/g, (_match, fullKey) => {
+    const parts = fullKey.split(':');
+    const resolverName = parts[0];
+    const args = parts.slice(1);
+    if (suppressed.has(resolverName)) return '';
+    const resolver = RESOLVERS[resolverName];
+    if (!resolver) throw new Error(`Unknown placeholder {{${resolverName}}} in ${relTmplPath}`);
+    return args.length > 0 ? resolver(ctx, args) : resolver(ctx);
+  });
+
+  // Fail-loud on any remaining unresolved placeholders
+  const remaining = content.match(/\{\{(\w+(?::[^}]+)?)\}\}/g);
+  if (remaining) {
+    throw new Error(`Unresolved placeholders in ${relTmplPath}: ${remaining.join(', ')}`);
+  }
+
+  // Voice trigger preprocessing (fold into description, strip field)
+  content = processVoiceTriggers(content);
+
+  // Frontmatter transformation (Claude denylist mode in Phase 3)
+  content = transformFrontmatter(content, host);
+
+  // Prepend generated header (after frontmatter)
+  const header = GENERATED_HEADER.replace('{{SOURCE}}', path.basename(tmplPath));
+  const fmEnd = content.indexOf('---', content.indexOf('---') + 3);
+  if (fmEnd !== -1) {
+    const insertAt = content.indexOf('\n', fmEnd) + 1;
+    content = content.slice(0, insertAt) + header + content.slice(insertAt);
+  } else {
+    content = header + content;
+  }
+
+  return { outputPath, content };
+}
+
+// ─── Main ───────────────────────────────────────────────────
+
+function findTemplates(): string[] {
+  return discoverTemplates(ROOT).map(t => path.join(ROOT, t.tmpl));
+}
+
+const ALL_HOSTS: Host[] = ALL_HOST_NAMES as Host[];
+const hostsToRun: Host[] = HOST_ARG_VAL === 'all' ? ALL_HOSTS : [HOST];
+
+// Token ceiling: warn if any generated SKILL.md exceeds ~40K tokens (160KB).
+// Modern flagship models have 200K-1M context windows so 40K is 4-20% of window.
+// This ceiling catches runaway preamble/resolver growth, not a hard gate.
+const TOKEN_CEILING_BYTES = 160_000;
+let hasChanges = false;
+const tokenBudget: Array<{ skill: string; lines: number; tokens: number }> = [];
+
+for (const currentHost of hostsToRun) {
+  HOST = currentHost;
+  const currentHostConfig = getHostConfig(currentHost);
+
+  for (const tmplPath of findTemplates()) {
+    const dir = path.basename(path.dirname(tmplPath));
+
+    if (currentHostConfig.generation.includeSkills?.length) {
+      if (!currentHostConfig.generation.includeSkills.includes(dir)) continue;
+    }
+    if (currentHostConfig.generation.skipSkills?.length) {
+      if (currentHostConfig.generation.skipSkills.includes(dir)) continue;
+    }
+
+    const { outputPath, content } = processTemplate(tmplPath, currentHost);
+    const relOutput = path.relative(ROOT, outputPath);
+
+    if (DRY_RUN) {
+      const existing = fs.existsSync(outputPath) ? fs.readFileSync(outputPath, 'utf-8') : '';
+      if (existing !== content) {
+        console.log(`STALE: ${relOutput}`);
+        hasChanges = true;
+      } else {
+        console.log(`FRESH: ${relOutput}`);
+      }
+    } else {
+      fs.writeFileSync(outputPath, content);
+      console.log(`GENERATED: ${relOutput}`);
+    }
+
+    const lines = content.split('\n').length;
+    const tokens = Math.round(content.length / 4);
+    tokenBudget.push({ skill: relOutput, lines, tokens });
+
+    if (content.length > TOKEN_CEILING_BYTES) {
+      console.warn(`⚠️  TOKEN CEILING: ${relOutput} is ${content.length} bytes (~${tokens} tokens), exceeds ${TOKEN_CEILING_BYTES} byte ceiling (~40K tokens)`);
+    }
+  }
+}
+
+if (DRY_RUN && hasChanges) {
+  console.error(`\nGenerated SKILL.md files are stale. Run: bun run gen:skill-docs`);
+  process.exit(1);
+}
+
+if (!DRY_RUN && tokenBudget.length > 0) {
+  tokenBudget.sort((a, b) => b.lines - a.lines);
+  const totalLines = tokenBudget.reduce((s, t) => s + t.lines, 0);
+  const totalTokens = tokenBudget.reduce((s, t) => s + t.tokens, 0);
+
+  console.log('');
+  console.log(`Token Budget`);
+  console.log('═'.repeat(60));
+  for (const t of tokenBudget) {
+    const name = t.skill.replace(/\/SKILL\.md$/, '');
+    console.log(`  ${name.padEnd(30)} ${String(t.lines).padStart(5)} lines  ~${String(t.tokens).padStart(6)} tokens`);
+  }
+  console.log('─'.repeat(60));
+  console.log(`  ${'TOTAL'.padEnd(30)} ${String(totalLines).padStart(5)} lines  ~${String(totalTokens).padStart(6)} tokens`);
+  console.log('');
+}
