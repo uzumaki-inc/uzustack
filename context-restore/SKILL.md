@@ -48,8 +48,8 @@ triggers:
 ### Step 1：保存済み context を探す
 
 ```bash
-SLUG=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || basename "$(pwd)")
-CHECKPOINT_DIR="$HOME/.uzustack/projects/$SLUG/checkpoints"
+eval "$(~/.claude/skills/uzustack/bin/uzustack-slug 2>/dev/null)" && mkdir -p ~/.uzustack/projects/$SLUG
+CHECKPOINT_DIR="${UZUSTACK_HOME:-$HOME/.uzustack}/projects/$SLUG/checkpoints"
 if [ ! -d "$CHECKPOINT_DIR" ]; then
   echo "NO_CHECKPOINTS"
 else
