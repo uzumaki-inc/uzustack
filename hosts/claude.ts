@@ -20,7 +20,9 @@ const claude: HostConfig = {
 
   frontmatter: {
     mode: 'denylist',
-    stripFields: ['sensitive', 'voice-triggers'],
+    // voice-triggers field は processVoiceTriggers が常に strip するので
+    // ここには含めない（重複 strip にならないように）
+    stripFields: ['sensitive'],
     descriptionLimit: null,
   },
 

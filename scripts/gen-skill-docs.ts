@@ -30,17 +30,15 @@ const DRY_RUN = process.argv.includes('--dry-run');
 const HOST_ARG = process.argv.find(a => a.startsWith('--host'));
 type HostArg = Host | 'all';
 const HOST_ARG_VAL: HostArg = (() => {
-  if (!HOST_ARG) return 'claude' as Host;
+  if (!HOST_ARG) return 'claude';
   const val = HOST_ARG.includes('=') ? HOST_ARG.split('=')[1] : process.argv[process.argv.indexOf(HOST_ARG) + 1];
   if (val === 'all') return 'all';
   try {
-    return resolveHostArg(val) as Host;
+    return resolveHostArg(val);
   } catch {
     throw new Error(`Unknown host: ${val}. Use ${ALL_HOST_NAMES.join(', ')}, or all.`);
   }
 })();
-
-let HOST: Host = HOST_ARG_VAL === 'all' ? ('claude' as Host) : HOST_ARG_VAL;
 
 // ─── Frontmatter Helpers ────────────────────────────────────
 
@@ -111,9 +109,12 @@ function extractVoiceTriggers(content: string): string[] {
  */
 function processVoiceTriggers(content: string): string {
   const triggers = extractVoiceTriggers(content);
-  if (triggers.length === 0) return content;
 
+  // voice-triggers field は常に frontmatter から strip（triggers 0 件でも消す）。
+  // これにより transformFrontmatter 側で重複 strip しなくて済む。
   content = content.replace(/^voice-triggers:\n(?:\s+-\s+"[^"]*"\n?)*/m, '');
+
+  if (triggers.length === 0) return content;
 
   const { description } = extractNameAndDescription(content);
   if (!description) return content;
@@ -144,11 +145,7 @@ function transformFrontmatter(content: string, host: Host): string {
 
   if (fm.mode === 'denylist') {
     for (const field of fm.stripFields || []) {
-      if (field === 'voice-triggers') {
-        content = content.replace(/^voice-triggers:\n(?:\s+-\s+"[^"]*"\n?)*/m, '');
-      } else {
-        content = content.replace(new RegExp(`^${field}:\\s*.*\\n`, 'm'), '');
-      }
+      content = content.replace(new RegExp(`^${field}:\\s*.*\\n`, 'm'), '');
     }
     return content;
   }
@@ -168,7 +165,7 @@ function transformFrontmatter(content: string, host: Host): string {
 
 const GENERATED_HEADER = `<!-- AUTO-GENERATED from {{SOURCE}} — do not edit directly -->\n<!-- Regenerate: bun run gen:skill-docs -->\n`;
 
-function processTemplate(tmplPath: string, host: Host = 'claude' as Host): { outputPath: string; content: string } {
+function processTemplate(tmplPath: string, host: Host): { outputPath: string; content: string } {
   const tmplContent = fs.readFileSync(tmplPath, 'utf-8');
   const relTmplPath = path.relative(ROOT, tmplPath);
   const outputPath = tmplPath.replace(/\.tmpl$/, '');
@@ -197,7 +194,6 @@ function processTemplate(tmplPath: string, host: Host = 'claude' as Host): { out
     interactive,
   };
 
-  // Replace placeholders (supports parameterized: {{NAME:arg1:arg2}})
   const currentHostConfig = getHostConfig(host);
   const suppressed = new Set(currentHostConfig.suppressedResolvers || []);
   let content = tmplContent.replace(/\{\{(\w+(?::[^}]+)?)\}\}/g, (_match, fullKey) => {
@@ -210,19 +206,15 @@ function processTemplate(tmplPath: string, host: Host = 'claude' as Host): { out
     return args.length > 0 ? resolver(ctx, args) : resolver(ctx);
   });
 
-  // Fail-loud on any remaining unresolved placeholders
+  // 奇形 placeholder（resolver loop で hit しなかった残存）の defense-in-depth
   const remaining = content.match(/\{\{(\w+(?::[^}]+)?)\}\}/g);
   if (remaining) {
     throw new Error(`Unresolved placeholders in ${relTmplPath}: ${remaining.join(', ')}`);
   }
 
-  // Voice trigger preprocessing (fold into description, strip field)
   content = processVoiceTriggers(content);
-
-  // Frontmatter transformation (Claude denylist mode in Phase 3)
   content = transformFrontmatter(content, host);
 
-  // Prepend generated header (after frontmatter)
   const header = GENERATED_HEADER.replace('{{SOURCE}}', path.basename(tmplPath));
   const fmEnd = content.indexOf('---', content.indexOf('---') + 3);
   if (fmEnd !== -1) {
@@ -241,21 +233,19 @@ function findTemplates(): string[] {
   return discoverTemplates(ROOT).map(t => path.join(ROOT, t.tmpl));
 }
 
-const ALL_HOSTS: Host[] = ALL_HOST_NAMES as Host[];
-const hostsToRun: Host[] = HOST_ARG_VAL === 'all' ? ALL_HOSTS : [HOST];
+const hostsToRun: Host[] = HOST_ARG_VAL === 'all' ? ALL_HOST_NAMES : [HOST_ARG_VAL];
 
-// Token ceiling: warn if any generated SKILL.md exceeds ~40K tokens (160KB).
-// Modern flagship models have 200K-1M context windows so 40K is 4-20% of window.
-// This ceiling catches runaway preamble/resolver growth, not a hard gate.
+// 160KB ≒ 40K tokens; runaway preamble/resolver growth の警戒線（hard gate ではない）。
 const TOKEN_CEILING_BYTES = 160_000;
 let hasChanges = false;
 const tokenBudget: Array<{ skill: string; lines: number; tokens: number }> = [];
 
+const tmplPaths = findTemplates();
+
 for (const currentHost of hostsToRun) {
-  HOST = currentHost;
   const currentHostConfig = getHostConfig(currentHost);
 
-  for (const tmplPath of findTemplates()) {
+  for (const tmplPath of tmplPaths) {
     const dir = path.basename(path.dirname(tmplPath));
 
     if (currentHostConfig.generation.includeSkills?.length) {

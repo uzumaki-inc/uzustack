@@ -20,8 +20,8 @@ export const HOST_CONFIG_MAP: Record<string, HostConfig> = Object.fromEntries(
 /** Union type of all host names, derived from configs. */
 export type Host = (typeof ALL_HOST_CONFIGS)[number]['name'];
 
-/** All host names as a string array (for CLI arg validation, etc.). */
-export const ALL_HOST_NAMES: string[] = ALL_HOST_CONFIGS.map(c => c.name);
+/** All host names as a typed array (for CLI arg validation, etc.). */
+export const ALL_HOST_NAMES = ALL_HOST_CONFIGS.map(c => c.name) as Host[];
 
 /** Get a host config by name. Throws if not found. */
 export function getHostConfig(name: string): HostConfig {
@@ -35,11 +35,11 @@ export function getHostConfig(name: string): HostConfig {
 /**
  * Resolve a host name from a CLI argument, handling aliases.
  */
-export function resolveHostArg(arg: string): string {
-  if (HOST_CONFIG_MAP[arg]) return arg;
+export function resolveHostArg(arg: string): Host {
+  if (HOST_CONFIG_MAP[arg]) return arg as Host;
 
   for (const config of ALL_HOST_CONFIGS) {
-    if (config.cliAliases?.includes(arg)) return config.name;
+    if (config.cliAliases?.includes(arg)) return config.name as Host;
   }
 
   throw new Error(`Unknown host '${arg}'. Valid hosts: ${ALL_HOST_NAMES.join(', ')}`);
