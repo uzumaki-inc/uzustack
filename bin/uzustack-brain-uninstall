@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# uzustack-brain-uninstall — uzustack-brain sync の clean off-ramp。
+#
+# Usage:
+#   uzustack-brain-uninstall [--yes] [--delete-remote]
+#
+# ~/.uzustack/ から git layer を取り除き、sync config を clear する。
+# local の uzustack memory (learnings、timeline 等) は触らない — これは
+# uninstall-sync コマンドであって delete-data コマンドではない。
+#
+# Flags:
+#   --yes             確認 prompt を skip。
+#   --delete-remote   GitHub repo も `gh repo delete` で削除する
+#                     (--yes も無ければ interactive)。
+#
+# 削除対象 (~/.uzustack/ 内):
+#   .git/                      — sync repo の git data
+#   .gitignore                 — canonical ignore-all marker
+#   .gitattributes             — merge driver 宣言
+#   .brain-allowlist           — sync path list
+#   .brain-privacy-map.json    — sync privacy classifier
+#   .brain-queue.jsonl         — pending queue
+#   .brain-discover-cursor     — discover-new cursor
+#   .brain-last-push           — timestamp marker
+#   .brain-skip.txt            — user 管理の skip list
+#   .brain-sync.lock.d/        — lock dir (存在すれば)
+#   .brain-sync-status.json    — health status
+#   consumers.json             — consumer / reader registry
+#
+# clear 対象 (uzustack-config 経由):
+#   gbrain_sync_mode            → off
+#   gbrain_sync_mode_prompted   → false (再 init 時に user が再 prompt されるように)
+#
+# 触らないもの:
+#   project data (projects/*、retros/*、developer-profile.json 等)
+#   uzustack-config の consumer token (<name>_token key 群)
+#   home directory の ~/.uzustack-brain-remote.txt
+#   実 remote git repo (--delete-remote 指定時を除く)
+
+set -euo pipefail
+
+UZUSTACK_HOME="${UZUSTACK_HOME:-$HOME/.uzustack}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CONFIG_BIN="$SCRIPT_DIR/uzustack-config"
+REMOTE_FILE="$HOME/.uzustack-brain-remote.txt"
+
+ASSUME_YES=0
+DELETE_REMOTE=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --yes|-y) ASSUME_YES=1; shift ;;
+    --delete-remote) DELETE_REMOTE=1; shift ;;
+    --help|-h) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "不明な flag: $1" >&2; exit 1 ;;
+  esac
+done
+
+if [ ! -d "$UZUSTACK_HOME/.git" ]; then
+  echo "uzustack-brain-uninstall: 何もすることが無い (~/.uzustack/.git が存在しない)。"
+  exit 0
+fi
+
+REMOTE_URL=$(git -C "$UZUSTACK_HOME" remote get-url origin 2>/dev/null || echo "")
+
+# ---- 確認 ----
+if [ "$ASSUME_YES" != "1" ]; then
+  cat <<EOF
+本マシンから uzustack-brain sync を取り除きます:
+  - ~/.uzustack/.git と sync config file を削除
+  - uzustack-config の gbrain_sync_mode を clear
+  - Remote: $REMOTE_URL は $([ "$DELETE_REMOTE" = "1" ] && echo "削除されます" || echo "そのまま維持されます")
+
+local memory (learnings、plans 等) は触りません。
+
+EOF
+  printf "続行する? [y/N] "
+  read -r reply
+  case "$reply" in
+    y|Y|yes|Yes) ;;
+    *) echo "中止しました。"; exit 0 ;;
+  esac
+fi
+
+# ---- --delete-remote 指定時は remote を削除 ----
+if [ "$DELETE_REMOTE" = "1" ] && [ -n "$REMOTE_URL" ]; then
+  case "$REMOTE_URL" in
+    *github.com*|*@github*)
+      if command -v gh >/dev/null 2>&1; then
+        # URL から owner/repo を抽出
+        REPO_SLUG=$(echo "$REMOTE_URL" | sed -E 's#.*[:/]([^/:]+/[^/]+)(\.git)?$#\1#' | sed 's/\.git$//')
+        if [ -n "$REPO_SLUG" ]; then
+          echo "GitHub repo を削除中: $REPO_SLUG"
+          if [ "$ASSUME_YES" = "1" ]; then
+            gh repo delete "$REPO_SLUG" --yes 2>/dev/null || echo "gh repo delete 失敗、local uninstall は継続"
+          else
+            gh repo delete "$REPO_SLUG" 2>/dev/null || echo "gh repo delete 失敗、local uninstall は継続"
+          fi
+        fi
+      else
+        echo "--delete-remote は gh CLI が必要、remote 削除を skip"
+      fi
+      ;;
+    *)
+      echo "--delete-remote は github.com remote のみ対応、必要なら手動で削除: $REMOTE_URL"
+      ;;
+  esac
+fi
+
+# ---- sync 関連 file を削除 ----
+echo "git layer と sync config file を削除中..."
+rm -rf "$UZUSTACK_HOME/.git" 2>/dev/null || true
+rm -f "$UZUSTACK_HOME/.gitignore" 2>/dev/null || true
+rm -f "$UZUSTACK_HOME/.gitattributes" 2>/dev/null || true
+rm -f "$UZUSTACK_HOME/.brain-allowlist" 2>/dev/null || true
+rm -f "$UZUSTACK_HOME/.brain-privacy-map.json" 2>/dev/null || true
+rm -f "$UZUSTACK_HOME/.brain-queue.jsonl" 2>/dev/null || true
+rm -f "$UZUSTACK_HOME/.brain-discover-cursor" 2>/dev/null || true
+rm -f "$UZUSTACK_HOME/.brain-last-push" 2>/dev/null || true
+rm -f "$UZUSTACK_HOME/.brain-last-pull" 2>/dev/null || true
+rm -f "$UZUSTACK_HOME/.brain-skip.txt" 2>/dev/null || true
+rm -f "$UZUSTACK_HOME/.brain-sync-status.json" 2>/dev/null || true
+rm -rf "$UZUSTACK_HOME/.brain-sync.lock.d" 2>/dev/null || true
+rm -f "$UZUSTACK_HOME/consumers.json" 2>/dev/null || true
+
+# ---- config key を clear ----
+"$CONFIG_BIN" set gbrain_sync_mode off >/dev/null 2>&1 || true
+"$CONFIG_BIN" set gbrain_sync_mode_prompted false >/dev/null 2>&1 || true
+
+# ---- --delete-remote 指定時を除き、remote-helper file は触らない ----
+if [ "$DELETE_REMOTE" = "1" ]; then
+  rm -f "$REMOTE_FILE" 2>/dev/null || true
+else
+  if [ -f "$REMOTE_FILE" ]; then
+    echo "($REMOTE_FILE は維持 — URL を忘れたい時は手動で削除)"
+  fi
+fi
+
+cat <<EOF
+
+uzustack-brain uninstall 完了。
+sync は off。~/.uzustack/ は plain directory に戻りました。
+project data、learnings、profile は触っていません。
+
+後で sync を再有効化する: uzustack-brain-init
+EOF

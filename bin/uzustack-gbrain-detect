@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# uzustack-gbrain-detect — 現在の gbrain / uzustack-brain state を JSON で出す。
+#
+# Usage:
+#   uzustack-gbrain-detect
+#
+# Output (全 check が false でも常に valid JSON):
+#   {
+#     "gbrain_on_path": true|false,
+#     "gbrain_version": "0.18.2" | null,
+#     "gbrain_config_exists": true|false,
+#     "gbrain_engine": "pglite"|"postgres" | null,
+#     "gbrain_doctor_ok": true|false,
+#     "uzustack_brain_sync_mode": "off"|"artifacts-only"|"full",
+#     "uzustack_brain_git": true|false
+#   }
+#
+# /setup-gbrain skill が起動時に 1 回 read し、どの path branch が live で
+# どの step を skip できるかを判断する。state は変更しない、純粋な
+# introspection。`jq` が無い場合を除き 0 で exit する。
+#
+# Env:
+#   UZUSTACK_HOME — uzustack-brain-* state lookup 用に ~/.uzustack を override
+set -euo pipefail
+
+STATE_DIR="${UZUSTACK_HOME:-$HOME/.uzustack}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CONFIG_BIN="$SCRIPT_DIR/uzustack-config"
+GBRAIN_CONFIG="$HOME/.gbrain/config.json"
+
+die() { echo "uzustack-gbrain-detect: $*" >&2; exit 2; }
+
+require_jq() {
+  command -v jq >/dev/null 2>&1 || die "jq が必要。install: brew install jq"
+}
+require_jq
+
+# --- gbrain binary の存在 + version ---
+gbrain_on_path=false
+gbrain_version=null
+if command -v gbrain >/dev/null 2>&1; then
+  gbrain_on_path=true
+  # version は JSON string として format。gbrain --version は他の noise も出すことがある。
+  v=$(gbrain --version 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+  if [ -n "$v" ]; then
+    gbrain_version=$(jq -Rn --arg v "$v" '$v')
+  fi
+fi
+
+# --- gbrain config file ---
+gbrain_config_exists=false
+gbrain_engine=null
+if [ -f "$GBRAIN_CONFIG" ]; then
+  gbrain_config_exists=true
+  # engine は defensive に parse。invalid config は crash せず null を返す。
+  engine_raw=$(jq -r '.engine // empty' "$GBRAIN_CONFIG" 2>/dev/null || true)
+  case "$engine_raw" in
+    pglite|postgres) gbrain_engine=$(jq -Rn --arg e "$engine_raw" '$e') ;;
+  esac
+fi
+
+# --- gbrain doctor の health ---
+# doctor は `timeout 5s` で wrap する。/health の D6 pattern と揃える。
+# gbrain が壊れている / DB に到達不能な時に detect step が skill を hang させない
+# ように。non-zero exit や "ok" / "warnings" 以外の status はすべて false。
+gbrain_doctor_ok=false
+if [ "$gbrain_on_path" = "true" ]; then
+  # `timeout` があれば使う。minimal mac だと coreutils の gtimeout になる。
+  timeout_bin=""
+  if command -v timeout >/dev/null 2>&1; then timeout_bin="timeout 5s"
+  elif command -v gtimeout >/dev/null 2>&1; then timeout_bin="gtimeout 5s"
+  fi
+  if doctor_json=$(eval "$timeout_bin gbrain doctor --json" 2>/dev/null); then
+    status=$(echo "$doctor_json" | jq -r '.status // empty' 2>/dev/null || true)
+    case "$status" in
+      ok|warnings) gbrain_doctor_ok=true ;;
+    esac
+  fi
+fi
+
+# --- uzustack-brain-sync state (memory sync、gbrain 自体とは別) ---
+uzustack_brain_sync_mode="off"
+if [ -x "$CONFIG_BIN" ]; then
+  mode=$("$CONFIG_BIN" get gbrain_sync_mode 2>/dev/null || true)
+  case "$mode" in
+    off|artifacts-only|full) uzustack_brain_sync_mode="$mode" ;;
+  esac
+fi
+
+uzustack_brain_git=false
+if [ -d "$STATE_DIR/.git" ]; then
+  uzustack_brain_git=true
+fi
+
+# 単一の object を JSON で emit
+jq -n \
+  --argjson on_path "$gbrain_on_path" \
+  --argjson version "$gbrain_version" \
+  --argjson config_exists "$gbrain_config_exists" \
+  --argjson engine "$gbrain_engine" \
+  --argjson doctor_ok "$gbrain_doctor_ok" \
+  --arg sync_mode "$uzustack_brain_sync_mode" \
+  --argjson brain_git "$uzustack_brain_git" \
+  '{
+    gbrain_on_path: $on_path,
+    gbrain_version: $version,
+    gbrain_config_exists: $config_exists,
+    gbrain_engine: $engine,
+    gbrain_doctor_ok: $doctor_ok,
+    uzustack_brain_sync_mode: $sync_mode,
+    uzustack_brain_git: $brain_git
+  }'

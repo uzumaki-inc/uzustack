@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# uzustack-brain-enqueue — GBrain 同期 queue にパスを atomic append する。
+#
+# Usage:
+#   uzustack-brain-enqueue <file-path>
+#
+# writer script (uzustack-learnings-log, uzustack-timeline-log 等) が local
+# write 後に呼ぶ。fire-and-forget で、失敗は silent (writer を block しない)。
+# queue は `uzustack-brain-sync --once` が drain する。これは preamble の
+# skill START / END boundary で起動される。
+#
+# 以下の場合は no-op:
+#   - gbrain_sync_mode が off (default)
+#   - ~/.uzustack/.git が無い (feature 未初期化)
+#   - <file-path> が ~/.uzustack/.brain-skip.txt の行に match
+#
+# Env:
+#   UZUSTACK_HOME — ~/.uzustack state directory を override (writer と整合)。
+#                   test では UZUSTACK_HOME=/tmp/test-$$ で隔離する。
+#
+# Concurrency: POSIX append は PIPE_BUF (Linux 約 4KB、BSD 512) まで atomic。
+# queue の 1 行は約 200 byte なので concurrent caller でも安全。
+
+# `-e` 無し — writer shim は本 binary が loud に失敗しないことに依存する。
+set -uo pipefail
+
+FILE="${1:-}"
+[ -z "$FILE" ] && exit 0
+
+UZUSTACK_HOME="${UZUSTACK_HOME:-$HOME/.uzustack}"
+QUEUE="$UZUSTACK_HOME/.brain-queue.jsonl"
+SKIP_FILE="$UZUSTACK_HOME/.brain-skip.txt"
+
+# Fast exit: git repo が無ければ sync しない
+[ ! -d "$UZUSTACK_HOME/.git" ] && exit 0
+
+# sync mode を確認。off → silent no-op
+SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
+MODE=$("$SCRIPT_DIR/uzustack-config" get gbrain_sync_mode 2>/dev/null || echo off)
+[ "$MODE" = "off" ] && exit 0
+
+# user 管理の skip list (secret-scan false positive 回避用)
+if [ -f "$SKIP_FILE" ]; then
+  if grep -Fxq "$FILE" "$SKIP_FILE" 2>/dev/null; then
+    exit 0
+  fi
+fi
+
+# file path を JSON-escape (backslash + quote のみ。path は他の special を持たない前提)
+ESC_FILE=$(printf '%s' "$FILE" | sed 's/\\/\\\\/g; s/"/\\"/g')
+TS=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
+
+printf '{"file":"%s","ts":"%s"}\n' "$ESC_FILE" "$TS" >> "$QUEUE" 2>/dev/null
+
+exit 0
