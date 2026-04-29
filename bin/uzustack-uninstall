@@ -1,0 +1,259 @@
+#!/usr/bin/env bash
+# uzustack-uninstall — uzustack の skill / state / browse daemon を削除する
+#
+# 使い方:
+#   uzustack-uninstall              — 対話的アンインストール (削除前に prompt)
+#   uzustack-uninstall --force      — 確認なしで全部削除
+#   uzustack-uninstall --keep-state — skill は削除するが ~/.uzustack/ data は残す
+#
+# 削除対象:
+#   ~/.claude/skills/uzustack       — Claude global skill install (git clone or vendored)
+#   ~/.claude/skills/{skill}        — setup が作った per-skill symlink
+#   ~/.codex/skills/uzustack*       — Codex skill install + per-skill symlink
+#   ~/.factory/skills/uzustack*     — Factory Droid skill install + per-skill symlink
+#   ~/.kiro/skills/uzustack*        — Kiro skill install + per-skill symlink
+#   ~/.uzustack/                    — global state (config, analytics, sessions, projects,
+#                                     repos, installation-id, browse error logs)
+#   .claude/skills/uzustack*        — project ローカル skill install (--local install 用)
+#   .uzustack/                      — project ごとの browse state (現在の git repo)
+#   .uzustack-worktrees/            — project ごとの test worktree (現在の git repo)
+#   .agents/skills/uzustack*        — Codex/Gemini/Cursor sidecar (現在の git repo)
+#   起動中の browse daemon          — cleanup 前に SIGTERM で停止
+#
+# 削除しないもの:
+#   ~/Library/Caches/ms-playwright/  — Playwright Chromium (他 tool と共用の可能性)
+#   ~/.uzustack-dev/                 — 開発者向け eval artifact (uzustack contributor のみ)
+#
+# テスト用 env override:
+#   UZUSTACK_DIR        — 自動検出した uzustack root を上書き
+#   UZUSTACK_STATE_DIR  — ~/.uzustack state directory を上書き
+#
+# NOTE: set -uo pipefail (-e なし) — uninstall は途中で abort してはならない。
+set -uo pipefail
+
+if [ -z "${HOME:-}" ]; then
+  echo "エラー: \$HOME が設定されていない" >&2
+  exit 1
+fi
+
+UZUSTACK_DIR="${UZUSTACK_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+STATE_DIR="${UZUSTACK_STATE_DIR:-$HOME/.uzustack}"
+_GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+
+# ─── flag を parse ─────────────────────────────────────────────
+FORCE=0
+KEEP_STATE=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --force) FORCE=1; shift ;;
+    --keep-state) KEEP_STATE=1; shift ;;
+    -h|--help)
+      sed -n '2,/^[^#]/{ /^#/s/^# \{0,1\}//p; }' "$0"
+      exit 0
+      ;;
+    *)
+      echo "未知の option: $1" >&2
+      echo "使い方: uzustack-uninstall [--force] [--keep-state]" >&2
+      exit 1
+      ;;
+  esac
+done
+
+# ─── 確認 ────────────────────────────────────────────
+if [ "$FORCE" -eq 0 ]; then
+  echo "uzustack をシステムから削除する:"
+  { [ -d "$HOME/.claude/skills/uzustack" ] || [ -L "$HOME/.claude/skills/uzustack" ]; } && echo "  ~/.claude/skills/uzustack (+ per-skill symlink)"
+  [ -d "$HOME/.codex/skills" ] && echo "  ~/.codex/skills/uzustack*"
+  [ -d "$HOME/.factory/skills" ] && echo "  ~/.factory/skills/uzustack*"
+  [ -d "$HOME/.kiro/skills" ] && echo "  ~/.kiro/skills/uzustack*"
+  [ "$KEEP_STATE" -eq 0 ] && [ -d "$STATE_DIR" ] && echo "  $STATE_DIR"
+
+  if [ -n "$_GIT_ROOT" ]; then
+    [ -d "$_GIT_ROOT/.claude/skills/uzustack" ] && echo "  $_GIT_ROOT/.claude/skills/uzustack (project ローカル)"
+    [ -d "$_GIT_ROOT/.uzustack" ] && echo "  $_GIT_ROOT/.uzustack/ (browse state + reports)"
+    [ -d "$_GIT_ROOT/.uzustack-worktrees" ] && echo "  $_GIT_ROOT/.uzustack-worktrees/"
+    [ -d "$_GIT_ROOT/.agents/skills" ] && echo "  $_GIT_ROOT/.agents/skills/uzustack*"
+  fi
+
+  # 起動中の daemon を preview
+  if [ -n "$_GIT_ROOT" ] && [ -f "$_GIT_ROOT/.uzustack/browse.json" ]; then
+    _PREVIEW_PID="$(awk -F'[:,]' '/"pid"/ { for(i=1;i<=NF;i++) if($i ~ /"pid"/) { gsub(/[^0-9]/, "", $(i+1)); print $(i+1); exit } }' "$_GIT_ROOT/.uzustack/browse.json" 2>/dev/null || true)"
+    [ -n "$_PREVIEW_PID" ] && kill -0 "$_PREVIEW_PID" 2>/dev/null && echo "  browse daemon (PID $_PREVIEW_PID) を停止する"
+  fi
+
+  printf "\n続行しますか？ [y/N] "
+  read -r REPLY
+  case "$REPLY" in
+    y|Y|yes|YES) ;;
+    *) echo "中断した。"; exit 0 ;;
+  esac
+fi
+
+REMOVED=()
+
+# ─── 起動中の browse daemon を停止 ─────────────────────────────
+# browse server は {project}/.uzustack/browse.json に PID を書く。
+# state directory 削除前に見つけた daemon を停止する。
+stop_browse_daemon() {
+  local state_file="$1"
+  if [ ! -f "$state_file" ]; then
+    return
+  fi
+  local pid
+  pid="$(awk -F'[:,]' '/"pid"/ { for(i=1;i<=NF;i++) if($i ~ /"pid"/) { gsub(/[^0-9]/, "", $(i+1)); print $(i+1); exit } }' "$state_file" 2>/dev/null || true)"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+    # graceful shutdown を 2 秒待つ
+    local waited=0
+    while [ "$waited" -lt 4 ] && kill -0 "$pid" 2>/dev/null; do
+      sleep 0.5
+      waited=$(( waited + 1 ))
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -9 "$pid" 2>/dev/null || true
+    fi
+    REMOVED+=("browse daemon (PID $pid)")
+  fi
+}
+
+# 現在の project の daemon を停止
+if [ -n "$_GIT_ROOT" ] && [ -f "$_GIT_ROOT/.uzustack/browse.json" ]; then
+  stop_browse_daemon "$_GIT_ROOT/.uzustack/browse.json"
+fi
+
+# global projects directory に登録された daemon を停止
+if [ -d "$STATE_DIR/projects" ]; then
+  while IFS= read -r _BJ; do
+    stop_browse_daemon "$_BJ"
+  done < <(find "$STATE_DIR/projects" -name browse.json -path '*/.uzustack/*' 2>/dev/null || true)
+fi
+
+# ─── global Claude skill を削除 ────────────────────────────
+CLAUDE_SKILLS="$HOME/.claude/skills"
+if [ -d "$CLAUDE_SKILLS/uzustack" ] || [ -L "$CLAUDE_SKILLS/uzustack" ]; then
+  # uzustack/ 配下を指す per-skill symlink を撤去
+  for _LINK in "$CLAUDE_SKILLS"/*; do
+    [ -L "$_LINK" ] || continue
+    _NAME="$(basename "$_LINK")"
+    [ "$_NAME" = "uzustack" ] && continue
+    _TARGET="$(readlink "$_LINK" 2>/dev/null || true)"
+    case "$_TARGET" in
+      uzustack/*|*/uzustack/*) rm -f "$_LINK"; REMOVED+=("claude/$_NAME") ;;
+    esac
+  done
+
+  rm -rf "$CLAUDE_SKILLS/uzustack"
+  REMOVED+=("~/.claude/skills/uzustack")
+fi
+
+# ─── project ローカル Claude skill を削除 (--local install 用) ──
+if [ -n "$_GIT_ROOT" ] && [ -d "$_GIT_ROOT/.claude/skills" ]; then
+  for _LINK in "$_GIT_ROOT/.claude/skills"/*; do
+    [ -L "$_LINK" ] || continue
+    _TARGET="$(readlink "$_LINK" 2>/dev/null || true)"
+    case "$_TARGET" in
+      uzustack/*|*/uzustack/*) rm -f "$_LINK"; REMOVED+=("local claude/$(basename "$_LINK")") ;;
+    esac
+  done
+  if [ -d "$_GIT_ROOT/.claude/skills/uzustack" ] || [ -L "$_GIT_ROOT/.claude/skills/uzustack" ]; then
+    rm -rf "$_GIT_ROOT/.claude/skills/uzustack"
+    REMOVED+=("$_GIT_ROOT/.claude/skills/uzustack")
+  fi
+fi
+
+# ─── Codex skill を削除 ────────────────────────────────────
+CODEX_SKILLS="$HOME/.codex/skills"
+if [ -d "$CODEX_SKILLS" ]; then
+  for _ITEM in "$CODEX_SKILLS"/uzustack*; do
+    [ -e "$_ITEM" ] || [ -L "$_ITEM" ] || continue
+    rm -rf "$_ITEM"
+    REMOVED+=("codex/$(basename "$_ITEM")")
+  done
+fi
+
+# ─── Factory Droid skill を削除 ────────────────────────────
+FACTORY_SKILLS="$HOME/.factory/skills"
+if [ -d "$FACTORY_SKILLS" ]; then
+  for _ITEM in "$FACTORY_SKILLS"/uzustack*; do
+    [ -e "$_ITEM" ] || [ -L "$_ITEM" ] || continue
+    rm -rf "$_ITEM"
+    REMOVED+=("factory/$(basename "$_ITEM")")
+  done
+fi
+
+# ─── Kiro skill を削除 ─────────────────────────────────────
+KIRO_SKILLS="$HOME/.kiro/skills"
+if [ -d "$KIRO_SKILLS" ]; then
+  for _ITEM in "$KIRO_SKILLS"/uzustack*; do
+    [ -e "$_ITEM" ] || [ -L "$_ITEM" ] || continue
+    rm -rf "$_ITEM"
+    REMOVED+=("kiro/$(basename "$_ITEM")")
+  done
+fi
+
+# ─── project ごとの .agents/ sidecar を削除 ──────────────────
+if [ -n "$_GIT_ROOT" ] && [ -d "$_GIT_ROOT/.agents/skills" ]; then
+  for _ITEM in "$_GIT_ROOT/.agents/skills"/uzustack*; do
+    [ -e "$_ITEM" ] || [ -L "$_ITEM" ] || continue
+    rm -rf "$_ITEM"
+    REMOVED+=("agents/$(basename "$_ITEM")")
+  done
+
+  rmdir "$_GIT_ROOT/.agents/skills" 2>/dev/null || true
+  rmdir "$_GIT_ROOT/.agents" 2>/dev/null || true
+fi
+
+# ─── project ごとの .factory/ sidecar を削除 ────────────────
+if [ -n "$_GIT_ROOT" ] && [ -d "$_GIT_ROOT/.factory/skills" ]; then
+  for _ITEM in "$_GIT_ROOT/.factory/skills"/uzustack*; do
+    [ -e "$_ITEM" ] || [ -L "$_ITEM" ] || continue
+    rm -rf "$_ITEM"
+    REMOVED+=("factory/$(basename "$_ITEM")")
+  done
+
+  rmdir "$_GIT_ROOT/.factory/skills" 2>/dev/null || true
+  rmdir "$_GIT_ROOT/.factory" 2>/dev/null || true
+fi
+
+# ─── project ごとの state を削除 ───────────────────────────
+if [ -n "$_GIT_ROOT" ]; then
+  if [ -d "$_GIT_ROOT/.uzustack" ]; then
+    rm -rf "$_GIT_ROOT/.uzustack"
+    REMOVED+=("$_GIT_ROOT/.uzustack/")
+  fi
+  if [ -d "$_GIT_ROOT/.uzustack-worktrees" ]; then
+    rm -rf "$_GIT_ROOT/.uzustack-worktrees"
+    REMOVED+=("$_GIT_ROOT/.uzustack-worktrees/")
+  fi
+fi
+
+# ─── Claude Code 設定から SessionStart hook を削除 ─────────
+SETTINGS_HOOK="$(dirname "$0")/uzustack-settings-hook"
+SESSION_UPDATE="$(dirname "$0")/uzustack-session-update"
+if [ -x "$SETTINGS_HOOK" ]; then
+  "$SETTINGS_HOOK" remove "$SESSION_UPDATE" 2>/dev/null && REMOVED+=("SessionStart hook") || true
+fi
+
+# ─── global state を削除 ────────────────────────────────────
+if [ "$KEEP_STATE" -eq 0 ] && [ -d "$STATE_DIR" ]; then
+  rm -rf "$STATE_DIR"
+  REMOVED+=("$STATE_DIR")
+fi
+
+# ─── temp file を片付け ─────────────────────────────────────
+for _TMP in /tmp/uzustack-latest-version /tmp/uzustack-sketch-*.html /tmp/uzustack-sketch.png /tmp/uzustack-sync-*; do
+  if [ -e "$_TMP" ]; then
+    rm -f "$_TMP"
+    REMOVED+=("$(basename "$_TMP")")
+  fi
+done
+
+# ─── まとめ ────────────────────────────────────────────────
+if [ ${#REMOVED[@]} -gt 0 ]; then
+  echo "削除済: ${REMOVED[*]}"
+  echo "uzustack をアンインストールした。"
+else
+  echo "削除対象なし — uzustack はインストールされていない。"
+fi
+
+exit 0
