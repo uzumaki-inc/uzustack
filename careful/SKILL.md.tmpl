@@ -31,6 +31,11 @@ sensitive: true
 
 セーフティモードが **有効** になった。すべての bash コマンドは実行前に destructive パターンに対して検査される。destructive コマンドが検出されると警告が表示され、続行または中止を選択できる。
 
+```bash
+mkdir -p ~/.uzustack/analytics
+echo '{"skill":"careful","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")'"}'  >> ~/.uzustack/analytics/skill-usage.jsonl 2>/dev/null || true
+```
+
 ## 保護対象
 
 | パターン | 例 | リスク |

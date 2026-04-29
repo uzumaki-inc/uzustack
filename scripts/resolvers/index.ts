@@ -23,4 +23,6 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   GBRAIN_CONTEXT_LOAD: (_ctx, _args) => '',
   // Phase 4+ でマシン間記憶同期の save 指示文を返す予定（Phase 5）
   GBRAIN_SAVE_RESULTS: (_ctx, _args) => '',
+  // Phase 4+ で `gh pr view` / `gh repo view` 経由の base branch 動的検出 bash を返す予定
+  BASE_BRANCH_DETECT: (_ctx, _args) => '',
 };
