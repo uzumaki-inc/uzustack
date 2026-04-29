@@ -1,6 +1,7 @@
 ---
 name: context-restore
 type: translated
+preamble-tier: 2
 version: 1.0.0
 description: |
   `/context-save` で保存した作業 context を復元する skill。デフォルトで（全ブランチを跨いで）
@@ -20,6 +21,8 @@ triggers:
   - context restore
   - context-restore
 ---
+
+{{PREAMBLE}}
 
 # /context-restore — 保存済み context を復元
 
@@ -48,7 +51,7 @@ triggers:
 ### Step 1：保存済み context を探す
 
 ```bash
-eval "$(~/.claude/skills/uzustack/bin/uzustack-slug 2>/dev/null)" && mkdir -p ~/.uzustack/projects/$SLUG
+{{SLUG_SETUP}}
 CHECKPOINT_DIR="${UZUSTACK_HOME:-$HOME/.uzustack}/projects/$SLUG/checkpoints"
 if [ ! -d "$CHECKPOINT_DIR" ]; then
   echo "NO_CHECKPOINTS"
