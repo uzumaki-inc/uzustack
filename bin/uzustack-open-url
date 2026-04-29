@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# uzustack-open-url — OS 横断の URL opener
+#
+# 使い方: uzustack-open-url <url>
+set -euo pipefail
+
+URL="${1:?使い方: uzustack-open-url <url>}"
+
+case "$(uname -s)" in
+  Darwin)  open "$URL" ;;
+  Linux)   xdg-open "$URL" 2>/dev/null || echo "$URL" ;;
+  MINGW*|MSYS*|CYGWIN*) start "$URL" ;;
+  *)       echo "$URL" ;;
+esac
