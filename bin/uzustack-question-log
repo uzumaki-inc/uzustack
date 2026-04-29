@@ -24,7 +24,7 @@
 #   session_id         — 安定 session identifier
 #   ts                 — ISO 8601 timestamp (未指定時は auto-inject)
 #
-# Append-only JSONL。dedup は read 時 (uzustack-question-sensitivity --read-log) に行う。
+# Append-only JSONL。dedup は read 時に行う。
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 eval "$("$SCRIPT_DIR/uzustack-slug" 2>/dev/null)"
