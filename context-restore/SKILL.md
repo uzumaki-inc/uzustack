@@ -1,6 +1,7 @@
 ---
 name: context-restore
 type: translated
+preamble-tier: 2
 version: 1.0.0
 description: |
   `/context-save` で保存した作業 context を復元する skill。デフォルトで（全ブランチを跨いで）
@@ -22,6 +23,8 @@ triggers:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
+
+
 
 # /context-restore — 保存済み context を復元
 
