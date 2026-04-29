@@ -1,6 +1,7 @@
 ---
 name: investigate
 type: translated
+preamble-tier: 2
 version: 1.0.0
 description: |
   根本原因調査による体系的デバッグ。4 つのフェーズ：調査、分析、仮説立案、実装。
@@ -29,6 +30,8 @@ triggers:
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
 
+
+
 # 体系的デバッグ
 
 ## 鉄則
@@ -38,6 +41,8 @@ triggers:
 症状の修正はモグラ叩きを生む。根本原因に対処しない修正はすべて、次のバグを見つけにくくする。まず根本原因を見つけ、それから修正する。
 
 ---
+
+
 
 ## フェーズ 1：根本原因の調査
 
@@ -54,6 +59,8 @@ triggers:
    以前は動いていたか？何が変わったか？回帰の場合、根本原因は diff の中にある。
 
 4. **再現**：バグを決定的にトリガーできるか？できなければ、進める前により多くの証拠を集める。
+
+
 
 出力：**「根本原因の仮説：...」** ― 何が、なぜ間違っているかについての具体的で検証可能な主張。
 
@@ -152,6 +159,10 @@ DEBUG REPORT
 ステータス:          DONE | DONE_WITH_CONCERNS | BLOCKED
 ════════════════════════════════════════
 ```
+
+
+
+
 
 ---
 
