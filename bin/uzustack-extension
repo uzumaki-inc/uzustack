@@ -1,0 +1,65 @@
+#!/bin/bash
+# uzustack-extension — Chrome extension の install を補助する helper
+#
+# `$B connect` 経由なら extension は auto-load される。本 script は通常の
+# Chrome (Playwright 制御下ではない) に install する場合に使う。
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# extension directory を探索
+EXT_DIR=""
+if [ -f "$REPO_ROOT/extension/manifest.json" ]; then
+  EXT_DIR="$REPO_ROOT/extension"
+elif [ -f "$HOME/.claude/skills/uzustack/extension/manifest.json" ]; then
+  EXT_DIR="$HOME/.claude/skills/uzustack/extension"
+fi
+
+if [ -z "$EXT_DIR" ]; then
+  echo "Error: extension/ directory が見つからない。"
+  echo "想定 path: $REPO_ROOT/extension/ または ~/.claude/skills/uzustack/extension/"
+  exit 1
+fi
+
+# path を clipboard へ copy
+echo -n "$EXT_DIR" | pbcopy 2>/dev/null
+
+# browse server port を取得
+PORT=""
+STATE_FILE="$REPO_ROOT/.uzustack/browse.json"
+if [ -f "$STATE_FILE" ]; then
+  PORT=$(grep -o '"port":[0-9]*' "$STATE_FILE" | grep -o '[0-9]*')
+fi
+
+echo "uzustack Chrome Extension Setup"
+echo "================================"
+echo ""
+echo "Extension path (clipboard に copy 済):"
+echo "  $EXT_DIR"
+echo ""
+
+if [ -n "$PORT" ]; then
+  echo "Browse server port: $PORT"
+  echo ""
+fi
+
+echo "Quick install (\$B connect 利用時):"
+echo "  \$B connect 実行時に extension が auto-load される。"
+echo "  manual install は不要。"
+echo ""
+echo "Manual install (通常の Chrome の場合):"
+echo ""
+echo "  1. chrome://extensions を開く..."
+
+# chrome://extensions を開く
+osascript -e 'tell application "Google Chrome" to open location "chrome://extensions"' 2>/dev/null || \
+  open "chrome://extensions" 2>/dev/null || \
+  echo "     Chrome を開けない。chrome://extensions に手動で navigate してください。"
+
+echo "  2. 右上の 'Developer mode' を ON"
+echo "  3. 'Load unpacked' を click"
+echo "  4. file picker で: Cmd+Shift+G → paste (clipboard に path あり) → Enter → Select"
+echo "  5. toolbar の uzustack puzzle icon を click → port を入力: ${PORT:-<\$B status を確認>}"
+echo "  6. 'Open Side Panel' を click"

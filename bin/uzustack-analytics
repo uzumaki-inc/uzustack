@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+# uzustack-analytics — local JSONL からの personal usage dashboard
+#
+# Usage:
+#   uzustack-analytics          # default: last 7 days
+#   uzustack-analytics 7d       # last 7 days
+#   uzustack-analytics 30d      # last 30 days
+#   uzustack-analytics all      # all time
+#
+# Env override (test 用):
+#   UZUSTACK_STATE_DIR  — ~/.uzustack state directory を override
+set -uo pipefail
+
+STATE_DIR="${UZUSTACK_STATE_DIR:-$HOME/.uzustack}"
+JSONL_FILE="$STATE_DIR/analytics/skill-usage.jsonl"
+
+# ─── 時間 window を parse ────────────────────────────────────
+WINDOW="${1:-7d}"
+case "$WINDOW" in
+  7d)  DAYS=7;  LABEL="last 7 days" ;;
+  30d) DAYS=30; LABEL="last 30 days" ;;
+  all) DAYS=0;  LABEL="all time" ;;
+  *)   DAYS=7;  LABEL="last 7 days" ;;
+esac
+
+# ─── data 確認 ───────────────────────────────────────────────
+if [ ! -f "$JSONL_FILE" ]; then
+  echo "uzustack usage — no data yet"
+  echo ""
+  echo "Usage data will appear here after you use uzustack skills"
+  echo "with telemetry enabled (uzustack-config set telemetry anonymous)."
+  exit 0
+fi
+
+TOTAL_LINES="$(wc -l < "$JSONL_FILE" | tr -d ' ')"
+if [ "$TOTAL_LINES" = "0" ]; then
+  echo "uzustack usage — no data yet"
+  exit 0
+fi
+
+# ─── 時間 window で filter ───────────────────────────────────
+if [ "$DAYS" -gt 0 ] 2>/dev/null; then
+  # cutoff date を計算
+  if date -v-1d +%Y-%m-%d >/dev/null 2>&1; then
+    # macOS date
+    CUTOFF="$(date -v-${DAYS}d -u +%Y-%m-%dT%H:%M:%SZ)"
+  else
+    # GNU date
+    CUTOFF="$(date -u -d "$DAYS days ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "2000-01-01T00:00:00Z")"
+  fi
+  # Filter: skill_run event (新 format) OR basic skill event (旧 format、event_type なし)
+  # 旧 format: {"skill":"X","ts":"Y","repo":"Z"} (event_type field なし)
+  # 新 format: {"event_type":"skill_run","skill":"X","ts":"Y",...}
+  FILTERED="$(awk -F'"' -v cutoff="$CUTOFF" '
+    /"ts":"/ {
+      # hook_fire event は skip
+      if (/"event":"hook_fire"/) next
+      # skill_run 以外の新 format event は skip
+      if (/"event_type":"/ && !/"event_type":"skill_run"/) next
+      for (i=1; i<=NF; i++) {
+        if ($i == "ts" && $(i+1) ~ /^:/) {
+          ts = $(i+2)
+          if (ts >= cutoff) { print; break }
+        }
+      }
+    }
+  ' "$JSONL_FILE")"
+else
+  # All time: skill_run event + 旧 format basic event を含む、hook_fire は除外
+  FILTERED="$(awk '/"ts":"/ && !/"event":"hook_fire"/' "$JSONL_FILE" | grep -v '"event_type":"upgrade_' 2>/dev/null || true)"
+fi
+
+if [ -z "$FILTERED" ]; then
+  echo "uzustack usage ($LABEL) — no skill runs found"
+  exit 0
+fi
+
+# ─── skill 別に集計 ──────────────────────────────────────────
+# skill 名を抽出して count
+SKILL_COUNTS="$(echo "$FILTERED" | awk -F'"' '
+  /"skill":"/ {
+    for (i=1; i<=NF; i++) {
+      if ($i == "skill" && $(i+1) ~ /^:/) {
+        skill = $(i+2)
+        counts[skill]++
+        break
+      }
+    }
+  }
+  END {
+    for (s in counts) print counts[s], s
+  }
+' | sort -rn)"
+
+# outcome を count
+TOTAL="$(echo "$FILTERED" | wc -l | tr -d ' ')"
+SUCCESS="$(echo "$FILTERED" | grep -c '"outcome":"success"' || true)"
+SUCCESS="${SUCCESS:-0}"; SUCCESS="$(echo "$SUCCESS" | tr -d ' \n\r\t')"
+ERRORS="$(echo "$FILTERED" | grep -c '"outcome":"error"' || true)"
+ERRORS="${ERRORS:-0}"; ERRORS="$(echo "$ERRORS" | tr -d ' \n\r\t')"
+# 旧 format event は outcome field なし → success として count
+NO_OUTCOME="$(echo "$FILTERED" | grep -vc '"outcome":' || true)"
+NO_OUTCOME="${NO_OUTCOME:-0}"; NO_OUTCOME="$(echo "$NO_OUTCOME" | tr -d ' \n\r\t')"
+SUCCESS=$(( SUCCESS + NO_OUTCOME ))
+
+# success rate を算出
+if [ "$TOTAL" -gt 0 ] 2>/dev/null; then
+  SUCCESS_RATE=$(( SUCCESS * 100 / TOTAL ))
+else
+  SUCCESS_RATE=100
+fi
+
+# ─── 総 duration を算出 ──────────────────────────────────────
+TOTAL_DURATION="$(echo "$FILTERED" | awk -F'[:,]' '
+  /"duration_s"/ {
+    for (i=1; i<=NF; i++) {
+      if ($i ~ /"duration_s"/) {
+        val = $(i+1)
+        gsub(/[^0-9.]/, "", val)
+        if (val+0 > 0) total += val
+      }
+    }
+  }
+  END { printf "%.0f", total }
+')"
+
+# duration を整形
+TOTAL_DURATION="${TOTAL_DURATION:-0}"
+if [ "$TOTAL_DURATION" -ge 3600 ] 2>/dev/null; then
+  HOURS=$(( TOTAL_DURATION / 3600 ))
+  MINS=$(( (TOTAL_DURATION % 3600) / 60 ))
+  DUR_DISPLAY="${HOURS}h ${MINS}m"
+elif [ "$TOTAL_DURATION" -ge 60 ] 2>/dev/null; then
+  MINS=$(( TOTAL_DURATION / 60 ))
+  DUR_DISPLAY="${MINS}m"
+else
+  DUR_DISPLAY="${TOTAL_DURATION}s"
+fi
+
+# ─── 出力 render ─────────────────────────────────────────────
+echo "uzustack usage ($LABEL)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# bar scaling 用に max count を取得
+MAX_COUNT="$(echo "$SKILL_COUNTS" | head -1 | awk '{print $1}')"
+BAR_WIDTH=20
+
+echo "$SKILL_COUNTS" | while read -r COUNT SKILL; do
+  # bar を scale
+  if [ "$MAX_COUNT" -gt 0 ] 2>/dev/null; then
+    BAR_LEN=$(( COUNT * BAR_WIDTH / MAX_COUNT ))
+  else
+    BAR_LEN=1
+  fi
+  [ "$BAR_LEN" -lt 1 ] && BAR_LEN=1
+
+  # bar を build
+  BAR=""
+  i=0
+  while [ "$i" -lt "$BAR_LEN" ]; do
+    BAR="${BAR}█"
+    i=$(( i + 1 ))
+  done
+
+  # この skill の avg duration を算出
+  AVG_DUR="$(echo "$FILTERED" | awk -v skill="$SKILL" '
+    index($0, "\"skill\":\"" skill "\"") > 0 {
+      # "duration_s": で split して value を抽出
+      n = split($0, parts, "\"duration_s\":")
+      if (n >= 2) {
+        # parts[2] は value から開始 (例: "142,")
+        gsub(/[^0-9.].*/, "", parts[2])
+        if (parts[2]+0 > 0) { total += parts[2]; count++ }
+      }
+    }
+    END { if (count > 0) printf "%.0f", total/count; else print "0" }
+  ')"
+
+  # avg duration を整形
+  if [ "$AVG_DUR" -ge 60 ] 2>/dev/null; then
+    AVG_DISPLAY="$(( AVG_DUR / 60 ))m"
+  else
+    AVG_DISPLAY="${AVG_DUR}s"
+  fi
+
+  printf "  /%-20s %s  %d runs  (avg %s)\n" "$SKILL" "$BAR" "$COUNT" "$AVG_DISPLAY"
+done
+
+echo ""
+echo "Success rate: ${SUCCESS_RATE}% | Errors: ${ERRORS} | Total time: ${DUR_DISPLAY}"
+echo "Events: ${TOTAL} skill runs"
