@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# uzustack-learnings-log — project learnings file に 1 件 append する
+# Usage: uzustack-learnings-log '{"skill":"review","type":"pitfall","key":"n-plus-one","insight":"...","confidence":8,"source":"observed"}'
+#
+# Append-only ストレージ。同 key+type の重複は読み出し時に
+# uzustack-learnings-search が "latest winner" として解決する。
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+eval "$("$SCRIPT_DIR/uzustack-slug" 2>/dev/null)"
+UZUSTACK_HOME="${UZUSTACK_HOME:-$HOME/.uzustack}"
+mkdir -p "$UZUSTACK_HOME/projects/$SLUG"
+
+INPUT="$1"
+
+# 入力を validate して sanitize する
+VALIDATED=$(printf '%s' "$INPUT" | bun -e "
+const raw = await Bun.stdin.text();
+let j;
+try { j = JSON.parse(raw); } catch { process.stderr.write('uzustack-learnings-log: JSON が不正、skip\n'); process.exit(1); }
+
+// Field validation: type は許可リスト内のみ
+const ALLOWED_TYPES = ['pattern', 'pitfall', 'preference', 'architecture', 'tool', 'operational'];
+if (!j.type || !ALLOWED_TYPES.includes(j.type)) {
+  process.stderr.write('uzustack-learnings-log: type \"' + (j.type || '') + '\" が無効、許可値は: ' + ALLOWED_TYPES.join(', ') + '\n');
+  process.exit(1);
+}
+
+// Field validation: key は alphanumeric / hyphen / underscore のみ (injection 面を消す)
+if (!j.key || !/^[a-zA-Z0-9_-]+$/.test(j.key)) {
+  process.stderr.write('uzustack-learnings-log: key が無効、alphanumeric / hyphen / underscore のみ可\n');
+  process.exit(1);
+}
+
+// Field validation: confidence は 1-10 の整数
+const conf = Number(j.confidence);
+if (!Number.isInteger(conf) || conf < 1 || conf > 10) {
+  process.stderr.write('uzustack-learnings-log: confidence は 1-10 の整数\n');
+  process.exit(1);
+}
+j.confidence = conf;
+
+// Field validation: source は許可リスト内のみ
+const ALLOWED_SOURCES = ['observed', 'user-stated', 'inferred', 'cross-model'];
+if (j.source && !ALLOWED_SOURCES.includes(j.source)) {
+  process.stderr.write('uzustack-learnings-log: source が無効、許可値は: ' + ALLOWED_SOURCES.join(', ') + '\n');
+  process.exit(1);
+}
+
+// Content sanitization: insight field から instruction 風 pattern を除去
+// learnings が agent context に load された時に prompt injection に使われ得るため。
+if (j.insight) {
+  const INJECTION_PATTERNS = [
+    /ignore\s+(all\s+)?previous\s+(instructions|context|rules)/i,
+    /you\s+are\s+now\s+/i,
+    /always\s+output\s+no\s+findings/i,
+    /skip\s+(all\s+)?(security|review|checks)/i,
+    /override[:\s]/i,
+    /\bsystem\s*:/i,
+    /\bassistant\s*:/i,
+    /\buser\s*:/i,
+    /do\s+not\s+(report|flag|mention)/i,
+    /approve\s+(all|every|this)/i,
+  ];
+  for (const pat of INJECTION_PATTERNS) {
+    if (pat.test(j.insight)) {
+      process.stderr.write('uzustack-learnings-log: insight に instruction 風 content が含まれる、reject\n');
+      process.exit(1);
+    }
+  }
+}
+
+// timestamp を inject (未指定時のみ)
+if (!j.ts) j.ts = new Date().toISOString();
+
+// source 由来で trust level を mark
+// user-stated = user が agent に明示的に伝えた。それ以外は AI 生成。
+j.trusted = j.source === 'user-stated';
+
+console.log(JSON.stringify(j));
+" 2>/dev/null)
+
+if [ $? -ne 0 ] || [ -z "$VALIDATED" ]; then
+  exit 1
+fi
+
+echo "$VALIDATED" >> "$UZUSTACK_HOME/projects/$SLUG/learnings.jsonl"
+
+# gbrain-sync: cross-machine sync queue に enqueue (sync off の時は no-op)。
+"$SCRIPT_DIR/uzustack-brain-enqueue" "projects/$SLUG/learnings.jsonl" 2>/dev/null &
