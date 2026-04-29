@@ -1,0 +1,234 @@
+#!/usr/bin/env bash
+# uzustack-brain-restore — 既存の brain repo から新マシンを bootstrap する。
+#
+# Usage:
+#   uzustack-brain-restore [<git-remote-url>]
+#
+# URL 未指定時は ~/.uzustack-brain-remote.txt を読む (元マシンで
+# uzustack-brain-init が書き込んだもの)。本コマンド実行前に、その file を
+# 新マシンへコピーしておく。
+#
+# Safety gate (clear message と共に refuse する):
+#   - ~/.uzustack/.git が既に異なる remote を指している
+#   - ~/.uzustack/ に restore で上書きされ得る non-allowlisted / non-gitignored
+#     な user file が存在する
+#
+# 何をするか:
+#   1. remote を staging directory に clone
+#   2. repo が uzustack-brain-shaped か検証 (.brain-allowlist と .gitattributes)
+#   3. tracked file を ~/.uzustack/ に rsync-copy (同 hash なら skip)
+#   4. staging の .git を ~/.uzustack/.git に move
+#   5. local git config の merge driver を register (clone では持ち込まれない)
+#   6. consumers.json endpoint を rehydrate、token を prompt
+#
+# Env:
+#   UZUSTACK_HOME — ~/.uzustack を override
+
+set -euo pipefail
+
+UZUSTACK_HOME="${UZUSTACK_HOME:-$HOME/.uzustack}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CONFIG_BIN="$SCRIPT_DIR/uzustack-config"
+REMOTE_FILE="$HOME/.uzustack-brain-remote.txt"
+
+REMOTE_URL="${1:-}"
+if [ -z "$REMOTE_URL" ]; then
+  if [ -f "$REMOTE_FILE" ]; then
+    REMOTE_URL=$(head -1 "$REMOTE_FILE" | tr -d '[:space:]')
+  fi
+fi
+
+if [ -z "$REMOTE_URL" ]; then
+  cat >&2 <<EOF
+uzustack-brain-restore: remote URL が指定されていない。
+
+以下のいずれかを行う:
+  uzustack-brain-restore <git-url>
+  または $REMOTE_FILE に URL を書いておく (元マシンからコピー)
+EOF
+  exit 1
+fi
+
+# ---- safety gate ----
+if [ -d "$UZUSTACK_HOME/.git" ]; then
+  EXISTING_REMOTE=$(git -C "$UZUSTACK_HOME" remote get-url origin 2>/dev/null || echo "")
+  if [ -n "$EXISTING_REMOTE" ] && [ "$EXISTING_REMOTE" != "$REMOTE_URL" ]; then
+    cat >&2 <<EOF
+uzustack-brain-restore: ~/.uzustack/.git は既に以下を指している:
+  $EXISTING_REMOTE
+
+restore しようとした URL:
+  $REMOTE_URL
+
+上書きを refuse する。先に 'uzustack-brain-uninstall' を実行するか、一致する URL を渡す。
+EOF
+    exit 1
+  fi
+fi
+
+# ---- staging に clone ----
+STAGING=$(mktemp -d "${TMPDIR:-/tmp}/uzustack-brain-restore.XXXXXX")
+trap 'rm -rf "$STAGING" 2>/dev/null' EXIT
+
+echo "$REMOTE_URL を staging に clone 中..."
+if ! git clone --quiet "$REMOTE_URL" "$STAGING/repo" 2>/dev/null; then
+  echo "Clone 失敗。確認:" >&2
+  echo "  - URL は正しいか: $REMOTE_URL" >&2
+  echo "  - 認証: gh auth status (github) / glab auth status (gitlab)" >&2
+  exit 1
+fi
+
+# ---- shape の validate ----
+if [ ! -f "$STAGING/repo/.brain-allowlist" ] || [ ! -f "$STAGING/repo/.gitattributes" ]; then
+  cat >&2 <<EOF
+uzustack-brain-restore: $REMOTE_URL は uzustack-brain repo に見えない。
+不在: .brain-allowlist または .gitattributes
+
+本コマンドは uzustack-brain-init で作成された repo にのみ動作する。
+EOF
+  exit 1
+fi
+
+# ---- target ~/.uzustack/ に non-gitignored な user file が無いか validate ----
+mkdir -p "$UZUSTACK_HOME"
+if [ ! -d "$UZUSTACK_HOME/.git" ]; then
+  # 既存 git 無し → allowlisted な file を上書きしてしまわないか確認する
+  # 新 allowlist の glob を読み、既存 file との衝突を見る
+  CLOBBER_RISK=$(python3 - "$UZUSTACK_HOME" "$STAGING/repo/.brain-allowlist" <<'PYEOF'
+import sys, os, fnmatch
+home, allowlist_path = sys.argv[1:3]
+try:
+    with open(allowlist_path) as f:
+        globs = [l.strip() for l in f if l.strip() and not l.lstrip().startswith('#')]
+except FileNotFoundError:
+    globs = []
+risks = []
+for root, dirs, files in os.walk(home):
+    dirs[:] = [d for d in dirs if d != '.git']
+    for name in files:
+        full = os.path.join(root, name)
+        rel = os.path.relpath(full, home)
+        for g in globs:
+            if fnmatch.fnmatchcase(rel, g):
+                risks.append(rel)
+                break
+for r in risks[:5]:
+    print(r)
+if len(risks) > 5:
+    print(f"...他 {len(risks) - 5} 件")
+sys.exit(0 if not risks else 2)
+PYEOF
+  ) || true
+  if [ -n "$CLOBBER_RISK" ]; then
+    cat >&2 <<EOF
+uzustack-brain-restore: ~/.uzustack/ に restore で上書きされ得る既存
+allowlisted file がある:
+
+$CLOBBER_RISK
+
+先にバックアップするか、~/.uzustack/ が空のマシンで実行する。本マシンの
+過去 uzustack session 由来であれば、本コマンドではなく uzustack-brain-init
+を実行すべき (本マシンの state で新規 brain repo を作る)。
+EOF
+    exit 1
+  fi
+fi
+
+# ---- tracked file を copy ----
+echo "tracked file を ~/.uzustack/ に copy 中..."
+# git-ls-tree で正確な tracked file list を取る (staged / untracked を排除)
+cd "$STAGING/repo"
+git ls-tree -r --name-only HEAD | while IFS= read -r rel_path; do
+  src="$STAGING/repo/$rel_path"
+  dst="$UZUSTACK_HOME/$rel_path"
+  mkdir -p "$(dirname "$dst")"
+  # 同 content hash なら skip、それ以外は copy
+  if [ -f "$dst" ] && cmp -s "$src" "$dst"; then
+    continue
+  fi
+  cp "$src" "$dst"
+done
+
+# ---- .git を所定位置に move ----
+if [ -d "$UZUSTACK_HOME/.git" ]; then
+  # 既存 .git で remote 一致 — fetch + fast-forward のみ
+  git -C "$UZUSTACK_HOME" fetch origin >/dev/null 2>&1 || true
+else
+  mv "$STAGING/repo/.git" "$UZUSTACK_HOME/.git"
+fi
+
+# ---- merge driver を register (local git config、clone では持ち込まれない) ----
+git -C "$UZUSTACK_HOME" config merge.jsonl-append.driver "$SCRIPT_DIR/uzustack-jsonl-merge %O %A %B"
+git -C "$UZUSTACK_HOME" config merge.jsonl-append.name "uzustack JSONL append-only merger"
+git -C "$UZUSTACK_HOME" config merge.union.driver "cat %A %B > %A.merged && mv %A.merged %A"
+git -C "$UZUSTACK_HOME" config merge.union.name "union concat"
+
+# ---- pre-commit hook を install (init と同じ) ----
+HOOK="$UZUSTACK_HOME/.git/hooks/pre-commit"
+mkdir -p "$(dirname "$HOOK")"
+cat > "$HOOK" <<'HOOK_EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+python3 -c "
+import sys, re, subprocess
+try:
+    out = subprocess.check_output(['git', 'diff', '--cached'], stderr=subprocess.DEVNULL).decode('utf-8', 'replace')
+except Exception:
+    sys.exit(0)
+patterns = [
+    ('aws-access-key', re.compile(r'AKIA[0-9A-Z]{16}')),
+    ('github-token', re.compile(r'\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})')),
+    ('openai-key', re.compile(r'\bsk-[A-Za-z0-9_-]{20,}')),
+    ('pem-block', re.compile(r'-----BEGIN [A-Z ]{3,}-----')),
+    ('jwt', re.compile(r'\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b')),
+    ('bearer-token-json',
+     re.compile(r'\"(authorization|api[_-]?key|apikey|token|secret|password)\"\s*:\s*\"[A-Za-z0-9_./+=-]{16,}\"',
+                re.IGNORECASE)),
+]
+for name, rx in patterns:
+    if rx.search(out):
+        sys.stderr.write(f'uzustack-brain pre-commit: refusing commit — {name} detected.\n')
+        sys.exit(1)
+sys.exit(0)
+"
+HOOK_EOF
+chmod +x "$HOOK"
+
+# ---- consumer を rehydrate、token を prompt ----
+if [ -f "$UZUSTACK_HOME/consumers.json" ]; then
+  echo ""
+  echo "Consumer registry を復元。token は machine-local で sync されない。"
+  echo "consumer ごとに以下を実行して token を再入力する:"
+  python3 - "$UZUSTACK_HOME/consumers.json" <<'PYEOF'
+import sys, json
+try:
+    with open(sys.argv[1]) as f:
+        data = json.load(f)
+except Exception:
+    sys.exit(0)
+for c in data.get("consumers", []):
+    name = c.get("name", "")
+    token_ref = c.get("token_ref", f"{name}_token")
+    print(f"  uzustack-config set {token_ref} <your-token>")
+PYEOF
+fi
+
+# ---- remote helper file が無ければ書く ----
+if [ ! -f "$REMOTE_FILE" ]; then
+  echo "$REMOTE_URL" > "$REMOTE_FILE"
+  chmod 600 "$REMOTE_FILE"
+  echo ""
+  echo "$REMOTE_FILE を書き出した (今後の skill-run の自動検出用)。"
+fi
+
+cat <<EOF
+
+uzustack-brain-restore 完了。
+Local:   $UZUSTACK_HOME
+Remote:  $REMOTE_URL
+
+次の skill 実行で privacy mode について 1 回だけ質問され、その後は skill 境界
+で自動的に sync される。
+
+状態確認:  uzustack-brain-sync --status
+EOF
