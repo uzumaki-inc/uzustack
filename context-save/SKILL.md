@@ -1,6 +1,7 @@
 ---
 name: context-save
 type: translated
+preamble-tier: 2
 version: 1.0.0
 description: |
   作業 context を保存する skill。git state、決定事項、残タスクを記録し、
@@ -24,6 +25,8 @@ triggers:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
+
+
 
 # /context-save — 作業 context を保存
 
