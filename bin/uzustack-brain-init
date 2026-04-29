@@ -1,0 +1,364 @@
+#!/usr/bin/env bash
+# uzustack-brain-init — ~/.uzustack/ を GBrain と sync する git repo として
+# 設定する。
+#
+# Usage:
+#   uzustack-brain-init [--remote <url>]
+#
+# default は interactive。remote prompt を skip するには --remote を渡す。
+#
+# Idempotent: 再実行しても安全。~/.uzustack/.git が既存で、かつ同 remote を
+# 指していれば、driver / hook / attribute だけ再構成する (history は壊さない)。
+# 異なる remote を指していれば refuse し、`uzustack-brain-uninstall` を先に
+# 実行するよう案内する。
+#
+# 何をするか:
+#   1. git init ~/.uzustack/  (既存 repo は remote 一致を確認)
+#   2. .gitignore = "*" を書く  (全 ignore base、allowlist は明示的)
+#   3. .brain-allowlist を書く  (sync 対象の正準 path)
+#   4. .brain-privacy-map.json を書く  (path → privacy class)
+#   5. .gitattributes を書く  (JSONL + union merge driver の登録)
+#   6. git config の merge.jsonl-append.driver + merge.union.driver
+#   7. .git/hooks/pre-commit を install  (defense-in-depth secret scan)
+#   8. remote を prompt (default: gh repo create --private uzustack-brain-$USER)
+#   9. 初期 commit + push
+#   10. ~/.uzustack-brain-remote.txt を書く  (URL のみ、shareable)
+#   11. GBrain consumer 登録 (GBRAIN_URL があれば HTTP POST、なければ defer)
+#
+# Env:
+#   UZUSTACK_HOME — ~/.uzustack を override
+#   GBRAIN_URL  — GBrain ingest endpoint base URL (consumer 登録用)
+
+set -euo pipefail
+
+UZUSTACK_HOME="${UZUSTACK_HOME:-$HOME/.uzustack}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CONFIG_BIN="$SCRIPT_DIR/uzustack-config"
+REMOTE_FILE="$HOME/.uzustack-brain-remote.txt"
+CONSUMERS_FILE="$UZUSTACK_HOME/consumers.json"
+
+REMOTE_URL=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --remote) REMOTE_URL="$2"; shift 2 ;;
+    --help|-h) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "不明な flag: $1" >&2; exit 1 ;;
+  esac
+done
+
+# ---- 前提条件 ----
+mkdir -p "$UZUSTACK_HOME"
+
+EXISTING_REMOTE=""
+if [ -d "$UZUSTACK_HOME/.git" ]; then
+  EXISTING_REMOTE=$(git -C "$UZUSTACK_HOME" remote get-url origin 2>/dev/null || echo "")
+  if [ -n "$EXISTING_REMOTE" ] && [ -n "$REMOTE_URL" ] && [ "$EXISTING_REMOTE" != "$REMOTE_URL" ]; then
+    cat >&2 <<EOF
+uzustack-brain-init: ~/.uzustack/ は既に以下を指す git repo:
+  $EXISTING_REMOTE
+
+init しようとした URL:
+  $REMOTE_URL
+
+上書きを refuse する。remote を切り替えるには先に以下を実行する:
+  uzustack-brain-uninstall
+
+(または手動で remote を編集: git -C ~/.uzustack remote set-url origin <url>)
+EOF
+    exit 1
+  fi
+fi
+
+# ---- remote を選ぶ ----
+if [ -z "$REMOTE_URL" ] && [ -n "$EXISTING_REMOTE" ]; then
+  REMOTE_URL="$EXISTING_REMOTE"
+  echo "既存 remote を使用: $REMOTE_URL"
+fi
+
+if [ -z "$REMOTE_URL" ]; then
+  # Interactive prompt。default: gh repo create (利用可能なら)
+  echo "uzustack-brain-init は uzustack の session memory を"
+  echo "クロスマシンで保持し、GBrain が index できる private git repo を作成する。"
+  echo
+  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    DEFAULT_NAME="uzustack-brain-${USER:-$(whoami)}"
+    echo "default: gh が account 配下に '$DEFAULT_NAME' という private repo を作成する。"
+    printf "Enter で受け入れ、または独自の git URL を貼り付ける: "
+    read -r REPLY || REPLY=""
+    if [ -z "$REPLY" ]; then
+      echo "GitHub repo を作成中: $DEFAULT_NAME ..."
+      # Note: --source は意図的に省略する。gh は --source に既存の git repo
+      # を要求するが、$UZUSTACK_HOME の git init は remote 選定後にする。
+      # bare に作って URL を取得する。
+      if ! gh repo create "$DEFAULT_NAME" --private --description "uzustack session memory" 2>/dev/null; then
+        # 既存 repo の可能性 — URL を取得してみる
+        REMOTE_URL=$(gh repo view "$DEFAULT_NAME" --json sshUrl -q .sshUrl 2>/dev/null || echo "")
+        if [ -z "$REMOTE_URL" ]; then
+          echo "'$DEFAULT_NAME' の作成も検出も失敗。--remote <url> を試す。" >&2
+          exit 1
+        fi
+        echo "既存の repo がある — $REMOTE_URL を使用"
+      else
+        REMOTE_URL=$(gh repo view "$DEFAULT_NAME" --json sshUrl -q .sshUrl 2>/dev/null || echo "")
+      fi
+    else
+      REMOTE_URL="$REPLY"
+    fi
+  else
+    echo "(gh CLI が未検出 / 未認証 — git URL を直接指定する)"
+    printf "private git URL を貼る (例: git@github.com:you/uzustack-brain.git): "
+    read -r REMOTE_URL || REMOTE_URL=""
+    if [ -z "$REMOTE_URL" ]; then
+      echo "URL が指定されていない。中止。" >&2
+      exit 1
+    fi
+  fi
+fi
+
+# ---- remote 接続を verify ----
+echo "remote 接続を確認中: $REMOTE_URL"
+if ! git ls-remote "$REMOTE_URL" >/dev/null 2>&1; then
+  cat >&2 <<EOF
+remote に到達不可: $REMOTE_URL
+考えられる原因:
+  - URL が間違っている
+  - 未認証 (GitHub: gh auth status; GitLab: glab auth status)
+  - network 問題
+修正してから uzustack-brain-init を再実行する。
+EOF
+  exit 1
+fi
+
+# ---- git init ----
+if [ ! -d "$UZUSTACK_HOME/.git" ]; then
+  git -C "$UZUSTACK_HOME" init -q -b main 2>/dev/null || git -C "$UZUSTACK_HOME" init -q
+  # -b main が未対応の場合は rename
+  git -C "$UZUSTACK_HOME" branch -M main 2>/dev/null || true
+fi
+
+if [ -z "$(git -C "$UZUSTACK_HOME" remote 2>/dev/null)" ]; then
+  git -C "$UZUSTACK_HOME" remote add origin "$REMOTE_URL"
+else
+  git -C "$UZUSTACK_HOME" remote set-url origin "$REMOTE_URL"
+fi
+
+# ---- canonical file を書く (idempotent) ----
+cat > "$UZUSTACK_HOME/.gitignore" <<'EOF'
+# uzustack-brain sync: ignore-everything base。path は .brain-allowlist と
+# uzustack-brain-sync の `git add -f` で明示的に include する。編集禁止。
+*
+EOF
+
+cat > "$UZUSTACK_HOME/.brain-allowlist" <<'EOF'
+# uzustack-brain-sync が publish する path の正準 allowlist。
+# 1 行 1 glob。match しないものは local に留まる。
+# 直接編集しない。uzustack-brain-init が管理。user 追記は marker より下に書く
+# (再 init でも保たれる)。
+projects/*/learnings.jsonl
+projects/*/*-reviews.jsonl
+projects/*/ceo-plans/*.md
+projects/*/ceo-plans/*/*.md
+projects/*/designs/*.md
+projects/*/designs/*/*.md
+projects/*/timeline.jsonl
+retros/*.md
+developer-profile.json
+builder-journey.md
+builder-profile.jsonl
+# sync しない (per Codex v2 review — machine-local UX state):
+#   projects/*/question-preferences.json (per-machine UX preferences)
+#   projects/*/question-log.jsonl (audit / derivation log は preferences と一緒に残す)
+#   projects/*/question-events.jsonl (同上)
+# ---- USER ADDITIONS BELOW ---- (再 init で保たれる、上は managed)
+EOF
+
+cat > "$UZUSTACK_HOME/.brain-privacy-map.json" <<'EOF'
+[
+  {"pattern": "projects/*/learnings.jsonl", "class": "artifact"},
+  {"pattern": "projects/*/*-reviews.jsonl", "class": "artifact"},
+  {"pattern": "projects/*/ceo-plans/*.md", "class": "artifact"},
+  {"pattern": "projects/*/ceo-plans/*/*.md", "class": "artifact"},
+  {"pattern": "projects/*/designs/*.md", "class": "artifact"},
+  {"pattern": "projects/*/designs/*/*.md", "class": "artifact"},
+  {"pattern": "retros/*.md", "class": "artifact"},
+  {"pattern": "builder-journey.md", "class": "artifact"},
+  {"pattern": "projects/*/timeline.jsonl", "class": "behavioral"},
+  {"pattern": "developer-profile.json", "class": "behavioral"},
+  {"pattern": "builder-profile.jsonl", "class": "behavioral"}
+]
+EOF
+
+cat > "$UZUSTACK_HOME/.gitattributes" <<'EOF'
+# uzustack-brain: クロスマシン sync conflict 用の merge driver。
+# 該当 driver は local git config に register する必要があり、
+# uzustack-brain-init と uzustack-brain-restore が init 後に
+# `git config merge.<name>.driver ...` を実行する。
+*.jsonl merge=jsonl-append
+retros/*.md merge=union
+projects/*/designs/**/*.md merge=union
+projects/*/ceo-plans/**/*.md merge=union
+EOF
+
+# ---- merge driver を local git config に register ----
+git -C "$UZUSTACK_HOME" config merge.jsonl-append.driver "$SCRIPT_DIR/uzustack-jsonl-merge %O %A %B"
+git -C "$UZUSTACK_HOME" config merge.jsonl-append.name "uzustack JSONL append-only merger"
+git -C "$UZUSTACK_HOME" config merge.union.driver "cat %A %B > %A.merged && mv %A.merged %A"
+git -C "$UZUSTACK_HOME" config merge.union.name "union concat"
+
+# ---- pre-commit hook を install (defense-in-depth) ----
+HOOK="$UZUSTACK_HOME/.git/hooks/pre-commit"
+mkdir -p "$(dirname "$HOOK")"
+cat > "$HOOK" <<'HOOK_EOF'
+#!/usr/bin/env bash
+# uzustack-brain pre-commit hook — secret-scan defense-in-depth。
+# 主 scanner は staging 前に uzustack-brain-sync 内で動く。本 hook は
+# brain repo に手動で `git commit` した時の事故を catch する。
+set -uo pipefail
+
+python3 -c "
+import sys, re, subprocess
+try:
+    out = subprocess.check_output(['git', 'diff', '--cached'], stderr=subprocess.DEVNULL).decode('utf-8', 'replace')
+except Exception:
+    sys.exit(0)
+
+patterns = [
+    ('aws-access-key', re.compile(r'AKIA[0-9A-Z]{16}')),
+    ('github-token', re.compile(r'\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})')),
+    ('openai-key', re.compile(r'\bsk-[A-Za-z0-9_-]{20,}')),
+    ('pem-block', re.compile(r'-----BEGIN [A-Z ]{3,}-----')),
+    ('jwt', re.compile(r'\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b')),
+    ('bearer-token-json',
+     re.compile(r'\"(authorization|api[_-]?key|apikey|token|secret|password)\"\s*:\s*\"[A-Za-z0-9_./+=-]{16,}\"',
+                re.IGNORECASE)),
+]
+for name, rx in patterns:
+    if rx.search(out):
+        sys.stderr.write(f'uzustack-brain pre-commit: refusing commit — {name} detected in staged diff.\n')
+        sys.stderr.write('該当 file を編集するか、意図的なら以下を実行:\n')
+        sys.stderr.write('  uzustack-brain-sync --skip-file <path>  (恒久的に exclude)\n')
+        sys.exit(1)
+sys.exit(0)
+"
+HOOK_EOF
+chmod +x "$HOOK"
+
+# ---- 初期 commit (idempotent、既 commit なら skip) ----
+cd "$UZUSTACK_HOME"
+git add -f .gitignore .brain-allowlist .brain-privacy-map.json .gitattributes
+# HEAD が存在する場合は index に diff があれば commit
+if git rev-parse HEAD >/dev/null 2>&1; then
+  if ! git diff --cached --quiet 2>/dev/null; then
+    git -c user.email="uzustack@localhost" -c user.name="uzustack-brain-init" \
+        commit -q -m "chore: uzustack-brain-init (refresh sync config)"
+  fi
+else
+  # 一番最初の commit
+  git -c user.email="uzustack@localhost" -c user.name="uzustack-brain-init" \
+      commit -q -m "chore: uzustack-brain-init"
+fi
+
+# ---- 初期 push ----
+if ! git push -q -u origin main 2>/dev/null; then
+  # default branch が master の可能性、または remote に既存 content の可能性。
+  # 解決を試みる: fetch + fast-forward merge + push
+  CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+  if git fetch origin 2>/dev/null && git pull --ff-only origin "$CURRENT_BRANCH" 2>/dev/null; then
+    git push -q -u origin "$CURRENT_BRANCH" || {
+      echo "$REMOTE_URL への push 失敗。remote が divergent な可能性。" >&2
+      echo "試す: cd ~/.uzustack && git pull --rebase origin $CURRENT_BRANCH && git push origin $CURRENT_BRANCH" >&2
+      exit 1
+    }
+  else
+    # fetch / merge も効かない時の case
+    echo "$REMOTE_URL への push 失敗。fetch / merge も効かなかった。" >&2
+    echo "手動復旧: cd ~/.uzustack && git status を確認、conflict 解消後に push する。" >&2
+    exit 1
+  fi
+fi
+
+# ---- remote-url helper file を書く (~/.uzustack/ の外、restore でも残る) ----
+echo "$REMOTE_URL" > "$REMOTE_FILE"
+chmod 600 "$REMOTE_FILE"
+
+# ---- GBrain consumer 登録 ----
+mkdir -p "$UZUSTACK_HOME"
+CONSUMER_STATUS="pending"
+GBRAIN_URL_VAL="${GBRAIN_URL:-$("$CONFIG_BIN" get gbrain_url 2>/dev/null || echo "")}"
+GBRAIN_TOKEN_VAL="${GBRAIN_TOKEN:-$("$CONFIG_BIN" get gbrain_token 2>/dev/null || echo "")}"
+
+if [ -n "$GBRAIN_URL_VAL" ] && [ -n "$GBRAIN_TOKEN_VAL" ]; then
+  # HTTP handoff を試みる
+  HTTP_RESP=$(curl -sS -X POST "${GBRAIN_URL_VAL%/}/ingest-repo" \
+    -H "Authorization: Bearer $GBRAIN_TOKEN_VAL" \
+    -H "Content-Type: application/json" \
+    --data "{\"repo_url\":\"$REMOTE_URL\"}" \
+    -w "\n%{http_code}" 2>&1 || echo -e "\ncurl-error")
+  HTTP_CODE=$(echo "$HTTP_RESP" | tail -1)
+  if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "204" ]; then
+    CONSUMER_STATUS="ok"
+    echo "GBrain consumer を登録: $GBRAIN_URL_VAL"
+  else
+    echo "GBrain ingest endpoint が HTTP $HTTP_CODE を返した。次の skill 実行で再試行。"
+  fi
+elif [ -z "$GBRAIN_URL_VAL" ]; then
+  echo "(GBRAIN_URL 未設定 — consumer 登録を skip。設定するには:"
+  echo "   uzustack-config set gbrain_url <url>"
+  echo "   uzustack-config set gbrain_token <token>"
+  echo " そして実行: uzustack-brain-consumer add gbrain --ingest-url <url> --token <token>)"
+fi
+
+# consumers.json を書く — 正準 registry。token はここには保存しない。
+# token は uzustack-config (machine-local) に置く。本 file は sync されるので
+# 新マシンが consumer の存在を把握し、token を prompt できる。
+python3 - "$CONSUMERS_FILE" "$GBRAIN_URL_VAL" "$CONSUMER_STATUS" <<'PYEOF'
+import sys, json, os
+path, url, status = sys.argv[1:4]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    data = {"consumers": []}
+# GBrain entry を upsert
+entry = {"name": "gbrain", "ingest_url": url, "status": status, "token_ref": "gbrain_token"}
+updated = False
+for i, c in enumerate(data.get("consumers", [])):
+    if c.get("name") == "gbrain":
+        data["consumers"][i] = entry
+        updated = True
+        break
+if not updated:
+    data.setdefault("consumers", []).append(entry)
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PYEOF
+
+# 同 session 内で consumers.json を stage + commit する
+cd "$UZUSTACK_HOME"
+git add -f consumers.json 2>/dev/null || true
+if ! git diff --cached --quiet 2>/dev/null; then
+  git -c user.email="uzustack@localhost" -c user.name="uzustack-brain-init" \
+      commit -q -m "chore: register GBrain consumer"
+  git push -q origin HEAD 2>/dev/null || true
+fi
+
+# ---- 完了 ----
+cat <<EOF
+
+uzustack-brain-init 完了。
+Repo:    $UZUSTACK_HOME (git)
+Remote:  $REMOTE_URL
+Remote URL は $REMOTE_FILE にも保存。
+
+sync は各 skill の開始 / 終了で自動実行 (daemon 不要)。
+状態確認:
+  uzustack-brain-sync --status
+
+sync を有効化するため、次の skill 実行時に privacy mode について 1 回質問される
+(全 sync / artifact のみ / off)。
+
+新マシン? 別 laptop で以下を行う:
+  $REMOTE_FILE
+の copy をその home directory に置き、uzustack-brain-restore を実行する。
+EOF
