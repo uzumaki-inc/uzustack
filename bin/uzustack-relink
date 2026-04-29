@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# uzustack-relink — skill_prefix config に基づいて skill symlink を張り直す
+#
+# 使い方:
+#   uzustack-relink
+#
+# テスト用 env override:
+#   UZUSTACK_STATE_DIR   — ~/.uzustack state directory を上書き
+#   UZUSTACK_INSTALL_DIR — uzustack install directory を上書き
+#   UZUSTACK_SKILLS_DIR  — 配置先 skills directory を上書き
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+UZUSTACK_CONFIG="${SCRIPT_DIR}/uzustack-config"
+
+# install dir を検出
+INSTALL_DIR="${UZUSTACK_INSTALL_DIR:-}"
+if [ -z "$INSTALL_DIR" ]; then
+  if [ -d "$HOME/.claude/skills/uzustack" ]; then
+    INSTALL_DIR="$HOME/.claude/skills/uzustack"
+  elif [ -d "${SCRIPT_DIR}/.." ] && [ -f "${SCRIPT_DIR}/../setup" ]; then
+    INSTALL_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+  fi
+fi
+
+if [ -z "$INSTALL_DIR" ] || [ ! -d "$INSTALL_DIR" ]; then
+  echo "エラー: uzustack install directory が見つからない。" >&2
+  echo "実行: cd ~/.claude/skills/uzustack && ./setup" >&2
+  exit 1
+fi
+
+# 配置先 skills dir を検出
+SKILLS_DIR="${UZUSTACK_SKILLS_DIR:-$(dirname "$INSTALL_DIR")}"
+[ -d "$SKILLS_DIR" ] || mkdir -p "$SKILLS_DIR"
+
+# prefix 設定を読む
+PREFIX=$("$UZUSTACK_CONFIG" get skill_prefix 2>/dev/null || echo "false")
+
+# helper: 古い skill entry (symlink もしくは SKILL.md が symlink の実 directory) を撤去
+_cleanup_skill_entry() {
+  local entry="$1"
+  if [ -L "$entry" ]; then
+    rm -f "$entry"
+  elif [ -d "$entry" ] && [ -L "$entry/SKILL.md" ]; then
+    rm -rf "$entry"
+  fi
+}
+
+# skill 群を発見 (SKILL.md がある directory、meta dir は除外)
+SKILL_COUNT=0
+for skill_dir in "$INSTALL_DIR"/*/; do
+  [ -d "$skill_dir" ] || continue
+  skill=$(basename "$skill_dir")
+  # skill ではない directory を skip
+  case "$skill" in bin|browse|design|docs|extension|lib|node_modules|scripts|test|.git|.github) continue ;; esac
+  [ -f "$skill_dir/SKILL.md" ] || continue
+
+  if [ "$PREFIX" = "true" ]; then
+    # 既に uzustack-* 名の directory を二重 prefix しない
+    case "$skill" in
+      uzustack-*) link_name="$skill" ;;
+      *)          link_name="uzustack-$skill" ;;
+    esac
+    # 古い flat entry が残っていれば削除 (新 link と同じ名前なら残す)
+    [ "$link_name" != "$skill" ] && _cleanup_skill_entry "$SKILLS_DIR/$skill"
+  else
+    link_name="$skill"
+    # 実体名が uzustack-* (例: uzustack-upgrade) の dir は撤去しない
+    case "$skill" in
+      uzustack-*) ;; # 実体名なので prefix 付き古 link は無い
+      *)          _cleanup_skill_entry "$SKILLS_DIR/uzustack-$skill" ;;
+    esac
+  fi
+  target="$SKILLS_DIR/$link_name"
+  # 古い directory symlink を実 directory に upgrade
+  [ -L "$target" ] && rm -f "$target"
+  # SKILL.md を symlink した実 directory を作る (絶対 path)
+  mkdir -p "$target"
+  ln -snf "$INSTALL_DIR/$skill/SKILL.md" "$target/SKILL.md"
+  SKILL_COUNT=$((SKILL_COUNT + 1))
+done
+
+# prefix 設定に合わせて SKILL.md の name: field を patch
+"$INSTALL_DIR/bin/uzustack-patch-names" "$INSTALL_DIR" "$PREFIX"
+
+if [ "$PREFIX" = "true" ]; then
+  echo "$SKILL_COUNT 個の skill を uzustack-* 名で relink した"
+else
+  echo "$SKILL_COUNT 個の skill を flat 名で relink した"
+fi
