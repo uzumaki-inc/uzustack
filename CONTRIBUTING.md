@@ -300,6 +300,23 @@ voice 規約 v1 項目 4「fixed identifier 英語維持」を、外部 SaaS や
 - **output 表示英語維持の境界線**：sentinel token + 周辺 context は parser 互換重視で **英語維持**。`uzustack-specialist-stats` output / dashboard 系で適用。コメント / status メッセージは日本語化、機械処理される token は英語維持
 - **judgment 軸数の動的性**：外部 CLI 連携の有無で軸数が変動する。step-37（`gbrain` あり）→ 3 軸 / step-38（なし）→ 2 軸 / step-39（なし、CONTRIBUTING 統合あり）→ 2 軸 + 統合タスク。事前合意で軸数を確定すれば cluster 進行が機械化される
 
+#### 規約射程の拡張（cluster B step-39 で確立）— ファイル名も射程に含める
+
+voice 規約 v1（7 項目）+ step-37 拡張は **ファイル名そのもの** も射程に含める。`bin/<name>` の `<name>` も「ファイル内 identifier」と同じ規律で扱う。step-39 完了直前に「規約はファイル内 identifier しか射程に入れていなかった」穴が発覚し、cluster B 完了タイミングで穴埋めとして確立。
+
+**運用ルール**：外部 product / protocol / tool 名で構成された binary は **`uzustack-` prefix なしで維持** する。
+
+**判断基準**：
+
+- upstream で `gstack-` prefix が付いていない binary は、upstream 側でも「外部 identifier 命名」と判断した signal として読む
+- これに従い uzustack 側でも prefix なし維持する（memory `mechanize_over_scope_skip` 規律と整合）
+- 「内容は外部 identifier 維持、ファイル名だけ `uzustack-` prefix」という分裂状態を生まない
+
+**具体例**：
+
+- `bin/chrome-cdp`（Chrome [外部 product 名] + CDP [外部 protocol 名] の合成）— `uzustack-chrome-cdp` ではなく `chrome-cdp` のまま維持
+- 確認 signal：`_upstream/gstack/test/audit-compliance.test.ts` の `bin/chrome-cdp` hardcode（upstream test が path を直接参照、upstream 設計判断の最も強い signal）
+
 #### 集約タイミング規律
 
 cluster 進行中は規範が PR description / memory / step ノート / issue body に分散して動いている。**cluster 完了で規範が固まった直後（次 cluster 着手前）に CONTRIBUTING.md へ集約**する。Phase 完了判定 (step-42) まで待つと cluster 内参照性が上がらず、PR description を漁る運用になる。本節は cluster B step-39 で集約した（step-42 → step-39 完了に前倒し）。
