@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
-# uzustack-slug — output project slug and sanitized branch name
-# Usage: eval "$(uzustack-slug)"  → sets SLUG and BRANCH variables
-# Or:    uzustack-slug            → prints SLUG=... and BRANCH=... lines
+# uzustack-slug — project slug と sanitized branch name を出力
+# Usage: eval "$(uzustack-slug)"  → SLUG と BRANCH 変数を set
+# Or:    uzustack-slug            → SLUG=... と BRANCH=... の行を print
 #
-# Security: output is sanitized to [a-zA-Z0-9._-] only, preventing
-# shell injection when consumed via source or eval.
+# Security: 出力は [a-zA-Z0-9._-] のみに sanitize、source / eval 経由での
+# shell injection を防ぐ。
 set -euo pipefail
 
 CACHE_DIR="$HOME/.uzustack/slug-cache"
 PROJECT_DIR="$(pwd)"
-# Encode absolute path as cache key: /Users/j/foo → _Users_j_foo
+# absolute path を cache key に encode: /Users/j/foo → _Users_j_foo
 CACHE_KEY=$(printf '%s' "$PROJECT_DIR" | tr '/' '_')
 CACHE_FILE="${CACHE_DIR}/${CACHE_KEY}"
 
-# 1. Try cached slug first (guarantees consistency across sessions)
+# 1. cached slug を最優先 (session 間の一貫性を保証)
 if [[ -f "$CACHE_FILE" ]]; then
   SLUG=$(cat "$CACHE_FILE")
 fi
 
-# 2. If no cache, compute from git remote (separated from pipeline to avoid
-#    pipefail swallowing the error and producing an empty slug)
+# 2. cache 無しなら git remote から計算 (pipeline 分離は pipefail がエラーを
+#    swallow して空 slug を出すのを防ぐため)
 if [[ -z "${SLUG:-}" ]]; then
   REMOTE_URL=$(git remote get-url origin 2>/dev/null) || REMOTE_URL=""
   if [[ -n "$REMOTE_URL" ]]; then
@@ -28,10 +28,10 @@ if [[ -z "${SLUG:-}" ]]; then
   fi
 fi
 
-# 3. Fallback to basename only when there's truly no git remote configured
+# 3. git remote が完全に未設定の時のみ basename に fallback
 SLUG="${SLUG:-$(basename "$PWD" | tr -cd 'a-zA-Z0-9._-')}"
 
-# 4. Cache the slug for future sessions (atomic write, fail silently)
+# 4. 次回 session 用に slug を cache (atomic write、失敗時は silently)
 if [[ -n "$SLUG" ]]; then
   mkdir -p "$CACHE_DIR" 2>/dev/null || true
   CACHE_TMP=$(mktemp "$CACHE_DIR/.slug-XXXXXX" 2>/dev/null) || CACHE_TMP=""

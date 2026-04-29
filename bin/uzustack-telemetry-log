@@ -1,0 +1,241 @@
+#!/usr/bin/env bash
+# uzustack-telemetry-log — telemetry event を local JSONL に追記
+#
+# Data flow:
+#   preamble (start) ──▶ .pending marker
+#   preamble (epilogue) ──▶ uzustack-telemetry-log ──▶ skill-usage.jsonl
+#                                                  └──▶ uzustack-telemetry-sync (bg)
+#
+# Usage:
+#   uzustack-telemetry-log --skill qa --duration 142 --outcome success \
+#     --used-browse true --session-id "12345-1710756600"
+#
+# Env overrides (for testing):
+#   UZUSTACK_HOME  — ~/.uzustack state directory を上書き
+#   UZUSTACK_DIR   — auto-detect された uzustack root を上書き
+#
+# NOTE: set -uo pipefail を使用 (no -e) — telemetry は非ゼロ exit してはいけない
+set -uo pipefail
+
+UZUSTACK_DIR="${UZUSTACK_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+STATE_DIR="${UZUSTACK_HOME:-$HOME/.uzustack}"
+ANALYTICS_DIR="$STATE_DIR/analytics"
+JSONL_FILE="$ANALYTICS_DIR/skill-usage.jsonl"
+PENDING_DIR="$ANALYTICS_DIR"  # .pending-* file はここに置く
+CONFIG_CMD="$UZUSTACK_DIR/bin/uzustack-config"
+VERSION_FILE="$UZUSTACK_DIR/VERSION"
+
+# ─── flag を parse ─────────────────────────────────────────────
+SKILL=""
+DURATION=""
+OUTCOME="unknown"
+USED_BROWSE="false"
+SESSION_ID=""
+ERROR_CLASS=""
+ERROR_MESSAGE=""
+FAILED_STEP=""
+EVENT_TYPE="skill_run"
+SOURCE=""
+# Security-event fields (--event-type が attack_attempt の時のみ populate)
+SEC_URL_DOMAIN=""
+SEC_PAYLOAD_HASH=""
+SEC_CONFIDENCE=""
+SEC_LAYER=""
+SEC_VERDICT=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --skill)         SKILL="$2"; shift 2 ;;
+    --duration)      DURATION="$2"; shift 2 ;;
+    --outcome)       OUTCOME="$2"; shift 2 ;;
+    --used-browse)   USED_BROWSE="$2"; shift 2 ;;
+    --session-id)    SESSION_ID="$2"; shift 2 ;;
+    --error-class)   ERROR_CLASS="$2"; shift 2 ;;
+    --error-message) ERROR_MESSAGE="$2"; shift 2 ;;
+    --failed-step)   FAILED_STEP="$2"; shift 2 ;;
+    --event-type)    EVENT_TYPE="$2"; shift 2 ;;
+    --source)        SOURCE="$2"; shift 2 ;;
+    # Security event fields — browse/src/security.ts logAttempt() が emit する
+    --url-domain)    SEC_URL_DOMAIN="$2"; shift 2 ;;
+    --payload-hash)  SEC_PAYLOAD_HASH="$2"; shift 2 ;;
+    --confidence)    SEC_CONFIDENCE="$2"; shift 2 ;;
+    --layer)         SEC_LAYER="$2"; shift 2 ;;
+    --verdict)       SEC_VERDICT="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+
+# Source: flag > env > default 'live'
+SOURCE="${SOURCE:-${UZUSTACK_TELEMETRY_SOURCE:-live}}"
+
+# ─── telemetry tier を読む ─────────────────────────────────────
+TIER="$("$CONFIG_CMD" get telemetry 2>/dev/null || true)"
+TIER="${TIER:-off}"
+
+# tier を validate
+case "$TIER" in
+  off|anonymous|community) ;;
+  *) TIER="off" ;;  # 不正値 → off に fallback
+esac
+
+if [ "$TIER" = "off" ]; then
+  # telemetry off の場合でも、本 session の pending marker は clear する
+  [ -n "$SESSION_ID" ] && rm -f "$PENDING_DIR/.pending-$SESSION_ID" 2>/dev/null || true
+  exit 0
+fi
+
+# ─── 古い .pending marker を finalize ────────────────────────
+# 各 session が独自の .pending-$SESSION_ID file を持つ。並行 session 間の
+# race を避けるため、自分の session 以外の marker は finalize する。
+for PFILE in "$PENDING_DIR"/.pending-*; do
+  [ -f "$PFILE" ] || continue
+  # 自 session の marker は skip (まだ in-flight)
+  PFILE_BASE="$(basename "$PFILE")"
+  PFILE_SID="${PFILE_BASE#.pending-}"
+  [ "$PFILE_SID" = "$SESSION_ID" ] && continue
+
+  PENDING_DATA="$(cat "$PFILE" 2>/dev/null || true)"
+  rm -f "$PFILE" 2>/dev/null || true
+  if [ -n "$PENDING_DATA" ]; then
+    # pending marker から field を抽出 (grep -o + awk)
+    P_SKILL="$(echo "$PENDING_DATA" | grep -o '"skill":"[^"]*"' | head -1 | awk -F'"' '{print $4}')"
+    P_TS="$(echo "$PENDING_DATA" | grep -o '"ts":"[^"]*"' | head -1 | awk -F'"' '{print $4}')"
+    P_SID="$(echo "$PENDING_DATA" | grep -o '"session_id":"[^"]*"' | head -1 | awk -F'"' '{print $4}')"
+    P_VER="$(echo "$PENDING_DATA" | grep -o '"uzustack_version":"[^"]*"' | head -1 | awk -F'"' '{print $4}')"
+    P_OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+    P_ARCH="$(uname -m)"
+
+    # 古い event は outcome: unknown として書き込む
+    mkdir -p "$ANALYTICS_DIR"
+    printf '{"v":1,"ts":"%s","event_type":"skill_run","skill":"%s","session_id":"%s","uzustack_version":"%s","os":"%s","arch":"%s","duration_s":null,"outcome":"unknown","error_class":null,"used_browse":false,"sessions":1}\n' \
+      "$P_TS" "$P_SKILL" "$P_SID" "$P_VER" "$P_OS" "$P_ARCH" >> "$JSONL_FILE" 2>/dev/null || true
+  fi
+done
+
+# 自 session の pending marker を clear (これから本 event を log する)
+[ -n "$SESSION_ID" ] && rm -f "$PENDING_DIR/.pending-$SESSION_ID" 2>/dev/null || true
+
+# ─── metadata を集める ────────────────────────────────────────
+TS="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%S 2>/dev/null || echo "")"
+UZUSTACK_VERSION="$(cat "$VERSION_FILE" 2>/dev/null | tr -d '[:space:]' || echo "unknown")"
+OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+ARCH="$(uname -m)"
+SESSIONS="1"
+if [ -d "$STATE_DIR/sessions" ]; then
+  _SC="$(find "$STATE_DIR/sessions" -mmin -120 -type f 2>/dev/null | wc -l | tr -d ' \n\r\t')"
+  [ -n "$_SC" ] && [ "$_SC" -gt 0 ] 2>/dev/null && SESSIONS="$_SC"
+fi
+
+# community tier 用に installation_id を生成
+# random UUID を local 保存 — hostname/user 由来ではないので、マシン同定情報を
+# 知っている人間でも推測・相関できない。
+INSTALL_ID=""
+if [ "$TIER" = "community" ]; then
+  ID_FILE="$HOME/.uzustack/installation-id"
+  if [ -f "$ID_FILE" ]; then
+    INSTALL_ID="$(cat "$ID_FILE" 2>/dev/null)"
+  fi
+  if [ -z "$INSTALL_ID" ]; then
+    # random UUID v4 を生成
+    if command -v uuidgen >/dev/null 2>&1; then
+      INSTALL_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+    elif [ -r /proc/sys/kernel/random/uuid ]; then
+      INSTALL_ID="$(cat /proc/sys/kernel/random/uuid)"
+    else
+      # Fallback: /dev/urandom から random hex
+      INSTALL_ID="$(od -An -tx1 -N16 /dev/urandom 2>/dev/null | tr -d ' \n')"
+    fi
+    if [ -n "$INSTALL_ID" ]; then
+      mkdir -p "$(dirname "$ID_FILE")" 2>/dev/null
+      printf '%s' "$INSTALL_ID" > "$ID_FILE" 2>/dev/null
+    fi
+  fi
+fi
+
+# Local-only fields (remote 送信されない)
+REPO_SLUG=""
+BRANCH=""
+if command -v git >/dev/null 2>&1; then
+  REPO_SLUG="$(git remote get-url origin 2>/dev/null | sed 's|.*[:/]\([^/]*/[^/]*\)\.git$|\1|;s|.*[:/]\([^/]*/[^/]*\)$|\1|' | tr '/' '-' 2>/dev/null || true)"
+  BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+fi
+
+# ─── JSON を構築して append ───────────────────────────────────
+mkdir -p "$ANALYTICS_DIR"
+
+# 文字列 field を JSON 安全に sanitize (quote / backslash / control char を除去)
+json_safe() { printf '%s' "$1" | tr -d '"\\\n\r\t' | head -c 200; }
+SKILL="$(json_safe "$SKILL")"
+OUTCOME="$(json_safe "$OUTCOME")"
+SESSION_ID="$(json_safe "$SESSION_ID")"
+SOURCE="$(json_safe "$SOURCE")"
+EVENT_TYPE="$(json_safe "$EVENT_TYPE")"
+REPO_SLUG="$(json_safe "$REPO_SLUG")"
+BRANCH="$(json_safe "$BRANCH")"
+
+# null field を escape — ERROR_CLASS / FAILED_STEP は json_safe() で sanitize
+ERR_FIELD="null"
+[ -n "$ERROR_CLASS" ] && ERR_FIELD="\"$(json_safe "$ERROR_CLASS")\""
+
+ERR_MSG_FIELD="null"
+[ -n "$ERROR_MESSAGE" ] && ERR_MSG_FIELD="\"$(printf '%s' "$ERROR_MESSAGE" | head -c 200 | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/	/\\t/g' | tr '\n\r' '  ')\""
+
+STEP_FIELD="null"
+[ -n "$FAILED_STEP" ] && STEP_FIELD="\"$(json_safe "$FAILED_STEP")\""
+
+# 異常な duration を cap
+if [ -n "$DURATION" ] && [ "$DURATION" -gt 86400 ] 2>/dev/null; then
+  DURATION=""  # 24h 超 → null
+fi
+if [ -n "$DURATION" ] && [ "$DURATION" -lt 0 ] 2>/dev/null; then
+  DURATION=""  # 負値 → null
+fi
+
+DUR_FIELD="null"
+[ -n "$DURATION" ] && DUR_FIELD="$DURATION"
+
+INSTALL_FIELD="null"
+[ -n "$INSTALL_ID" ] && INSTALL_FIELD="\"$INSTALL_ID\""
+
+BROWSE_BOOL="false"
+[ "$USED_BROWSE" = "true" ] && BROWSE_BOOL="true"
+
+# Security field を sanitize — salted hash と enum 値だが、防御的に json_safe() を
+# 適用。Domain は RFC 1035 の 253 文字制限まで。
+SEC_URL_DOMAIN="$(json_safe "$SEC_URL_DOMAIN")"
+SEC_PAYLOAD_HASH="$(json_safe "$SEC_PAYLOAD_HASH")"
+SEC_LAYER="$(json_safe "$SEC_LAYER")"
+SEC_VERDICT="$(json_safe "$SEC_VERDICT")"
+
+# Confidence は数値 0-1。未設定 / 不正の場合 null に default。
+SEC_CONF_FIELD="null"
+if [ -n "$SEC_CONFIDENCE" ]; then
+  # awk で validate + [0,1] に clamp。parse 失敗時は null fallback。
+  _sc="$(awk -v v="$SEC_CONFIDENCE" 'BEGIN { if (v+0 >= 0 && v+0 <= 1) printf "%.4f", v+0; else print "" }' 2>/dev/null || echo "")"
+  [ -n "$_sc" ] && SEC_CONF_FIELD="$_sc"
+fi
+
+SEC_DOMAIN_FIELD="null"
+[ -n "$SEC_URL_DOMAIN" ] && SEC_DOMAIN_FIELD="\"$SEC_URL_DOMAIN\""
+SEC_HASH_FIELD="null"
+[ -n "$SEC_PAYLOAD_HASH" ] && SEC_HASH_FIELD="\"$SEC_PAYLOAD_HASH\""
+SEC_LAYER_FIELD="null"
+[ -n "$SEC_LAYER" ] && SEC_LAYER_FIELD="\"$SEC_LAYER\""
+SEC_VERDICT_FIELD="null"
+[ -n "$SEC_VERDICT" ] && SEC_VERDICT_FIELD="\"$SEC_VERDICT\""
+
+printf '{"v":1,"ts":"%s","event_type":"%s","skill":"%s","session_id":"%s","uzustack_version":"%s","os":"%s","arch":"%s","duration_s":%s,"outcome":"%s","error_class":%s,"error_message":%s,"failed_step":%s,"used_browse":%s,"sessions":%s,"installation_id":%s,"source":"%s","security_url_domain":%s,"security_payload_hash":%s,"security_confidence":%s,"security_layer":%s,"security_verdict":%s,"_repo_slug":"%s","_branch":"%s"}\n' \
+  "$TS" "$EVENT_TYPE" "$SKILL" "$SESSION_ID" "$UZUSTACK_VERSION" "$OS" "$ARCH" \
+  "$DUR_FIELD" "$OUTCOME" "$ERR_FIELD" "$ERR_MSG_FIELD" "$STEP_FIELD" \
+  "$BROWSE_BOOL" "${SESSIONS:-1}" \
+  "$INSTALL_FIELD" "$SOURCE" \
+  "$SEC_DOMAIN_FIELD" "$SEC_HASH_FIELD" "$SEC_CONF_FIELD" "$SEC_LAYER_FIELD" "$SEC_VERDICT_FIELD" \
+  "$REPO_SLUG" "$BRANCH" >> "$JSONL_FILE" 2>/dev/null || true
+
+# ─── tier が off でなければ sync を trigger ──────────────────
+SYNC_CMD="$UZUSTACK_DIR/bin/uzustack-telemetry-sync"
+if [ -x "$SYNC_CMD" ]; then
+  "$SYNC_CMD" 2>/dev/null &
+fi
+
+exit 0

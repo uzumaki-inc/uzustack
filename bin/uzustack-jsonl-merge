@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# uzustack-jsonl-merge — append-only JSONL ファイル用の git merge driver
+#
+# Usage (git が呼び出す。ユーザーが直接呼ぶことは無い):
+#   uzustack-jsonl-merge <base> <ours> <theirs>
+#
+# bin/uzustack-brain-init / bin/uzustack-brain-restore が
+# local git config に登録する:
+#   git config merge.jsonl-append.driver \
+#       "$UZUSTACK_BIN/uzustack-jsonl-merge %O %A %B"
+#
+# Behavior:
+#   base + ours + theirs を結合し、完全一致行を重複排除、
+#   ISO 形式の `ts` フィールドがあればそれで sort、無ければ行の SHA-256 で
+#   決定的な順序にする。結果を <ours> (git merge-driver の規約により %A)
+#   に書き戻す。
+#
+#   2 台のマシンが push と push の間に同じ JSONL ファイルへ追記すると、
+#   ファイル末尾で同一行 conflict が起きる。本 driver はこれを綺麗に解消する:
+#   両方の追記を残し、wall-clock タイムスタンプがあれば順序付け、
+#   無ければ content hash で順序付ける。
+#
+# Exit codes:
+#   0 — merge 成功、結果を <ours> に書き戻し済み
+#   1 — error。git は conflict として扱い、merge を停止する
+
+set -uo pipefail
+
+if [ "$#" -lt 3 ]; then
+  echo "uzustack-jsonl-merge: 引数 3 個 (base ours theirs) が必要、実際は $# 個" >&2
+  exit 1
+fi
+
+BASE="$1"
+OURS="$2"
+THEIRS="$3"
+
+TMP=$(mktemp /tmp/uzustack-jsonl-merge.XXXXXX) || exit 1
+trap 'rm -f "$TMP" 2>/dev/null || true' EXIT
+
+python3 - "$BASE" "$OURS" "$THEIRS" > "$TMP" <<'PYEOF'
+import sys, json, hashlib
+
+paths = sys.argv[1:4]  # base, ours, theirs
+seen = {}  # 行内容 -> sort_key
+
+for path in paths:
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.rstrip('\n')
+                if not line:
+                    continue
+                if line in seen:
+                    continue
+                # ISO ts フィールド優先で sort、無ければ SHA-256 fallback
+                sort_key = None
+                try:
+                    obj = json.loads(line)
+                    ts = obj.get('ts') or obj.get('timestamp')
+                    if isinstance(ts, str):
+                        sort_key = (0, ts)
+                except (json.JSONDecodeError, ValueError, TypeError):
+                    pass
+                if sort_key is None:
+                    h = hashlib.sha256(line.encode('utf-8')).hexdigest()
+                    sort_key = (1, h)
+                seen[line] = sort_key
+    except FileNotFoundError:
+        # base / ours / theirs のいずれかが存在しないのは正常ケース
+        continue
+    except OSError:
+        # permission / IO error は致命。caller には非ゼロ exit で伝える
+        sys.exit(1)
+
+# timestamp 順 (group 0) を先、hash 順 (group 1) を後
+for line, _ in sorted(seen.items(), key=lambda item: item[1]):
+    print(line)
+PYEOF
+
+_PYEXIT=$?
+if [ "$_PYEXIT" != "0" ]; then
+  exit 1
+fi
+
+mv "$TMP" "$OURS" || exit 1
+trap - EXIT
+exit 0

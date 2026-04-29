@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+# uzustack-update-check — 全 skill 用の定期 version check
+#
+# Output (1 行 or 何も出さない):
+#   JUST_UPGRADED <old> <new>       — 直近の upgrade marker を発見
+#   UPGRADE_AVAILABLE <old> <new>   — remote VERSION が local と異なる
+#   (なし)                          — 最新 / snoozed / disabled / check skip
+#
+# Env overrides (for testing):
+#   UZUSTACK_DIR         — auto-detect された uzustack root を上書き
+#   UZUSTACK_REMOTE_URL  — remote VERSION URL を上書き
+#   UZUSTACK_HOME        — ~/.uzustack state directory を上書き
+set -euo pipefail
+
+UZUSTACK_DIR="${UZUSTACK_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+STATE_DIR="${UZUSTACK_HOME:-$HOME/.uzustack}"
+CACHE_FILE="$STATE_DIR/last-update-check"
+MARKER_FILE="$STATE_DIR/just-upgraded-from"
+SNOOZE_FILE="$STATE_DIR/update-snoozed"
+VERSION_FILE="$UZUSTACK_DIR/VERSION"
+REMOTE_URL="${UZUSTACK_REMOTE_URL:-https://raw.githubusercontent.com/uzumaki-inc/uzustack/main/VERSION}"
+
+# ─── Force flag (cache + snooze を無効化、stand-alone /uzustack-upgrade 用) ──
+if [ "${1:-}" = "--force" ]; then
+  rm -f "$CACHE_FILE"
+  rm -f "$SNOOZE_FILE"
+fi
+
+# ─── Step 0: update が disabled か check ────────────────────
+_UC=$("$UZUSTACK_DIR/bin/uzustack-config" get update_check 2>/dev/null || true)
+if [ "$_UC" = "false" ]; then
+  exit 0
+fi
+
+# ─── Migration: 古い Codex description を fix (1 回のみ) ─────
+# 既存 install には .agents/skills/uzustack/SKILL.md の description が
+# 過大 (>1024 chars) で Codex が reject するケースがある。runtime root
+# (bun/scripts なし) からは regenerate できないので、過大 file は削除する
+# — 次の ./setup or /uzustack-upgrade で正しく regenerate される。
+# Marker file で install ごとに最大 1 回しか走らないようにする。
+if [ ! -f "$STATE_DIR/.codex-desc-healed" ]; then
+  for _AGENTS_SKILL in "$UZUSTACK_DIR"/.agents/skills/*/SKILL.md; do
+    [ -f "$_AGENTS_SKILL" ] || continue
+    _DESC=$(awk '/^---$/{n++;next}n==1&&/^description:/{d=1;sub(/^description:\s*/,"");if(length>0)print;next}d&&/^  /{sub(/^  /,"");print;next}d{d=0}' "$_AGENTS_SKILL" | wc -c | tr -d ' ')
+    if [ "${_DESC:-0}" -gt 1024 ]; then
+      rm -f "$_AGENTS_SKILL"
+    fi
+  done
+  mkdir -p "$STATE_DIR"
+  touch "$STATE_DIR/.codex-desc-healed"
+fi
+
+# ─── Snooze helper ──────────────────────────────────────────
+# check_snooze <remote_version>
+#   snoozed なら 0 (静かにする)、snooze 無しなら 1 (出力する) を返す。
+#
+#   Snooze file format: <version> <level> <epoch>
+#   Level duration: 1=24h, 2=48h, 3+=7d
+#   New version (version mismatch) は snooze を reset する。
+check_snooze() {
+  local remote_ver="$1"
+  if [ ! -f "$SNOOZE_FILE" ]; then
+    return 1  # snooze file 無し → not snoozed
+  fi
+  local snoozed_ver snoozed_level snoozed_epoch
+  snoozed_ver="$(awk '{print $1}' "$SNOOZE_FILE" 2>/dev/null || true)"
+  snoozed_level="$(awk '{print $2}' "$SNOOZE_FILE" 2>/dev/null || true)"
+  snoozed_epoch="$(awk '{print $3}' "$SNOOZE_FILE" 2>/dev/null || true)"
+
+  # Validate: 3 field すべて非空必須
+  if [ -z "$snoozed_ver" ] || [ -z "$snoozed_level" ] || [ -z "$snoozed_epoch" ]; then
+    return 1  # corrupt file → not snoozed
+  fi
+
+  # Validate: level と epoch は整数必須
+  case "$snoozed_level" in *[!0-9]*) return 1 ;; esac
+  case "$snoozed_epoch" in *[!0-9]*) return 1 ;; esac
+
+  # 新 version が出てる? snooze を ignore。
+  if [ "$snoozed_ver" != "$remote_ver" ]; then
+    return 1
+  fi
+
+  # level に応じて snooze duration を計算
+  local duration
+  case "$snoozed_level" in
+    1) duration=86400 ;;   # 24 時間
+    2) duration=172800 ;;  # 48 時間
+    *) duration=604800 ;;  # 7 日 (level 3+)
+  esac
+
+  local now
+  now="$(date +%s)"
+  local expires=$(( snoozed_epoch + duration ))
+  if [ "$now" -lt "$expires" ]; then
+    return 0  # まだ snoozed
+  fi
+
+  return 1  # snooze expired
+}
+
+# ─── Step 1: local version を読む ─────────────────────────────
+LOCAL=""
+if [ -f "$VERSION_FILE" ]; then
+  LOCAL="$(cat "$VERSION_FILE" 2>/dev/null | tr -d '[:space:]')"
+fi
+if [ -z "$LOCAL" ]; then
+  exit 0  # VERSION file 無し → check skip
+fi
+
+# ─── Step 2: "just upgraded" marker を check ──────────────────
+if [ -f "$MARKER_FILE" ]; then
+  OLD="$(cat "$MARKER_FILE" 2>/dev/null | tr -d '[:space:]')"
+  rm -f "$MARKER_FILE"
+  rm -f "$SNOOZE_FILE"
+  if [ -n "$OLD" ]; then
+    echo "JUST_UPGRADED $OLD $LOCAL"
+  fi
+  # exit せず — upgrade 後にさらに update が来てる可能性があるので
+  # remote check に fall through する
+fi
+
+# ─── Step 3: cache freshness を check ──────────────────────────
+# UP_TO_DATE: 60 min TTL (新 release を素早く検知)
+# UPGRADE_AVAILABLE: 720 min TTL (うるさく言い続ける)
+if [ -f "$CACHE_FILE" ]; then
+  CACHED="$(cat "$CACHE_FILE" 2>/dev/null || true)"
+  case "$CACHED" in
+    UP_TO_DATE*)        CACHE_TTL=60 ;;
+    UPGRADE_AVAILABLE*) CACHE_TTL=720 ;;
+    *)                  CACHE_TTL=0 ;;  # corrupt → force re-fetch
+  esac
+
+  STALE=$(find "$CACHE_FILE" -mmin +$CACHE_TTL 2>/dev/null || true)
+  if [ -z "$STALE" ] && [ "$CACHE_TTL" -gt 0 ]; then
+    case "$CACHED" in
+      UP_TO_DATE*)
+        CACHED_VER="$(echo "$CACHED" | awk '{print $2}')"
+        if [ "$CACHED_VER" = "$LOCAL" ]; then
+          exit 0
+        fi
+        ;;
+      UPGRADE_AVAILABLE*)
+        CACHED_OLD="$(echo "$CACHED" | awk '{print $2}')"
+        if [ "$CACHED_OLD" = "$LOCAL" ]; then
+          CACHED_NEW="$(echo "$CACHED" | awk '{print $3}')"
+          if check_snooze "$CACHED_NEW"; then
+            exit 0  # snoozed — 静かにする
+          fi
+          echo "$CACHED"
+          exit 0
+        fi
+        ;;
+    esac
+  fi
+fi
+
+# ─── Step 4: Slow path — remote version を fetch ──────────────
+mkdir -p "$STATE_DIR"
+
+# Supabase install ping を background で発火 (並列、non-blocking)
+# community health metric 用の update check event を edge function 経由で log。
+# Supabase 未設定 or telemetry off の場合は no-op。
+if [ -z "${UZUSTACK_SUPABASE_URL:-}" ] && [ -f "$UZUSTACK_DIR/supabase/config.sh" ]; then
+  . "$UZUSTACK_DIR/supabase/config.sh"
+fi
+_SUPA_URL="${UZUSTACK_SUPABASE_URL:-}"
+_SUPA_KEY="${UZUSTACK_SUPABASE_ANON_KEY:-}"
+# telemetry opt-out を尊重 — ユーザーが telemetry: off に設定してたら Supabase ping しない
+_TEL_TIER="$("$UZUSTACK_DIR/bin/uzustack-config" get telemetry 2>/dev/null || true)"
+if [ -n "$_SUPA_URL" ] && [ -n "$_SUPA_KEY" ] && [ "${_TEL_TIER:-off}" != "off" ]; then
+  _OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  curl -sf --max-time 5 \
+    -X POST "${_SUPA_URL}/functions/v1/update-check" \
+    -H "Content-Type: application/json" \
+    -H "apikey: ${_SUPA_KEY}" \
+    -d "{\"version\":\"$LOCAL\",\"os\":\"$_OS\"}" \
+    >/dev/null 2>&1 &
+fi
+
+# GitHub raw fetch (primary、常に reliable)
+REMOTE=""
+REMOTE="$(curl -sf --max-time 5 "$REMOTE_URL" 2>/dev/null || true)"
+REMOTE="$(echo "$REMOTE" | tr -d '[:space:]')"
+
+# Validate: version number に見える必要あり (HTML error page を reject)
+if ! echo "$REMOTE" | grep -qE '^[0-9]+\.[0-9.]+$'; then
+  # 不正 or 空 response — 最新と仮定
+  echo "UP_TO_DATE $LOCAL" > "$CACHE_FILE"
+  exit 0
+fi
+
+if [ "$LOCAL" = "$REMOTE" ]; then
+  echo "UP_TO_DATE $LOCAL" > "$CACHE_FILE"
+  exit 0
+fi
+
+# Version 不一致 — upgrade あり
+echo "UPGRADE_AVAILABLE $LOCAL $REMOTE" > "$CACHE_FILE"
+if check_snooze "$REMOTE"; then
+  exit 0  # snoozed — 静かにする
+fi
+
+# upgrade_prompted event を log (slow-path fetch 時のみ、cache replay では log しない)
+TEL_CMD="$UZUSTACK_DIR/bin/uzustack-telemetry-log"
+if [ -x "$TEL_CMD" ]; then
+  "$TEL_CMD" --event-type upgrade_prompted --skill "" --duration 0 \
+    --outcome success --session-id "update-$$-$(date +%s)" 2>/dev/null &
+fi
+
+echo "UPGRADE_AVAILABLE $LOCAL $REMOTE"
