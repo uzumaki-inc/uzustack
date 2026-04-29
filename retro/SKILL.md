@@ -1,6 +1,7 @@
 ---
 name: retro
 type: translated
+preamble-tier: 2
 version: 2.0.0
 description: |
   週次のエンジニアリング振り返り。コミット履歴、作業パターン、コード品質メトリクスを分析し、
@@ -23,6 +24,10 @@ triggers:
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
 
+
+
+
+
 # /retro — 週次エンジニアリング振り返り
 
 コミット履歴、作業パターン、コード品質メトリクスを分析し、包括的なエンジニアリング振り返りを生成する。チーム対応：コマンドを実行したユーザーを識別し、個人ごとの称賛と成長機会を伴って全 contributor を分析する。シニア IC / CTO レベルの builder が Claude Code を Force multiplier として使うことを想定して設計されている。
@@ -40,6 +45,8 @@ triggers:
 - `/retro compare` — 現在の窓と直前の同サイズ窓を比較
 - `/retro compare 14d` — 明示的な窓で比較
 
+
+
 ## 手順
 
 引数を解析して時間窓を決定する。引数なしならデフォルトで 7 日。すべての時刻は **ユーザーのローカルタイムゾーン** で報告する（システムデフォルトを使用、`TZ` を設定しない）。
@@ -56,6 +63,8 @@ Usage: /retro [window | compare]
   /retro compare      — 現在の期間と直前の期間を比較
   /retro compare 14d  — 明示的な窓で比較
 ```
+
+
 
 ### Step 1：生データの収集
 
@@ -249,6 +258,10 @@ fix 比率が 50% を超えたら警告 ― これは「速く出して速く直
 **Contributor が一人だけの場合（ソロ repo）**：チーム内訳をスキップして従来通り進める ― retro は個人的なものになる。
 
 **Co-Authored-By trailer がある場合**：コミットメッセージ内の `Co-Authored-By:` 行を解析する。primary author と並んで該当 author をコミットの credit に含める。AI co-author（例：`noreply@anthropic.com`）は note するが、チームメンバーには含めない ― 代わりに「AI 支援コミット」を別メトリクスとしてトラッキング。
+
+
+
+
 
 ### Step 10：Week-over-Week トレンド（窓 >= 14d の場合）
 
