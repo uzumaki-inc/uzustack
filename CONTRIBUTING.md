@@ -262,6 +262,48 @@ step-35 以降の bin 機械翻訳と既存 skill の .tmpl 化が「**置換ル
 - **DEFAULTS の意味論判断は step-37 集中**：gstack 文字を含まない key（例：`gbrain_sync_mode`）は機械置換せず、step-37 の brain 系翻訳時に集中判断
 - **v1 で完璧を目指さない**：翻訳作業中に増えるケースは追記して育てる方針。迷ったら `v2 で見直し` フラグ付きで暫定採用し、翻訳作業を止めない
 
+### voice 規約 v1（cluster B = bin 翻訳で確立）
+
+Phase 3 cluster B（bin 翻訳、step-35〜39、PR #40 / #42 / #44 / #46 / #47）で確立した voice 翻案規律。bash + 副言語 embedded スクリプトの翻訳に適用する。本節は cluster B 完了 (step-39) で PR description / memory に分散していた規範を集約したもの。
+
+#### 7 項目（cluster B step-35 = PR #40 commit `d1b2c0f` で確立）
+
+1. **Section 見出し**（`Usage:` / `Behavior:` / `Exit codes:`）は **英語維持** — CLI 慣習に合わせる
+2. **エラーメッセージは客観形（日本語）**：「〜が必要、実際は N 個」のような客観事実、責難形（「〜してください」）は避ける
+3. **インラインコメントは簡潔な日本語**、技術用語は backtick で英語維持
+4. **fixed identifier**（`base` / `ours` / `theirs`、API 名）は **英語維持**
+5. **bin 名**は backtick 囲み（例：`uzustack-config`）
+6. **embedded code** 内コメント（Python heredoc / bun -e の JS 等）も日本語化、技術用語は英語維持
+7. **括弧**は半角 `(...)` を維持
+
+#### 運用方針 v1
+
+- **bash + 副言語 embedded** は副言語コメントも日本語化（cluster B step-36 で確立、Python heredoc / bun -e の JS で適用）
+- **TypeScript / 主言語そのもの**は英語維持（reader 想定の言語と一致させる、cluster B step-35 `uzustack-next-version` 477 行 TS で確立）
+- **embedded Python heredoc 内の error 文字列** も日本語化対象（cluster B step-37 `uzustack-brain-init` / `uzustack-brain-restore` で確認、voice 規約 v1 項目 2 が境界を貫通する）
+
+#### 外部 SaaS / 別プロジェクト identifier 維持（step-37 拡張）
+
+voice 規約 v1 項目 4「fixed identifier 英語維持」を、外部 SaaS や別プロジェクトの identifier にも拡張する。`gstack` 由来は `uzustack` に置換するが、以下は **維持**：
+
+- **外部 CLI 名**：`gbrain`（別プロジェクト）、`Codex CLI` / `Gemini CLI`（外部 product）
+- **外部 path / config**：`~/.gbrain/config.json` / `~/.codex/sessions` / `~/.gemini/projects.json` / `~/.claude/projects`
+- **外部 env**：`GBRAIN_URL` / `GBRAIN_TOKEN` / `CODEX_HOME` / `CODEX_API_KEY` / `OPENAI_API_KEY`
+- **外部プロジェクト共有 config key**：`gbrain_sync_mode` 等（`uzustack-config` に外部プロジェクトと共有する key）
+- **外部 SaaS リソース慣習名**：例 Supabase project name prefix `gbrain`（gbrain CLI で作る project の慣習）
+- **OS / Tool UI 引用**：Chrome の `'Developer mode'` / `'Load unpacked'`（Chrome 自身の英語 UI 引用）
+- **未翻訳 skill 名のまま**（cluster C/D 翻訳完了次第 自動整合）：CLAUDE.md snippet 内の `/qa, /ship, /review, /investigate, /browse` 等
+
+#### step-38 学び 3 点（cluster B 完了時の追加観測、PR #46）
+
+- **機械置換は dangling reference まで忠実に伝播する**：comment 内の他 binary 参照も置換対象。`uzustack-question-log:27` の `uzustack-question-sensitivity`（実体未持ち込み）参照を削除した事例。`/simplify` の quality + reuse agent が独立に同じ findings を発見、cross-validation で confidence 高い
+- **output 表示英語維持の境界線**：sentinel token + 周辺 context は parser 互換重視で **英語維持**。`uzustack-specialist-stats` output / dashboard 系で適用。コメント / status メッセージは日本語化、機械処理される token は英語維持
+- **judgment 軸数の動的性**：外部 CLI 連携の有無で軸数が変動する。step-37（`gbrain` あり）→ 3 軸 / step-38（なし）→ 2 軸 / step-39（なし、CONTRIBUTING 統合あり）→ 2 軸 + 統合タスク。事前合意で軸数を確定すれば cluster 進行が機械化される
+
+#### 集約タイミング規律
+
+cluster 進行中は規範が PR description / memory / step ノート / issue body に分散して動いている。**cluster 完了で規範が固まった直後（次 cluster 着手前）に CONTRIBUTING.md へ集約**する。Phase 完了判定 (step-42) まで待つと cluster 内参照性が上がらず、PR description を漁る運用になる。本節は cluster B step-39 で集約した（step-42 → step-39 完了に前倒し）。
+
 ### 新規翻訳の手順（1 個ずつ、緊急時 / 単発の場合）
 
 緊急で 1 個だけ翻訳したい場合や、cluster に収まらない isolated な skill の場合に使う。継続的に翻訳を進める場合は、後述の **small batch アプローチ** を推奨。
