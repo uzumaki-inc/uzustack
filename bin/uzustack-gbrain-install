@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+# uzustack-gbrain-install — local Mac に gbrain CLI を install する。
+#
+# Usage:
+#   uzustack-gbrain-install [--install-dir <dir>] [--pinned-commit <sha>] [--dry-run]
+#
+# D5 detect-first: clone する前に既存しそうな location (~/git/gbrain と
+# ~/gbrain) を probe し、動く clone があればそれを再利用する。fallback として
+# pinned commit を ~/gbrain に fresh clone する (override は GBRAIN_INSTALL_DIR
+# または --install-dir)。
+#
+# D19 PATH-shadowing: `bun link` 後、`gbrain --version` 出力を install-dir の
+# package.json version と比較する。不一致なら abort し、PATH 上の全 gbrain を
+# 列挙する actionable error を出す。PATH を「黙って直す」ことはしない。
+# setup skill は壊れた環境を refuse すべき。
+#
+# 前提条件 (実行前に check):
+#   - bun   (install: curl -fsSL https://bun.sh/install | bash)
+#   - git
+#   - https://github.com への到達性
+#
+# pinned commit はここで宣言する (動的に解決しない) ので、upgrade は
+# explicit かつ reviewable になる。新 gbrain release との互換性を uzustack が
+# 検証したら PINNED_COMMIT を update する。
+#
+# Env:
+#   GBRAIN_INSTALL_DIR — default install path (~/gbrain) を override
+#
+# Exit code:
+#   0 — 成功 (または --dry-run で plan を出力)
+#   2 — 前提条件不足 / 無効 argument
+#   3 — install 後 validation 失敗 (PATH shadow、binary 破損 等)
+set -euo pipefail
+
+# --- defaults ---
+PINNED_COMMIT="08b3698e90532b7b66c445e6b1d8cdfe71822802"  # gbrain v0.18.2
+PINNED_TAG="v0.18.2"
+GBRAIN_REPO_URL="https://github.com/garrytan/gbrain.git"
+DEFAULT_INSTALL_DIR="${GBRAIN_INSTALL_DIR:-$HOME/gbrain}"
+INSTALL_DIR="$DEFAULT_INSTALL_DIR"
+DRY_RUN=false
+VALIDATE_ONLY=false
+
+die() { echo "uzustack-gbrain-install: $*" >&2; exit 2; }
+fail() { echo "uzustack-gbrain-install: $*" >&2; exit 3; }
+log()  { echo "uzustack-gbrain-install: $*"; }
+
+# --- parse args ---
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --install-dir) INSTALL_DIR="$2"; shift 2 ;;
+    --pinned-commit) PINNED_COMMIT="$2"; PINNED_TAG=""; shift 2 ;;
+    --dry-run) DRY_RUN=true; shift ;;
+    --validate-only) VALIDATE_ONLY=true; shift ;;
+    --help|-h) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) die "不明な flag: $1" ;;
+  esac
+done
+
+# --- prerequisites ---
+check_prereq() {
+  local bin="$1"
+  local hint="$2"
+  if ! command -v "$bin" >/dev/null 2>&1; then
+    fail "必要な tool が無い: '$bin'。 $hint"
+  fi
+}
+
+if ! $VALIDATE_ONLY; then
+  check_prereq bun "Install: curl -fsSL https://bun.sh/install | bash"
+  check_prereq git "Install: xcode-select --install (macOS) または各 OS の package manager"
+
+  # GitHub への到達性 — オフラインなら `git clone` が hang する前に fast fail させる。
+  # --max-time 10、--head (body 無し)、quiet。status 200-4xx なら server に到達できている
+  # (404 でも reachability の証拠)。
+  if ! curl -s --head --max-time 10 https://github.com >/dev/null 2>&1; then
+    fail "https://github.com に到達不可。network を確認して再試行する。"
+  fi
+fi
+
+# --- D5 detect-first: fresh clone する前に common location を probe ---
+# gbrain clone らしい directory を accept する: name "gbrain" の package.json と
+# `bin.gbrain` entry を持つ。version 不一致はここでは accept する — bun link 後の
+# D19 で validate する。
+is_valid_clone() {
+  local dir="$1"
+  [ -d "$dir" ] || return 1
+  [ -f "$dir/package.json" ] || return 1
+  local name
+  name=$(jq -r '.name // empty' "$dir/package.json" 2>/dev/null || true)
+  [ "$name" = "gbrain" ] || return 1
+  local bin
+  bin=$(jq -r '.bin.gbrain // empty' "$dir/package.json" 2>/dev/null || true)
+  [ -n "$bin" ] || return 1
+  return 0
+}
+
+DETECTED_CLONE=""
+if ! $VALIDATE_ONLY; then
+  for candidate in "$HOME/git/gbrain" "$HOME/gbrain" "$INSTALL_DIR"; do
+    if is_valid_clone "$candidate"; then
+      DETECTED_CLONE="$candidate"
+      break
+    fi
+  done
+fi
+
+if $VALIDATE_ONLY; then
+  log "validate-only mode: detect + clone + install + link を skip"
+elif [ -n "$DETECTED_CLONE" ]; then
+  log "既存 gbrain clone を検出: $DETECTED_CLONE — 再利用する"
+  INSTALL_DIR="$DETECTED_CLONE"
+else
+  # fresh clone path
+  if $DRY_RUN; then
+    log "DRY RUN: $GBRAIN_REPO_URL @ $PINNED_COMMIT → $INSTALL_DIR を clone する予定"
+    exit 0
+  fi
+  if [ -d "$INSTALL_DIR" ]; then
+    fail "install dir $INSTALL_DIR は存在するが valid な gbrain clone ではない。削除するか --install-dir <別 path> を渡す。"
+  fi
+  log "$GBRAIN_REPO_URL → $INSTALL_DIR を clone 中"
+  git clone --quiet "$GBRAIN_REPO_URL" "$INSTALL_DIR"
+  ( cd "$INSTALL_DIR" && git checkout --quiet "$PINNED_COMMIT" )
+  log "$PINNED_COMMIT${PINNED_TAG:+ ($PINNED_TAG)} に pin 済み"
+fi
+
+if $DRY_RUN; then
+  log "DRY RUN: $INSTALL_DIR で bun install + bun link を実行する予定"
+  exit 0
+fi
+
+# --- install + link ---
+if ! $VALIDATE_ONLY; then
+  log "$INSTALL_DIR で bun install 実行中"
+  ( cd "$INSTALL_DIR" && bun install --silent )
+  log "$INSTALL_DIR で bun link 実行中"
+  ( cd "$INSTALL_DIR" && bun link --silent )
+fi
+
+# --- D19 PATH-shadowing validation ---
+# install-dir の package.json から version を読み、`gbrain --version` と比較する。
+# 不一致なら、PATH が今 link したものと異なる gbrain を返している。Hard fail で
+# remediation を出す。
+expected_version=$(jq -r '.version // empty' "$INSTALL_DIR/package.json" 2>/dev/null || true)
+if [ -z "$expected_version" ]; then
+  fail "$INSTALL_DIR/package.json から version が読めない (install が壊れている可能性)"
+fi
+
+if ! command -v gbrain >/dev/null 2>&1; then
+  fail "bun link は完了したが 'gbrain' が PATH に無い。~/.bun/bin が PATH にあるか確認する。"
+fi
+
+actual_version=$(gbrain --version 2>/dev/null | head -1 | awk '{print $NF}' | tr -d '[:space:]' || true)
+if [ -z "$actual_version" ]; then
+  fail "gbrain は PATH にあるが 'gbrain --version' が出力を出さない — binary が壊れている可能性。"
+fi
+
+# 先頭 "v" を許容する (gbrain は "0.18.2" / "v0.18.2" のどちらも出し得る)。
+expected_norm="${expected_version#v}"
+actual_norm="${actual_version#v}"
+
+if [ "$actual_norm" != "$expected_norm" ]; then
+  echo "" >&2
+  echo "uzustack-gbrain-install: PATH SHADOWING 検出" >&2
+  echo "" >&2
+  echo "  $INSTALL_DIR の gbrain $expected_version を link したが、" >&2
+  echo "  PATH は gbrain $actual_version を返している。" >&2
+  echo "" >&2
+  echo "  PATH 上の全 gbrain binary:" >&2
+  type -a gbrain 2>&1 | sed 's/^/    /' >&2 || true
+  echo "" >&2
+  echo "  以下のいずれかで修正してから /setup-gbrain を再実行する:" >&2
+  echo "    a) shadowing している binary を rm: rm \$(which gbrain)" >&2
+  echo "    b) shell rc で ~/.bun/bin を PATH の先頭に置く" >&2
+  echo "    c) shadowing 元の install dir を GBRAIN_INSTALL_DIR で指す" >&2
+  echo "" >&2
+  exit 3
+fi
+
+log "$INSTALL_DIR から gbrain $actual_version を install"
+echo ""
+echo "次: gbrain init --pglite   (または /setup-gbrain で full setup flow を実行)"

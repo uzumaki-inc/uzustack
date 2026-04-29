@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# uzustack-gbrain-supabase-verify — `gbrain init` に渡す前の
+# Supabase Session Pooler URL に対する structural check。
+#
+# Usage:
+#   uzustack-gbrain-supabase-verify <url>
+#   echo "<url>" | uzustack-gbrain-supabase-verify -
+#
+# Session Pooler URL のみ accept する (port 6543、host *.pooler.supabase.com)。
+# direct-connection URL (db.*.supabase.co:5432) は reject — IPv6 only で多くの
+# 環境で失敗する。gbrain の init wizard も init.ts:150-158 で警告している。
+#
+# Canonical shape (per gbrain init.ts:266):
+#   postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres
+#
+# Exit code:
+#   0 — URL が structural check を通過
+#   2 — format 不正 (scheme / port / host / userinfo / password 空)
+#   3 — direct-connection URL を reject (典型的な間違い、UX のため特別扱い)
+#
+# verifier は network call を一切しない、純粋に regex match。URL が実際に
+# 動くか (database up、password 正しい、host 到達可能) は gbrain の
+# init 時の問題。
+#
+# URL の読み出し:
+#   1. argv[1] が "-" 以外で指定されていればそれ
+#   2. argv[1] が "-" または無ければ stdin
+#
+# URL 自体は stderr に echo しない (password を含むため)。
+# error message では generic に「the URL」と扱う。
+set -euo pipefail
+
+die()   { echo "uzustack-gbrain-supabase-verify: $*" >&2; exit 2; }
+reject_direct() {
+  cat >&2 <<EOF
+uzustack-gbrain-supabase-verify: direct-connection URL を reject
+
+  Supabase の direct-connection URL (db.*.supabase.co の port 5432) を
+  貼り付けた。direct connection は IPv6 only で多くの環境で失敗する。
+
+  Session Pooler を使う:
+    Supabase Dashboard → Settings → Database → Connection Pooler →
+    Transaction/Session → URI を copy (port 6543)
+
+  期待される形式:
+    postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres
+EOF
+  exit 3
+}
+
+URL=""
+case "${1:-}" in
+  -)   URL=$(cat) ;;
+  "")  URL=$(cat) ;;
+  *)   URL="$1" ;;
+esac
+
+URL=$(printf '%s' "$URL" | tr -d '[:space:]')
+[ -z "$URL" ] && die "URL が空"
+
+# Scheme は postgresql:// または postgres:// である必要あり。
+# 他 scheme は推測せず明示的に reject。
+case "$URL" in
+  postgresql://*|postgres://*) ;;
+  *) die "scheme が無効 (postgresql:// または postgres:// で始まる必要あり)" ;;
+esac
+
+# scheme を strip して userinfo + host + port + path を露出させる
+rest="${URL#*://}"
+
+# userinfo 部分: 最初の @ より前。: (user:pass) を含む必要あり。
+case "$rest" in
+  *@*) ;;
+  *) die "userinfo が無い (postgres.<ref>:<password>@host を期待)" ;;
+esac
+userinfo="${rest%%@*}"
+after_at="${rest#*@}"
+
+# userinfo は user:password 形式、両方非空であるべき
+case "$userinfo" in
+  *:*) ;;
+  *) die "userinfo に password 区切りが無い (user:password@ を期待)" ;;
+esac
+user_part="${userinfo%%:*}"
+pass_part="${userinfo#*:}"
+[ -z "$user_part" ] && die "userinfo の user 部分が空"
+[ -z "$pass_part" ] && die "userinfo の password が空"
+
+# host + port + path。
+# direct-connection 検出は最初に (具体的 error が generic より優先)。
+case "$after_at" in
+  db.*.supabase.co:5432*|db.*.supabase.co/*|db.*.supabase.co) reject_direct ;;
+esac
+
+# host:port を抽出 (最初の / の前)
+hostport="${after_at%%/*}"
+case "$hostport" in
+  *:*) ;;
+  *) die "port が無い (Session Pooler は :6543 必須)" ;;
+esac
+host="${hostport%:*}"
+port="${hostport##*:}"
+
+# host は *.pooler.supabase.com (case-insensitive) でなければならない
+host_lower=$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')
+case "$host_lower" in
+  *.pooler.supabase.com) ;;
+  *) die "host '$host' は Supabase Session Pooler ではない (*.pooler.supabase.com を期待)" ;;
+esac
+
+# port は 6543 (Session Pooler default) でなければならない
+if [ "$port" != "6543" ]; then
+  die "port は Session Pooler 用に 6543 必須 ($port が来た)"
+fi
+
+# user 部分は postgres.<ref> 形式 (20 文字 lowercase ref、Supabase Management
+# API 契約による)。gbrain には strict 必須ではないが、plain "postgres" を
+# reject することで Direct URL の userinfo を誤って貼った時の paste 事故を
+# catch できる。
+case "$user_part" in
+  postgres.*) ;;
+  *) die "user 部分 '$user_part' は 'postgres.<project-ref>' 形式であるべき (20 文字 ref)" ;;
+esac
+
+echo "ok"

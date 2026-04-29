@@ -1,0 +1,451 @@
+#!/usr/bin/env bash
+# uzustack-brain-sync — queue を drain し、allowlisted path を commit して
+# remote に push する。
+#
+# Usage:
+#   uzustack-brain-sync --once           queue を drain、commit、push (default)
+#   uzustack-brain-sync --status         sync health を JSON で出す
+#   uzustack-brain-sync --skip-file <p>  ~/.uzustack/.brain-skip.txt に <p> を追加
+#   uzustack-brain-sync --drop-queue --yes   commit せず queue を clear
+#   uzustack-brain-sync --discover-new   allowlist dir を scan し、変更 file を enqueue
+#
+# preamble の skill START / END boundary で起動。daemon は持たない。
+# queue が空なら通常 1 秒未満。network push 込みで約 200-800ms。
+#
+# Singleton: ~/.uzustack/.brain-sync.lock を flock。並列 invocation は queue 化される。
+#
+# Env:
+#   UZUSTACK_HOME — ~/.uzustack を override (writer と整合)。
+
+set -uo pipefail
+
+UZUSTACK_HOME="${UZUSTACK_HOME:-$HOME/.uzustack}"
+QUEUE="$UZUSTACK_HOME/.brain-queue.jsonl"
+ALLOWLIST="$UZUSTACK_HOME/.brain-allowlist"
+PRIVACY_MAP="$UZUSTACK_HOME/.brain-privacy-map.json"
+SKIP_FILE="$UZUSTACK_HOME/.brain-skip.txt"
+STATUS_FILE="$UZUSTACK_HOME/.brain-sync-status.json"
+LAST_PUSH_FILE="$UZUSTACK_HOME/.brain-last-push"
+LOCK_FILE="$UZUSTACK_HOME/.brain-sync.lock"
+DISCOVER_CURSOR="$UZUSTACK_HOME/.brain-discover-cursor"
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CONFIG_BIN="$SCRIPT_DIR/uzustack-config"
+
+# 認証エラー時の remote 別 hint (origin URL で分岐)
+remote_auth_hint() {
+  local url
+  url=$(git -C "$UZUSTACK_HOME" remote get-url origin 2>/dev/null || echo "")
+  case "$url" in
+    *github.com*|*@github.*) echo "実行: gh auth status (必要なら gh auth refresh も)" ;;
+    *gitlab*) echo "実行: glab auth status" ;;
+    *) echo "'git remote -v' と認証情報を確認" ;;
+  esac
+}
+
+write_status() {
+  # args: status_code message [extra_json_blob]
+  local code="$1"
+  local msg="$2"
+  local extra="${3:-{\}}"
+  local ts
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
+  python3 - "$STATUS_FILE" "$code" "$msg" "$ts" "$extra" <<'PYEOF' 2>/dev/null || true
+import json, sys
+path, code, msg, ts, extra = sys.argv[1:6]
+try:
+    extra_obj = json.loads(extra) if extra else {}
+except Exception:
+    extra_obj = {}
+data = {"status": code, "message": msg, "ts": ts, **extra_obj}
+with open(path, "w") as f:
+    json.dump(data, f)
+    f.write("\n")
+PYEOF
+}
+
+# config を読む。sync が active なら 0、そうでなければ 1 を返す。
+sync_active() {
+  if [ ! -d "$UZUSTACK_HOME/.git" ]; then
+    return 1
+  fi
+  local mode
+  mode=$("$CONFIG_BIN" get gbrain_sync_mode 2>/dev/null || echo off)
+  [ "$mode" = "off" ] && return 1
+  return 0
+}
+
+# Secret regex 群 — stdin scan。clean なら 0、hit したら 1 で exit。
+# hit 時は match した pattern family 名を echo する。python3 -c (not heredoc)
+# を使うので sys.stdin が diff content として残る。
+secret_scan_stdin() {
+  python3 -c "
+import sys, re
+patterns = [
+    ('aws-access-key', re.compile(r'AKIA[0-9A-Z]{16}')),
+    ('github-token', re.compile(r'\\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})')),
+    ('openai-key', re.compile(r'\\bsk-[A-Za-z0-9_-]{20,}')),
+    ('pem-block', re.compile(r'-----BEGIN [A-Z ]{3,}-----')),
+    ('jwt', re.compile(r'\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\b')),
+    ('bearer-token-json',
+     # JSON-embedded auth header。optional Bearer/Basic/Token prefix が重要:
+     # 実 auth value は scheme 名の後にリテラル空白を含むが、下記 charset は
+     # 空白を含まないので、optional prefix が無いと JSON 内の Bearer token
+     # が scanner をすり抜ける。
+     re.compile(r'\"(authorization|api[_-]?key|apikey|token|secret|password)\"\\s*:\\s*\"(Bearer |Basic |Token )?[A-Za-z0-9_./+=-]{16,}\"',
+                re.IGNORECASE)),
+]
+text = sys.stdin.read()
+for name, rx in patterns:
+    m = rx.search(text)
+    if m:
+        snippet = m.group(0)
+        if len(snippet) > 30:
+            snippet = snippet[:30] + '...'
+        print(name + ':' + snippet)
+        sys.exit(1)
+sys.exit(0)
+"
+}
+
+# queue から match した allowlisted / privacy-filtered な path 集合を求める。
+# Output: stage すべき相対 path (newline 区切り)。
+compute_paths_to_stage() {
+  local mode="$1"
+  python3 - "$UZUSTACK_HOME" "$QUEUE" "$ALLOWLIST" "$PRIVACY_MAP" "$SKIP_FILE" "$mode" <<'PYEOF'
+import sys, json, os, fnmatch, glob
+
+uzustack_home, queue, allowlist_path, privacy_path, skip_path, mode = sys.argv[1:7]
+
+def load_lines(path):
+    try:
+        with open(path) as f:
+            return [l.strip() for l in f if l.strip() and not l.lstrip().startswith("#")]
+    except FileNotFoundError:
+        return []
+
+def load_privacy_map(path):
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        # 期待形式: [{"pattern": "glob", "class": "artifact" | "behavioral"}]
+        return data if isinstance(data, list) else []
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+allowlist_globs = load_lines(allowlist_path)
+privacy_map = load_privacy_map(privacy_path)
+skip_lines = set(load_lines(skip_path))
+
+# queue を読む。unique な file path を collect。
+queue_paths = set()
+try:
+    with open(queue) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                p = obj.get("file")
+                if isinstance(p, str):
+                    queue_paths.add(p)
+            except json.JSONDecodeError:
+                continue
+except FileNotFoundError:
+    pass
+
+def path_matches_any(path, globs):
+    for pattern in globs:
+        if fnmatch.fnmatchcase(path, pattern):
+            return True
+    return False
+
+def privacy_class(path, mapping):
+    for entry in mapping:
+        pat = entry.get("pattern")
+        if pat and fnmatch.fnmatchcase(path, pat):
+            return entry.get("class", "artifact")
+    # pattern match しない場合の default class: artifact (safe default)
+    return "artifact"
+
+# mode filter: 'off' → 何もしない、'artifacts-only' → artifact class のみ、
+# 'full' → 両 class を許可。
+def mode_allows(cls, mode):
+    if mode == "off":
+        return False
+    if mode == "artifacts-only":
+        return cls == "artifact"
+    return True  # full
+
+final = []
+for p in sorted(queue_paths):
+    if p in skip_lines:
+        continue
+    # UZUSTACK_HOME root 配下である必要あり。絶対 path と ../ escape は reject
+    if p.startswith("/") or ".." in p.split("/"):
+        continue
+    # allowlist glob のいずれかに match する必要あり
+    if not path_matches_any(p, allowlist_globs):
+        continue
+    # privacy mode filter を通る必要あり
+    cls = privacy_class(p, privacy_map)
+    if not mode_allows(cls, mode):
+        continue
+    # disk 上に存在する必要あり — 無いものは stage できない
+    if not os.path.exists(os.path.join(uzustack_home, p)):
+        continue
+    final.append(p)
+
+for p in final:
+    print(p)
+PYEOF
+}
+
+subcmd_once() {
+  if ! sync_active; then
+    # feature 未初期化 / disabled の時は silent no-op
+    exit 0
+  fi
+
+  # atomic mkdir で singleton lock。`flock(1)` は macOS にはデフォルトで無い。
+  # `mkdir` は POSIX filesystem では atomic。別の --once が動いているなら
+  # skip する (待たない) — 次の skill 境界で catch up する。
+  local lock_dir="${LOCK_FILE}.d"
+  if ! mkdir "$lock_dir" 2>/dev/null; then
+    # lock が stale か? 内部の pidfile を確認。process が dead なら clear する。
+    if [ -f "$lock_dir/pid" ]; then
+      local lock_pid
+      lock_pid=$(cat "$lock_dir/pid" 2>/dev/null || echo "")
+      if [ -n "$lock_pid" ] && ! kill -0 "$lock_pid" 2>/dev/null; then
+        # stale lock — clear して 1 回だけ retry
+        rm -rf "$lock_dir" 2>/dev/null || true
+        if ! mkdir "$lock_dir" 2>/dev/null; then
+          exit 0
+        fi
+      else
+        # 生 process が lock を持っている
+        exit 0
+      fi
+    else
+      # pidfile 無しの lock dir — held として扱い、触らない
+      exit 0
+    fi
+  fi
+  echo "$$" > "$lock_dir/pid" 2>/dev/null || true
+
+  local mode
+  mode=$("$CONFIG_BIN" get gbrain_sync_mode 2>/dev/null || echo off)
+
+  local paths_file
+  paths_file=$(mktemp /tmp/brain-sync-paths.XXXXXX) || { rm -rf "$lock_dir" 2>/dev/null; write_status "error" "mktemp failed"; exit 1; }
+  # 単一 trap で lock cleanup と tempfile cleanup を両方処理する
+  trap 'rm -f "$paths_file" 2>/dev/null; rm -rf "$lock_dir" 2>/dev/null || true' EXIT INT TERM
+
+  compute_paths_to_stage "$mode" > "$paths_file"
+  if [ ! -s "$paths_file" ]; then
+    # stage するもの無し。stale な queue entry を clear して exit。
+    : > "$QUEUE"
+    write_status "idle" "queue に allowlisted な変更が無い"
+    exit 0
+  fi
+
+  # git add -f で stage (.gitignore=* を上書き)、明示的 path のみ
+  while IFS= read -r p; do
+    [ -z "$p" ] && continue
+    git -C "$UZUSTACK_HOME" add -f -- "$p" 2>/dev/null || true
+  done < "$paths_file"
+
+  # staged diff の secret-scan
+  local scan_out
+  scan_out=$(git -C "$UZUSTACK_HOME" diff --cached 2>/dev/null | secret_scan_stdin || true)
+  if [ -n "$scan_out" ]; then
+    # hit — unstage、queue は維持、loud な status を書く
+    git -C "$UZUSTACK_HOME" reset HEAD -- . >/dev/null 2>&1 || true
+    local hint
+    hint="secret pattern が検出された ($scan_out)。対処: stage された file を確認、その後 uzustack-brain-sync --skip-file <path> を実行するか、内容を編集する。"
+    write_status "blocked" "$hint"
+    echo "BRAIN_SYNC: blocked: $scan_out" >&2
+    exit 0
+  fi
+
+  # template message で commit
+  local n ts
+  n=$(wc -l < "$paths_file" | tr -d ' ')
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  local msg="sync: $n file(s) | $ts"
+  git -C "$UZUSTACK_HOME" -c user.email="uzustack@localhost" -c user.name="uzustack-brain-sync" \
+    commit -q -m "$msg" 2>/dev/null || {
+      # commit するものが無い (例: 既に commit 済み)
+      : > "$QUEUE"
+      write_status "idle" "queue は drain したが、新規 commit 変更が無い"
+      exit 0
+    }
+
+  # push。reject 時は fetch + merge (merge driver が JSONL を処理) + retry 1 回。
+  local push_err
+  push_err=$(git -C "$UZUSTACK_HOME" push origin HEAD 2>&1 >/dev/null) || {
+    # まず auth error かを確認 — そうなら retry 不要
+    if echo "$push_err" | grep -qiE "auth|permission|403|401|forbidden"; then
+      local hint
+      hint=$(remote_auth_hint)
+      write_status "push_failed" "push 失敗: auth error。fix: $hint"
+      echo "BRAIN_SYNC: push failed: auth. fix: $hint" >&2
+      # commit は local にあるので queue は clear、次回 push で送られる
+      : > "$QUEUE"
+      exit 0
+    fi
+
+    # fetch-and-merge + retry を試みる
+    if git -C "$UZUSTACK_HOME" fetch origin 2>/dev/null; then
+      local branch
+      branch=$(git -C "$UZUSTACK_HOME" rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)
+      if git -C "$UZUSTACK_HOME" merge --no-edit "origin/$branch" >/dev/null 2>&1; then
+        if git -C "$UZUSTACK_HOME" push origin HEAD 2>/dev/null; then
+          : > "$QUEUE"
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$LAST_PUSH_FILE"
+          write_status "ok" "rebase 後に $n file を push"
+          exit 0
+        fi
+      fi
+    fi
+    write_status "push_failed" "push 失敗: $(printf '%s' "$push_err" | head -1)"
+    : > "$QUEUE"
+    exit 0
+  }
+
+  # 成功: queue を clear、last-push を更新
+  : > "$QUEUE"
+  date -u +%Y-%m-%dT%H:%M:%SZ > "$LAST_PUSH_FILE"
+  write_status "ok" "$n file を push"
+  exit 0
+}
+
+subcmd_status() {
+  if [ -f "$STATUS_FILE" ]; then
+    cat "$STATUS_FILE"
+  else
+    echo '{"status":"unknown","message":"status file がまだ無い"}'
+  fi
+  # 補足情報 (status file には含まれない)
+  local queue_depth=0
+  [ -f "$QUEUE" ] && queue_depth=$(wc -l < "$QUEUE" | tr -d ' ')
+  local last_push="never"
+  [ -f "$LAST_PUSH_FILE" ] && last_push=$(cat "$LAST_PUSH_FILE" 2>/dev/null || echo never)
+  local mode
+  mode=$("$CONFIG_BIN" get gbrain_sync_mode 2>/dev/null || echo off)
+  printf '{"queue_depth":%s,"last_push":"%s","mode":"%s"}\n' "$queue_depth" "$last_push" "$mode"
+}
+
+subcmd_skip_file() {
+  local path="${1:-}"
+  if [ -z "$path" ]; then
+    echo "Usage: uzustack-brain-sync --skip-file <path>" >&2
+    exit 1
+  fi
+  mkdir -p "$UZUSTACK_HOME"
+  # 重複 entry を回避
+  if [ -f "$SKIP_FILE" ] && grep -Fxq "$path" "$SKIP_FILE"; then
+    echo "skip list に既存: $path"
+    exit 0
+  fi
+  echo "$path" >> "$SKIP_FILE"
+  echo "skip list に追加: $path"
+  echo "(以降の writer は本 path を enqueue しない。既存の queue entry は次の --once で ignore される)"
+}
+
+subcmd_drop_queue() {
+  local force="${1:-}"
+  if [ "$force" != "--yes" ]; then
+    echo "拒否: --drop-queue は pending な sync を破棄する。--yes で確認する。" >&2
+    exit 1
+  fi
+  if [ ! -f "$QUEUE" ]; then
+    echo "queue は既に空"
+    exit 0
+  fi
+  local n
+  n=$(wc -l < "$QUEUE" | tr -d ' ')
+  : > "$QUEUE"
+  echo "$n 個の queue entry を drop"
+}
+
+subcmd_discover_new() {
+  if ! sync_active; then
+    exit 0
+  fi
+  # allowlist glob を walk、cursor との mtime+size 差分で enqueue
+  python3 - "$UZUSTACK_HOME" "$ALLOWLIST" "$DISCOVER_CURSOR" "$SCRIPT_DIR/uzustack-brain-enqueue" <<'PYEOF' 2>/dev/null || true
+import sys, os, json, glob, fnmatch, subprocess, hashlib
+
+uzustack_home, allowlist_path, cursor_path, enqueue_bin = sys.argv[1:5]
+
+def load_lines(path):
+    try:
+        with open(path) as f:
+            return [l.strip() for l in f if l.strip() and not l.lstrip().startswith("#")]
+    except FileNotFoundError:
+        return []
+
+def load_cursor(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def save_cursor(path, data):
+    try:
+        with open(path, "w") as f:
+            json.dump(data, f)
+    except OSError:
+        pass
+
+allowlist = load_lines(allowlist_path)
+cursor = load_cursor(cursor_path)
+new_cursor = dict(cursor)
+
+# uzustack_home 配下の全 file を walk、allowlist と match する
+for root, dirs, files in os.walk(uzustack_home):
+    # .git と .brain-* の state file は skip
+    if ".git" in root.split(os.sep):
+        continue
+    for name in files:
+        full = os.path.join(root, name)
+        rel = os.path.relpath(full, uzustack_home)
+        if rel.startswith(".brain-"):
+            continue
+        matched = any(fnmatch.fnmatchcase(rel, pat) for pat in allowlist)
+        if not matched:
+            continue
+        try:
+            st = os.stat(full)
+            key = f"{int(st.st_mtime)}:{st.st_size}"
+        except OSError:
+            continue
+        prev = cursor.get(rel)
+        if prev != key:
+            # shim 経由で enqueue (sync mode + skip list を尊重する)
+            subprocess.run([enqueue_bin, rel], check=False)
+            new_cursor[rel] = key
+
+save_cursor(cursor_path, new_cursor)
+PYEOF
+}
+
+# -------- dispatch --------
+case "${1:-}" in
+  --once|"") subcmd_once ;;
+  --status) subcmd_status ;;
+  --skip-file) shift; subcmd_skip_file "${1:-}" ;;
+  --drop-queue) shift; subcmd_drop_queue "${1:-}" ;;
+  --discover-new) subcmd_discover_new ;;
+  --help|-h)
+    sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
+    ;;
+  *)
+    echo "不明な subcommand: $1" >&2
+    echo "実行: uzustack-brain-sync --help" >&2
+    exit 1
+    ;;
+esac
