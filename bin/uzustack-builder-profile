@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# uzustack-builder-profile — LEGACY SHIM。
+#
+# `uzustack-developer-profile` に統合済。本 binary は `uzustack-developer-profile
+# --read` へ delegate し、`/office-hours` の動作を transition 期間中維持する。
+# 全 call site が移行完了したら削除可能。
+#
+# `~/.uzustack/builder-profile.jsonl` から統合先 `~/.uzustack/developer-profile.json`
+# への移行は最初の read で自動実行される — 詳細は `uzustack-developer-profile
+# --migrate` 参照。
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+exec "$SCRIPT_DIR/uzustack-developer-profile" --read "$@"
