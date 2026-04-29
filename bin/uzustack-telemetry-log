@@ -36,7 +36,7 @@ ERROR_MESSAGE=""
 FAILED_STEP=""
 EVENT_TYPE="skill_run"
 SOURCE=""
-# Security-event field (--event-type が attack_attempt の時のみ populate)
+# Security-event fields (--event-type が attack_attempt の時のみ populate)
 SEC_URL_DOMAIN=""
 SEC_PAYLOAD_HASH=""
 SEC_CONFIDENCE=""
@@ -55,7 +55,7 @@ while [ $# -gt 0 ]; do
     --failed-step)   FAILED_STEP="$2"; shift 2 ;;
     --event-type)    EVENT_TYPE="$2"; shift 2 ;;
     --source)        SOURCE="$2"; shift 2 ;;
-    # Security event field — browse/src/security.ts logAttempt() が emit する
+    # Security event fields — browse/src/security.ts logAttempt() が emit する
     --url-domain)    SEC_URL_DOMAIN="$2"; shift 2 ;;
     --payload-hash)  SEC_PAYLOAD_HASH="$2"; shift 2 ;;
     --confidence)    SEC_CONFIDENCE="$2"; shift 2 ;;
@@ -152,7 +152,7 @@ if [ "$TIER" = "community" ]; then
   fi
 fi
 
-# Local-only field (remote 送信されない)
+# Local-only fields (remote 送信されない)
 REPO_SLUG=""
 BRANCH=""
 if command -v git >/dev/null 2>&1; then
