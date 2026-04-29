@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# uzustack-timeline-log — project timeline に timeline event を append する
+# Usage: uzustack-timeline-log '{"skill":"review","event":"started","branch":"main"}'
+#
+# session timeline は default で local。`gbrain_sync_mode` を `full` (not
+# `artifacts-only`) privacy tier で有効化すると (`uzustack-brain-init` の
+# first-run stop-gate or preamble 経由)、timeline event は user の private
+# GBrain sync repo へ publish される。詳細は `docs/gbrain-sync.md` 参照。
+# Required fields: skill, event (started|completed)。
+# Optional: branch, outcome, duration_s, session, ts。
+# 検証失敗 → silently に skip (non-blocking)。
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+eval "$("$SCRIPT_DIR/uzustack-slug" 2>/dev/null)"
+UZUSTACK_HOME="${UZUSTACK_HOME:-$HOME/.uzustack}"
+mkdir -p "$UZUSTACK_HOME/projects/$SLUG"
+
+INPUT="$1"
+
+# 入力検証: parseable な JSON で required field を含むことを確認
+if ! printf '%s' "$INPUT" | bun -e "
+  const j = JSON.parse(await Bun.stdin.text());
+  if (!j.skill || !j.event) process.exit(1);
+" 2>/dev/null; then
+  exit 0  # silently に skip、non-blocking
+fi
+
+# timestamp 未指定なら現在時刻を inject
+if ! printf '%s' "$INPUT" | bun -e "const j=JSON.parse(await Bun.stdin.text()); if(!j.ts) process.exit(1)" 2>/dev/null; then
+  INPUT=$(printf '%s' "$INPUT" | bun -e "
+    const j = JSON.parse(await Bun.stdin.text());
+    j.ts = new Date().toISOString();
+    console.log(JSON.stringify(j));
+  " 2>/dev/null) || true
+fi
+
+echo "$INPUT" >> "$UZUSTACK_HOME/projects/$SLUG/timeline.jsonl"
+
+# gbrain-sync: cross-machine sync 用に enqueue (sync off 時は no-op)
+"$SCRIPT_DIR/uzustack-brain-enqueue" "projects/$SLUG/timeline.jsonl" 2>/dev/null &
