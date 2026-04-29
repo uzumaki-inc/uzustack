@@ -234,7 +234,7 @@ patterns = [
 ]
 for name, rx in patterns:
     if rx.search(out):
-        sys.stderr.write(f'uzustack-brain pre-commit: refusing commit — {name} detected in staged diff.\n')
+        sys.stderr.write(f'uzustack-brain pre-commit: commit を拒否 — staged diff に {name} を検出。\n')
         sys.stderr.write('該当 file を編集するか、意図的なら以下を実行:\n')
         sys.stderr.write('  uzustack-brain-sync --skip-file <path>  (恒久的に exclude)\n')
         sys.exit(1)

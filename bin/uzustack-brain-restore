@@ -187,7 +187,7 @@ patterns = [
 ]
 for name, rx in patterns:
     if rx.search(out):
-        sys.stderr.write(f'uzustack-brain pre-commit: refusing commit — {name} detected.\n')
+        sys.stderr.write(f'uzustack-brain pre-commit: commit を拒否 — {name} を検出。\n')
         sys.exit(1)
 sys.exit(0)
 "
