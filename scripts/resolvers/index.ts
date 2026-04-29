@@ -11,8 +11,11 @@
  */
 
 import type { ResolverFn } from './types';
+import { generateSlugSetup } from './utility';
 
 export const RESOLVERS: Record<string, ResolverFn> = {
+  // `eval "$(uzustack-slug)"` + `mkdir -p ~/.uzustack/projects/$SLUG` の single-line bash
+  SLUG_SETUP: generateSlugSetup,
   // Phase 4+ で voice + ETHOS preamble を返す予定
   PREAMBLE: (_ctx, _args) => '',
   // Phase 4+ で ~/.uzustack/projects/{SLUG}/learnings.jsonl から検索結果を返す予定（Phase 5）
