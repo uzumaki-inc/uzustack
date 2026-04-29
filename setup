@@ -7,10 +7,16 @@
 # `[ -f ... ]` / `[ -d ... ]` ガードで自然に no-op になる。それで足りない
 # `bun run XXX` 呼び出しと browse / Playwright 関連の処理は、setup 冒頭で
 # 1 度だけ定義する境界（_has_bun_script / HAS_BROWSE）で guard する。
-# 「これは入れる、これは外す」の都度判断は導入しない（Phase 3 規律：
-# 判断を 1 度集中、以降ゼロで機械的に手を動かし続ける）。
-# bin 翻訳が step-35〜39 で進むと、該当処理が自動的に有効化される。
-# step-42 で全体動作確認する。
+#
+# Phase 3 cluster A-C（step-31〜41）= 完了。bin 約 50 個翻訳、SKILL.md.tmpl + setup
+# 展開機構、voice 翻案ガイドライン、既存 5 skill の preamble 機構が揃った。
+#
+# Phase 3 cluster D（step-43〜、2026-04-30 新設）= upstream-direct + 限定翻訳。
+# binary infra（browse / design / make-pdf / extension）は翻訳せず upstream から
+# 直接利用する方針。詳細は uzustack memory `translation_policy_user_visible_only.md`。
+# step-43（本 PR）で uzustack/<dir> -> _upstream/gstack/<dir> の symlink を作成し、
+# step-44/45 で gen-skill-docs all-host サポートと build script を整備する。
+# step-42 retry で HAS_BROWSE / _has_bun_script を撤去 → Phase 3 totally DONE。
 
 set -e
 umask 077  # Restrict new files to owner-only (0o600 files, 0o700 dirs)
@@ -51,10 +57,25 @@ _has_bun_script() {
   [ -f "$SOURCE_UZUSTACK_DIR/package.json" ] && grep -q "\"$script_name\"" "$SOURCE_UZUSTACK_DIR/package.json"
 }
 
-# browse / Playwright / codesign / coreutils 関連は、uzustack に browse/ ディレクトリ
-# が無い間は 1 段ブロックで guard する。browse 翻訳と同時に自動的に有効化される。
+# upstream-direct symlink: binary infra（browse / design / make-pdf / extension）は
+# 翻訳せず _upstream/gstack/ から symlink で利用する（cluster D step-43 で導入）。
+# upstream の build output（dist/、extension/lib/xterm.*）は upstream-gitignored、
+# uzustack repo は汚れない。
+for _ud_dir in browse design make-pdf extension; do
+  _ud_upstream="$SOURCE_UZUSTACK_DIR/_upstream/gstack/$_ud_dir"
+  _ud_target="$SOURCE_UZUSTACK_DIR/$_ud_dir"
+  if [ -d "$_ud_upstream" ] && [ ! -e "$_ud_target" ]; then
+    ln -snf "_upstream/gstack/$_ud_dir" "$_ud_target"
+  fi
+done
+unset _ud_dir _ud_upstream _ud_target
+
+# browse / Playwright / codesign / coreutils 関連は、build script が package.json に
+# 揃うまで 1 段ブロックで guard する。step-43 で symlink により browse/ は出現するが、
+# step-45 で build script が追加されるまでは HAS_BROWSE=0 を維持する（build/Playwright
+# code path に入れない）。step-42 retry で HAS_BROWSE 自体を撤去予定。
 HAS_BROWSE=0
-if [ -d "$SOURCE_UZUSTACK_DIR/browse" ]; then
+if [ -d "$SOURCE_UZUSTACK_DIR/browse" ] && _has_bun_script build; then
   HAS_BROWSE=1
 fi
 

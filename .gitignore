@@ -33,3 +33,10 @@ Thumbs.db
 .claude/skills/
 .claude/settings.local.json
 .claude/*.lock
+
+# upstream-direct symlinks (Phase 3 cluster D step-43)
+# ./setup で _upstream/gstack/<dir> への symlink が作成される（生成物のため追跡しない）。
+/browse
+/design
+/make-pdf
+/extension
