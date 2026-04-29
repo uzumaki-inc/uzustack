@@ -1,0 +1,70 @@
+#!/bin/bash
+# CDP (remote debugging) を有効にして Chrome を起動する。
+# 使い方: chrome-cdp [port]
+#
+# Chrome は default data directory に対しては --remote-debugging-port を許可しない。
+# そこで data dir を別途用意し、ユーザーの実 profile を symlink する。Chrome は
+# non-default だと判断するが cookie や extension は同じものが使える。
+
+PORT="${1:-9222}"
+CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+REAL_PROFILE="$HOME/Library/Application Support/Google/Chrome"
+CDP_DATA_DIR="$HOME/.uzustack/cdp-profile/chrome"
+
+if ! [ -f "$CHROME" ]; then
+  echo "$CHROME に Chrome が見つからない" >&2
+  exit 1
+fi
+
+# Chrome が起動中か確認
+if pgrep -f "Google Chrome" >/dev/null 2>&1; then
+  echo "Chrome がまだ起動中。終了させる..."
+  osascript -e 'tell application "Google Chrome" to quit' 2>/dev/null
+
+  # 完全終了を待つ
+  for i in $(seq 1 20); do
+    pgrep -f "Google Chrome" >/dev/null 2>&1 || break
+    sleep 0.5
+  done
+
+  if pgrep -f "Google Chrome" >/dev/null 2>&1; then
+    echo "Chrome が終了しない。強制 kill..." >&2
+    pkill -f "Google Chrome"
+    sleep 1
+  fi
+fi
+
+# 実 profile を symlink した CDP data dir を準備
+# Chrome は --remote-debugging-port には "non-default" data dir を要求する。
+# 実 Default profile を symlink すれば cookie / extension がそのまま使える。
+mkdir -p "$CDP_DATA_DIR"
+if [ -d "$REAL_PROFILE/Default" ] && ! [ -e "$CDP_DATA_DIR/Default" ]; then
+  ln -s "$REAL_PROFILE/Default" "$CDP_DATA_DIR/Default"
+  echo "実 Chrome profile を CDP data dir に link した"
+fi
+# Local State (cookie 復号用の crypto key 等を含む) も link
+if [ -f "$REAL_PROFILE/Local State" ] && ! [ -e "$CDP_DATA_DIR/Local State" ]; then
+  ln -s "$REAL_PROFILE/Local State" "$CDP_DATA_DIR/Local State"
+fi
+
+echo "Chrome を CDP で port $PORT に起動..."
+"$CHROME" \
+  --remote-debugging-port="$PORT" \
+  --remote-debugging-address=127.0.0.1 \
+  --remote-allow-origins="http://127.0.0.1:$PORT" \
+  --user-data-dir="$CDP_DATA_DIR" \
+  --restore-last-session &
+disown
+
+# CDP が利用可能になるのを待つ
+for i in $(seq 1 30); do
+  if curl -s "http://127.0.0.1:$PORT/json/version" >/dev/null 2>&1; then
+    echo "CDP が port $PORT で ready"
+    echo "実行: \$B connect chrome"
+    exit 0
+  fi
+  sleep 1
+done
+
+echo "CDP が 30 秒経っても利用可能にならない。" >&2
+exit 1
