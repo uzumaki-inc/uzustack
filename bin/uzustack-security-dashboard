@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# uzustack-security-dashboard — community 全体の prompt-injection 攻撃統計
+#
+# community-pulse edge function response の `security` section を読む
+# (supabase/functions/community-pulse/index.ts)。telemetry=community の uzustack
+# user 全体で集計された attack data を表示する。
+#
+# Call signature:
+#   uzustack-security-dashboard           # human-readable dashboard
+#   uzustack-security-dashboard --json    # machine-readable (CI / scripts)
+#
+# Env override (test 用):
+#   UZUSTACK_DIR                    — auto-detected uzustack root を override
+#   UZUSTACK_SUPABASE_URL           — Supabase project URL を override
+#   UZUSTACK_SUPABASE_ANON_KEY      — Supabase anon key を override
+set -uo pipefail
+
+UZUSTACK_DIR="${UZUSTACK_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+# Supabase config を source
+if [ -z "${UZUSTACK_SUPABASE_URL:-}" ] && [ -f "$UZUSTACK_DIR/supabase/config.sh" ]; then
+  . "$UZUSTACK_DIR/supabase/config.sh"
+fi
+SUPABASE_URL="${UZUSTACK_SUPABASE_URL:-}"
+ANON_KEY="${UZUSTACK_SUPABASE_ANON_KEY:-}"
+
+JSON_MODE=0
+[ "${1:-}" = "--json" ] && JSON_MODE=1
+
+if [ -z "$SUPABASE_URL" ] || [ -z "$ANON_KEY" ]; then
+  if [ "$JSON_MODE" = "1" ]; then
+    echo '{"error":"supabase_not_configured"}'
+    exit 0
+  fi
+  echo "uzustack security dashboard"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo ""
+  echo "Supabase not configured. Local log at ~/.uzustack/security/attempts.jsonl"
+  echo "still captures every attempt — tail it with:"
+  echo "  cat ~/.uzustack/security/attempts.jsonl | tail -20"
+  exit 0
+fi
+
+DATA="$(curl -sf --max-time 15 \
+  "${SUPABASE_URL}/functions/v1/community-pulse" \
+  -H "apikey: ${ANON_KEY}" \
+  2>/dev/null || echo "{}")"
+
+# security section を抽出。jq が ある場合は brace-balanced parse (top_attack_domains 等の
+# nested array/object を正確に処理) を優先。jq 無い時は regex に fallback —
+# regex は lossy だが dashboard が "0 attacks" に degrade する方が誤集計より安全。
+if command -v jq >/dev/null 2>&1; then
+  SEC_SECTION="$(echo "$DATA" | jq -rc '.security // empty | "\"security\":\(.)"' 2>/dev/null || echo "")"
+else
+  SEC_SECTION="$(echo "$DATA" | grep -o '"security":{[^}]*}' 2>/dev/null || echo "")"
+fi
+
+if [ "$JSON_MODE" = "1" ]; then
+  # Machine-readable — security section 全体 (or empty object) を echo
+  if [ -n "$SEC_SECTION" ]; then
+    echo "{${SEC_SECTION}}"
+  else
+    echo '{"security":{"attacks_last_7_days":0,"top_attack_domains":[],"top_attack_layers":[],"verdict_distribution":[]}}'
+  fi
+  exit 0
+fi
+
+# Human-readable dashboard
+echo "uzustack security dashboard"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+TOTAL="$(echo "$DATA" | grep -o '"attacks_last_7_days":[0-9]*' | grep -o '[0-9]*' | head -1 || echo "0")"
+echo "Attacks detected last 7 days: ${TOTAL}"
+if [ "$TOTAL" = "0" ]; then
+  echo "  (No attack attempts reported by the community yet. Good news.)"
+fi
+echo ""
+
+# 攻撃された top domain — top_attack_domains array 内の object を parse
+DOMAINS="$(echo "$DATA" | sed -n 's/.*"top_attack_domains":\(\[[^]]*\]\).*/\1/p' | head -1)"
+if [ -n "$DOMAINS" ] && [ "$DOMAINS" != "[]" ]; then
+  echo "Top attacked domains"
+  echo "────────────────────"
+  echo "$DOMAINS" | grep -o '{[^}]*}' | head -10 | while read -r OBJ; do
+    DOMAIN="$(echo "$OBJ" | grep -o '"domain":"[^"]*"' | awk -F'"' '{print $4}')"
+    COUNT="$(echo "$OBJ" | grep -o '"count":[0-9]*' | grep -o '[0-9]*')"
+    [ -n "$DOMAIN" ] && [ -n "$COUNT" ] && printf "  %-40s %s attempts\n" "$DOMAIN" "$COUNT"
+  done
+  echo ""
+fi
+
+# 攻撃を catch した layer
+LAYERS="$(echo "$DATA" | sed -n 's/.*"top_attack_layers":\(\[[^]]*\]\).*/\1/p' | head -1)"
+if [ -n "$LAYERS" ] && [ "$LAYERS" != "[]" ]; then
+  echo "Top detection layers"
+  echo "────────────────────"
+  echo "$LAYERS" | grep -o '{[^}]*}' | while read -r OBJ; do
+    LAYER="$(echo "$OBJ" | grep -o '"layer":"[^"]*"' | awk -F'"' '{print $4}')"
+    COUNT="$(echo "$OBJ" | grep -o '"count":[0-9]*' | grep -o '[0-9]*')"
+    [ -n "$LAYER" ] && [ -n "$COUNT" ] && printf "  %-28s %s\n" "$LAYER" "$COUNT"
+  done
+  echo ""
+fi
+
+# Verdict 分布
+VERDICTS="$(echo "$DATA" | sed -n 's/.*"verdict_distribution":\(\[[^]]*\]\).*/\1/p' | head -1)"
+if [ -n "$VERDICTS" ] && [ "$VERDICTS" != "[]" ]; then
+  echo "Verdict distribution"
+  echo "────────────────────"
+  echo "$VERDICTS" | grep -o '{[^}]*}' | while read -r OBJ; do
+    VERDICT="$(echo "$OBJ" | grep -o '"verdict":"[^"]*"' | awk -F'"' '{print $4}')"
+    COUNT="$(echo "$OBJ" | grep -o '"count":[0-9]*' | grep -o '[0-9]*')"
+    [ -n "$VERDICT" ] && [ -n "$COUNT" ] && printf "  %-14s %s\n" "$VERDICT" "$COUNT"
+  done
+  echo ""
+fi
+
+echo "Your local log: ~/.uzustack/security/attempts.jsonl"
+echo "Your telemetry mode: $(${UZUSTACK_DIR}/bin/uzustack-config get telemetry 2>/dev/null || echo unknown)"

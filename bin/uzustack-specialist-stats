@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# uzustack-specialist-stats — review history から specialist 別の hit rate を計算
+# Usage: uzustack-specialist-stats
+#
+# branch を跨いで全 *-reviews.jsonl を読み、specialist field を parse して
+# hit rate を出力する。GATE_CANDIDATE (10 回以上 dispatch されて 0 findings)
+# と NEVER_GATE (security / data-migration — insurance policy として常時起動)
+# を tag 付けする。
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+eval "$("$SCRIPT_DIR/uzustack-slug" 2>/dev/null)"
+UZUSTACK_HOME="${UZUSTACK_HOME:-$HOME/.uzustack}"
+PROJECT_DIR="$UZUSTACK_HOME/projects/$SLUG"
+
+if [ ! -d "$PROJECT_DIR" ]; then
+  echo "SPECIALIST_STATS: 0 reviews analyzed"
+  exit 0
+fi
+
+# 全 review JSONL を集約 (---CONFIG--- / ---HEAD--- footer は除去)
+COMBINED=""
+for f in "$PROJECT_DIR"/*-reviews.jsonl; do
+  [ -f "$f" ] || continue
+  COMBINED="$COMBINED$(sed '/^---/,$d' "$f" 2>/dev/null)
+"
+done
+
+if [ -z "$COMBINED" ]; then
+  echo "SPECIALIST_STATS: 0 reviews analyzed"
+  exit 0
+fi
+
+printf '%s' "$COMBINED" | bun -e "
+const lines = (await Bun.stdin.text()).trim().split('\n').filter(Boolean);
+const NEVER_GATE = new Set(['security', 'data-migration']);
+const stats = {};
+let reviewed = 0;
+
+for (const line of lines) {
+  try {
+    const e = JSON.parse(line);
+    if (!e.specialists) continue;
+    reviewed++;
+    for (const [name, info] of Object.entries(e.specialists)) {
+      if (!stats[name]) stats[name] = { dispatched: 0, findings: 0 };
+      if (info.dispatched) {
+        stats[name].dispatched++;
+        stats[name].findings += (info.findings || 0);
+      }
+    }
+  } catch {}
+}
+
+console.log('SPECIALIST_STATS: ' + reviewed + ' reviews analyzed');
+const sorted = Object.entries(stats).sort((a, b) => a[0].localeCompare(b[0]));
+for (const [name, s] of sorted) {
+  const pct = s.dispatched > 0 ? Math.round(100 * s.findings / s.dispatched) : 0;
+  let tag = '';
+  if (NEVER_GATE.has(name)) {
+    tag = ' [NEVER_GATE]';
+  } else if (s.dispatched >= 10 && s.findings === 0) {
+    tag = ' [GATE_CANDIDATE]';
+  }
+  console.log(name + ': ' + s.dispatched + '/' + reviewed + ' dispatched, ' + s.findings + ' findings (' + pct + '%)' + tag);
+}
+" 2>/dev/null || { echo "SPECIALIST_STATS: 0 reviews analyzed"; exit 0; }

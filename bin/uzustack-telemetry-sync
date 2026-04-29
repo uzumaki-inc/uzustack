@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# uzustack-telemetry-sync — local JSONL event を Supabase へ sync
+#
+# Fire-and-forget、background、5 分に 1 回 rate limit。送信前に local-only field
+# を strip し privacy tier を尊重する。telemetry-ingest edge function に POST
+# する (PostgREST 直叩きではない)。
+#
+# Env override (test 用):
+#   UZUSTACK_STATE_DIR           — ~/.uzustack state directory を override
+#   UZUSTACK_DIR                 — auto-detected uzustack root を override
+#   UZUSTACK_SUPABASE_URL        — Supabase project URL を override
+set -uo pipefail
+
+UZUSTACK_DIR="${UZUSTACK_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+STATE_DIR="${UZUSTACK_STATE_DIR:-$HOME/.uzustack}"
+ANALYTICS_DIR="$STATE_DIR/analytics"
+JSONL_FILE="$ANALYTICS_DIR/skill-usage.jsonl"
+CURSOR_FILE="$ANALYTICS_DIR/.last-sync-line"
+RATE_FILE="$ANALYTICS_DIR/.last-sync-time"
+CONFIG_CMD="$UZUSTACK_DIR/bin/uzustack-config"
+
+# env で未 override なら Supabase config を source
+if [ -z "${UZUSTACK_SUPABASE_URL:-}" ] && [ -f "$UZUSTACK_DIR/supabase/config.sh" ]; then
+  . "$UZUSTACK_DIR/supabase/config.sh"
+fi
+SUPABASE_URL="${UZUSTACK_SUPABASE_URL:-}"
+ANON_KEY="${UZUSTACK_SUPABASE_ANON_KEY:-}"
+
+# ─── Pre-checks ──────────────────────────────────────────────
+# Supabase URL 未設定 → silently に exit
+[ -z "$SUPABASE_URL" ] && exit 0
+
+# JSONL file 無し → sync する物がない
+[ -f "$JSONL_FILE" ] || exit 0
+
+# Rate limit: 5 分に 1 回
+if [ -f "$RATE_FILE" ]; then
+  STALE=$(find "$RATE_FILE" -mmin +5 2>/dev/null || true)
+  [ -z "$STALE" ] && exit 0
+fi
+
+# ─── tier を読む ─────────────────────────────────────────────
+TIER="$("$CONFIG_CMD" get telemetry 2>/dev/null || true)"
+TIER="${TIER:-off}"
+[ "$TIER" = "off" ] && exit 0
+
+# ─── cursor を読む ───────────────────────────────────────────
+CURSOR=0
+if [ -f "$CURSOR_FILE" ]; then
+  CURSOR="$(cat "$CURSOR_FILE" 2>/dev/null | tr -d ' \n\r\t')"
+  # 入力検証: 非負整数のみ allow
+  case "$CURSOR" in *[!0-9]*) CURSOR=0 ;; esac
+fi
+
+# Safety: cursor が file 行数を超えたら reset
+TOTAL_LINES="$(wc -l < "$JSONL_FILE" | tr -d ' \n\r\t')"
+if [ "$CURSOR" -gt "$TOTAL_LINES" ] 2>/dev/null; then
+  CURSOR=0
+fi
+
+# 新規送信対象なし
+[ "$CURSOR" -ge "$TOTAL_LINES" ] 2>/dev/null && exit 0
+
+# ─── 未送信行を読む ──────────────────────────────────────────
+SKIP=$(( CURSOR + 1 ))
+UNSENT="$(tail -n "+$SKIP" "$JSONL_FILE" 2>/dev/null || true)"
+[ -z "$UNSENT" ] && exit 0
+
+# ─── local-only field を strip して batch を組み立て ─────────
+# Edge function は raw JSONL field 名 (v / ts / sessions) を期待 — column
+# rename は不要 (function 内部で map される)。
+BATCH="["
+FIRST=true
+COUNT=0
+
+while IFS= read -r LINE; do
+  # 空行 / malformed 行は skip
+  [ -z "$LINE" ] && continue
+  echo "$LINE" | grep -q '^{' || continue
+
+  # local-only field を strip (v / ts / sessions は edge function 用にそのまま)
+  CLEAN="$(echo "$LINE" | sed \
+    -e 's/,"_repo_slug":"[^"]*"//g' \
+    -e 's/,"_branch":"[^"]*"//g' \
+    -e 's/,"repo":"[^"]*"//g')"
+
+  # anonymous tier なら installation_id を strip
+  if [ "$TIER" = "anonymous" ]; then
+    CLEAN="$(echo "$CLEAN" | sed 's/,"installation_id":"[^"]*"//g; s/,"installation_id":null//g')"
+  fi
+
+  if [ "$FIRST" = "true" ]; then
+    FIRST=false
+  else
+    BATCH="$BATCH,"
+  fi
+  BATCH="$BATCH$CLEAN"
+  COUNT=$(( COUNT + 1 ))
+
+  # batch size limit
+  [ "$COUNT" -ge 100 ] && break
+done <<< "$UNSENT"
+
+BATCH="$BATCH]"
+
+# filter 後に送信対象なし
+[ "$COUNT" -eq 0 ] && exit 0
+
+# ─── edge function に POST ───────────────────────────────────
+RESP_FILE="$(mktemp /tmp/uzustack-sync-XXXXXX 2>/dev/null || echo "/tmp/uzustack-sync-$$")"
+HTTP_CODE="$(curl -s -w '%{http_code}' --max-time 10 \
+  -X POST "${SUPABASE_URL}/functions/v1/telemetry-ingest" \
+  -H "Content-Type: application/json" \
+  -H "apikey: ${ANON_KEY}" \
+  -o "$RESP_FILE" \
+  -d "$BATCH" 2>/dev/null || echo "000")"
+
+# ─── 成功時 (2xx) cursor を更新 ──────────────────────────────
+case "$HTTP_CODE" in
+  2*)
+    # response から inserted count を parse — 実際に insert された時のみ advance。
+    # SENT count で advance する (inserted を source 行に map できないため)。
+    # inserted==0 なら systemic に何かおかしい — advance しない。
+    INSERTED="$(grep -o '"inserted":[0-9]*' "$RESP_FILE" 2>/dev/null | grep -o '[0-9]*' || echo "0")"
+    # upsert error (installation 追跡失敗) を確認 — log するが cursor advance は止めない
+    UPSERT_ERRORS="$(grep -o '"upsertErrors"' "$RESP_FILE" 2>/dev/null || true)"
+    if [ -n "$UPSERT_ERRORS" ]; then
+      echo "[uzustack-telemetry-sync] Warning: installation upsert errors in response" >&2
+    fi
+    if [ "${INSERTED:-0}" -gt 0 ] 2>/dev/null; then
+      NEW_CURSOR=$(( CURSOR + COUNT ))
+      echo "$NEW_CURSOR" > "$CURSOR_FILE" 2>/dev/null || true
+    fi
+    ;;
+esac
+
+rm -f "$RESP_FILE" 2>/dev/null || true
+
+# rate limit marker を更新
+touch "$RATE_FILE" 2>/dev/null || true
+
+exit 0

@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# uzustack-session-update — session start 時に uzustack を auto-update (team mode)
+#
+# Claude Code SessionStart hook から呼ばれる。fast / silent / non-fatal が必須。
+# update 全体は background (fork) で走り、hook 自体は即 exit する。session
+# 起動が遅延しないよう設計されている。
+#
+# Always exit 0 — error は Claude Code session を絶対 block してはならない。
+
+set +e
+
+UZUSTACK_DIR="${UZUSTACK_DIR:-$HOME/.claude/skills/uzustack}"
+STATE_DIR="${UZUSTACK_STATE_DIR:-$HOME/.uzustack}"
+THROTTLE_FILE="$STATE_DIR/.last-session-update"
+LOCK_DIR="$STATE_DIR/.setup-lock"
+LOG_FILE="$STATE_DIR/analytics/session-update.log"
+THROTTLE_SECONDS=3600  # 1 時間
+
+log_entry() {
+  mkdir -p "$(dirname "$LOG_FILE")"
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $1" >> "$LOG_FILE" 2>/dev/null || true
+}
+
+# ── Guard: uzustack は git repo であること ──
+if [ ! -d "$UZUSTACK_DIR/.git" ]; then
+  exit 0
+fi
+
+# ── Guard: team mode が有効であること ──
+AUTO=$("$UZUSTACK_DIR/bin/uzustack-config" get auto_upgrade 2>/dev/null || true)
+if [ "$AUTO" != "true" ]; then
+  exit 0
+fi
+
+# ── Throttle: 直近に check 済なら skip ──
+if [ -f "$THROTTLE_FILE" ]; then
+  LAST=$(cat "$THROTTLE_FILE" 2>/dev/null || echo 0)
+  NOW=$(date +%s)
+  ELAPSED=$(( NOW - LAST ))
+  if [ "$ELAPSED" -lt "$THROTTLE_SECONDS" ]; then
+    exit 0
+  fi
+fi
+
+# ── background に fork: session start の latency を 0 にする ──
+(
+  # git が credential prompt を出さないよう抑止 (background process が hang する)
+  export GIT_TERMINAL_PROMPT=0
+
+  mkdir -p "$STATE_DIR"
+
+  # ── lockfile を取得 (別 session が setup 中なら skip) ──
+  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    # Lock 存在 — stale (PID 死) かどうか確認
+    if [ -f "$LOCK_DIR/pid" ]; then
+      LOCK_PID=$(cat "$LOCK_DIR/pid" 2>/dev/null || echo 0)
+      if [ "$LOCK_PID" -gt 0 ] 2>/dev/null && ! kill -0 "$LOCK_PID" 2>/dev/null; then
+        # Stale lock — 削除して再取得
+        rm -rf "$LOCK_DIR" 2>/dev/null
+        mkdir "$LOCK_DIR" 2>/dev/null || { log_entry "SKIP lock_contested"; exit 0; }
+      else
+        log_entry "SKIP locked_by=$LOCK_PID"
+        exit 0
+      fi
+    else
+      log_entry "SKIP locked_no_pid"
+      exit 0
+    fi
+  fi
+
+  # stale lock 検出用に PID を書き込む
+  echo $$ > "$LOCK_DIR/pid" 2>/dev/null
+
+  # exit 時に lock を cleanup
+  trap 'rm -rf "$LOCK_DIR" 2>/dev/null' EXIT
+
+  # ── 最新を pull ──
+  OLD_HEAD=$(git -C "$UZUSTACK_DIR" rev-parse HEAD 2>/dev/null)
+  git -C "$UZUSTACK_DIR" pull --ff-only -q 2>/dev/null
+  PULL_EXIT=$?
+  NEW_HEAD=$(git -C "$UZUSTACK_DIR" rev-parse HEAD 2>/dev/null)
+
+  # outcome に関わらず check 時刻を記録
+  date +%s > "$THROTTLE_FILE" 2>/dev/null
+
+  if [ "$PULL_EXIT" -ne 0 ]; then
+    log_entry "PULL_FAILED exit=$PULL_EXIT"
+    exit 0
+  fi
+
+  # ── HEAD が move した場合、setup -q を実行 ──
+  if [ "$OLD_HEAD" != "$NEW_HEAD" ]; then
+    log_entry "UPDATING old=$OLD_HEAD new=$NEW_HEAD"
+
+    # setup には bun が必要
+    if command -v bun >/dev/null 2>&1; then
+      ( cd "$UZUSTACK_DIR" && ./setup -q ) >/dev/null 2>&1 || {
+        log_entry "SETUP_FAILED"
+      }
+    else
+      log_entry "SETUP_SKIPPED bun_missing"
+    fi
+
+    # 次の skill preamble で "just upgraded" を表示するための marker を書く
+    OLD_VER=$(git -C "$UZUSTACK_DIR" show "$OLD_HEAD:VERSION" 2>/dev/null || echo "unknown")
+    echo "$OLD_VER" > "$STATE_DIR/just-upgraded-from" 2>/dev/null
+    rm -f "$STATE_DIR/last-update-check" 2>/dev/null
+    rm -f "$STATE_DIR/update-snoozed" 2>/dev/null
+
+    log_entry "UPDATED from=$OLD_VER to=$(cat "$UZUSTACK_DIR/VERSION" 2>/dev/null || echo unknown)"
+  else
+    log_entry "UP_TO_DATE head=$OLD_HEAD"
+  fi
+) &
+
+exit 0

@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+# uzustack-question-log — AskUserQuestion event を project log に append する
+#
+# Usage:
+#   uzustack-question-log '{"skill":"ship","question_id":"ship-test-failure-triage",\
+#     "question_summary":"Tests failed","options_count":3,"user_choice":"fix-now",\
+#     "recommended":"fix-now","session_id":"ppid"}'
+#
+# v1: log のみ。/plan-tune の inspection と (v2 で) inferred-dimension derivation
+# pipeline が consume する。
+#
+# Schema (全 field 検証):
+#   skill              — skill 名 (kebab-case)
+#   question_id        — 登録済 id (推奨) または ad-hoc `{skill}-{slug}`
+#   question_summary   — 質問内容の 1 行 summary (<= 200 chars)
+#   category           — approval | clarification | routing | cherry-pick | feedback-loop
+#                        (省略時は registry から lookup)
+#   door_type          — one-way | two-way
+#                        (省略時は registry から lookup)
+#   options_count      — 提示された options 数 (positive integer)
+#   user_choice        — user 選択 key (free string、registry-options が望ましい)
+#   recommended        — agent 推奨 option key (optional)
+#   followed_recommendation — bool (optional、両方ある時に算出)
+#   session_id         — 安定 session identifier
+#   ts                 — ISO 8601 timestamp (未指定時は auto-inject)
+#
+# Append-only JSONL。dedup は read 時に行う。
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+eval "$("$SCRIPT_DIR/uzustack-slug" 2>/dev/null)"
+UZUSTACK_HOME="${UZUSTACK_HOME:-$HOME/.uzustack}"
+mkdir -p "$UZUSTACK_HOME/projects/$SLUG"
+
+INPUT="$1"
+
+# 検証 + registry からの enrich
+TMPERR=$(mktemp)
+trap 'rm -f "$TMPERR"' EXIT
+set +e
+VALIDATED=$(printf '%s' "$INPUT" | bun -e "
+const path = require('path');
+const raw = await Bun.stdin.text();
+let j;
+try { j = JSON.parse(raw); } catch { process.stderr.write('uzustack-question-log: invalid JSON\n'); process.exit(1); }
+
+// Required: skill (kebab-case)
+if (!j.skill || !/^[a-z0-9-]+\$/.test(j.skill)) {
+  process.stderr.write('uzustack-question-log: invalid skill, must be kebab-case\n');
+  process.exit(1);
+}
+
+// Required: question_id (kebab-case, <=64 chars)
+if (!j.question_id || !/^[a-z0-9-]+\$/.test(j.question_id) || j.question_id.length > 64) {
+  process.stderr.write('uzustack-question-log: invalid question_id, must be kebab-case <=64 chars\n');
+  process.exit(1);
+}
+
+// Required: question_summary (non-empty, <=200 chars, no newlines)
+if (typeof j.question_summary !== 'string' || !j.question_summary.length) {
+  process.stderr.write('uzustack-question-log: question_summary required\n');
+  process.exit(1);
+}
+if (j.question_summary.length > 200) {
+  j.question_summary = j.question_summary.slice(0, 200);
+}
+if (j.question_summary.includes('\n')) {
+  j.question_summary = j.question_summary.replace(/\n+/g, ' ');
+}
+
+// summary に対する injection 防御 — learnings-log と同 pattern
+const INJECTION_PATTERNS = [
+  /ignore\s+(all\s+)?previous\s+(instructions|context|rules)/i,
+  /you\s+are\s+now\s+/i,
+  /always\s+output\s+no\s+findings/i,
+  /skip\s+(all\s+)?(security|review|checks)/i,
+  /override[:\s]/i,
+  /\bsystem\s*:/i,
+  /\bassistant\s*:/i,
+  /\buser\s*:/i,
+  /do\s+not\s+(report|flag|mention)/i,
+];
+for (const pat of INJECTION_PATTERNS) {
+  if (pat.test(j.question_summary)) {
+    process.stderr.write('uzustack-question-log: question_summary contains suspicious instruction-like content, rejected\n');
+    process.exit(1);
+  }
+}
+
+// category + door_type の registry lookup による enrichment。
+// Registry file は \$UZUSTACK_ROOT/scripts/question-registry.ts、ただし TypeScript
+// を runtime で import しない — 渡された値を pass-through し default で埋める。
+// caller (preamble resolver) が registry から知っている category + door_type を
+// 渡す前提、ad-hoc id では両方とも省略可。
+
+const ALLOWED_CATEGORIES = ['approval', 'clarification', 'routing', 'cherry-pick', 'feedback-loop'];
+if (j.category !== undefined) {
+  if (!ALLOWED_CATEGORIES.includes(j.category)) {
+    process.stderr.write('uzustack-question-log: invalid category, must be one of: ' + ALLOWED_CATEGORIES.join(', ') + '\n');
+    process.exit(1);
+  }
+}
+
+const ALLOWED_DOORS = ['one-way', 'two-way'];
+if (j.door_type !== undefined) {
+  if (!ALLOWED_DOORS.includes(j.door_type)) {
+    process.stderr.write('uzustack-question-log: invalid door_type, must be one-way or two-way\n');
+    process.exit(1);
+  }
+}
+
+// options_count — 指定時は positive integer
+if (j.options_count !== undefined) {
+  const n = Number(j.options_count);
+  if (!Number.isInteger(n) || n < 1 || n > 26) {
+    process.stderr.write('uzustack-question-log: options_count must be integer in [1, 26]\n');
+    process.exit(1);
+  }
+  j.options_count = n;
+}
+
+// user_choice — required、<= 64 chars、single-line、injection pattern 不可
+if (typeof j.user_choice !== 'string' || !j.user_choice.length) {
+  process.stderr.write('uzustack-question-log: user_choice required\n');
+  process.exit(1);
+}
+if (j.user_choice.length > 64) j.user_choice = j.user_choice.slice(0, 64);
+j.user_choice = j.user_choice.replace(/\n+/g, ' ');
+
+// recommended — optional、user_choice と同 constraint
+if (j.recommended !== undefined) {
+  if (typeof j.recommended !== 'string') {
+    process.stderr.write('uzustack-question-log: recommended must be string\n');
+    process.exit(1);
+  }
+  if (j.recommended.length > 64) j.recommended = j.recommended.slice(0, 64);
+}
+
+// followed_recommendation — 両方ある時に算出
+if (j.recommended !== undefined && j.user_choice !== undefined) {
+  j.followed_recommendation = j.user_choice === j.recommended;
+}
+
+// session_id — kebab-friendly、<=64 chars
+if (j.session_id !== undefined) {
+  if (typeof j.session_id !== 'string') {
+    process.stderr.write('uzustack-question-log: session_id must be string\n');
+    process.exit(1);
+  }
+  if (j.session_id.length > 64) j.session_id = j.session_id.slice(0, 64);
+}
+
+// timestamp 未指定なら inject
+if (!j.ts) j.ts = new Date().toISOString();
+
+console.log(JSON.stringify(j));
+" 2>"$TMPERR")
+VALIDATE_RC=$?
+set -e
+
+if [ $VALIDATE_RC -ne 0 ] || [ -z "$VALIDATED" ]; then
+  if [ -s "$TMPERR" ]; then
+    cat "$TMPERR" >&2
+  fi
+  exit 1
+fi
+
+echo "$VALIDATED" >> "$UZUSTACK_HOME/projects/$SLUG/question-log.jsonl"
+
+# NOTE: question-log.jsonl は意図的に gbrain-sync の enqueue 対象外。
+# Codex v2 review に従い、audit / derivation data は annotate 元の
+# question-preferences.json と一緒に local に留める。

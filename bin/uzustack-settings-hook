@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# uzustack-settings-hook — Claude Code settings.json に SessionStart hook を追加 / 削除
+#
+# Usage:
+#   uzustack-settings-hook add <hook-command>     # SessionStart hook を追加
+#   uzustack-settings-hook remove <hook-command>  # SessionStart hook を削除
+#
+# Requires: bun (uzustack の hard dependency)
+# Atomic 書き込み: .tmp + rename で crash / disk-full 時の corruption を防ぐ。
+
+set -euo pipefail
+
+ACTION="${1:-}"
+HOOK_CMD="${2:-}"
+SETTINGS_FILE="${UZUSTACK_SETTINGS_FILE:-$HOME/.claude/settings.json}"
+
+if [ -z "$ACTION" ] || [ -z "$HOOK_CMD" ]; then
+  echo "Usage: uzustack-settings-hook {add|remove} <hook-command>" >&2
+  exit 1
+fi
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "Error: bun が必要、未 install。" >&2
+  exit 1
+fi
+
+case "$ACTION" in
+  add)
+    UZUSTACK_SETTINGS_PATH="$SETTINGS_FILE" UZUSTACK_HOOK_CMD="$HOOK_CMD" bun -e "
+      const fs = require('fs');
+      const settingsPath = process.env.UZUSTACK_SETTINGS_PATH;
+      const hookCmd = process.env.UZUSTACK_HOOK_CMD;
+
+      let settings = {};
+      try { settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')); } catch {}
+
+      if (!settings.hooks) settings.hooks = {};
+      if (!settings.hooks.SessionStart) settings.hooks.SessionStart = [];
+
+      // dedup: hook command が既に登録済か確認
+      const exists = settings.hooks.SessionStart.some(entry =>
+        entry.hooks && entry.hooks.some(h => h.command && h.command.includes('uzustack-session-update'))
+      );
+
+      if (!exists) {
+        settings.hooks.SessionStart.push({
+          hooks: [{ type: 'command', command: hookCmd }]
+        });
+      }
+
+      const tmp = settingsPath + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(settings, null, 2) + '\n');
+      fs.renameSync(tmp, settingsPath);
+    " 2>/dev/null
+    ;;
+  remove)
+    [ -f "$SETTINGS_FILE" ] || exit 1
+    UZUSTACK_SETTINGS_PATH="$SETTINGS_FILE" bun -e "
+      const fs = require('fs');
+      const settingsPath = process.env.UZUSTACK_SETTINGS_PATH;
+
+      let settings = {};
+      try { settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')); } catch { process.exit(0); }
+
+      if (settings.hooks && settings.hooks.SessionStart) {
+        settings.hooks.SessionStart = settings.hooks.SessionStart.filter(entry =>
+          !(entry.hooks && entry.hooks.some(h => h.command && h.command.includes('uzustack-session-update')))
+        );
+        if (settings.hooks.SessionStart.length === 0) delete settings.hooks.SessionStart;
+        if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
+      }
+
+      const tmp = settingsPath + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(settings, null, 2) + '\n');
+      fs.renameSync(tmp, settingsPath);
+    " 2>/dev/null
+    ;;
+  *)
+    echo "Unknown action: $ACTION (expected add or remove)" >&2
+    exit 1
+    ;;
+esac
