@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# uzustack-review-log — review 結果を atomic に log する
+# Usage: uzustack-review-log '{"skill":"...","timestamp":"...","status":"..."}'
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+eval "$("$SCRIPT_DIR/uzustack-slug" 2>/dev/null)"
+UZUSTACK_HOME="${UZUSTACK_HOME:-$HOME/.uzustack}"
+mkdir -p "$UZUSTACK_HOME/projects/$SLUG"
+
+# 入力検証: parseable な JSON のみ受け付け (malformed / injection を reject)
+INPUT="$1"
+if ! printf '%s' "$INPUT" | bun -e "JSON.parse(await Bun.stdin.text())" 2>/dev/null; then
+  # JSON として invalid、append しない
+  echo "uzustack-review-log: invalid JSON、append を skip" >&2
+  exit 1
+fi
+
+echo "$INPUT" >> "$UZUSTACK_HOME/projects/$SLUG/$BRANCH-reviews.jsonl"
+
+# gbrain-sync: cross-machine sync 用に enqueue (sync off 時は no-op)
+"$SCRIPT_DIR/uzustack-brain-enqueue" "projects/$SLUG/$BRANCH-reviews.jsonl" 2>/dev/null &
