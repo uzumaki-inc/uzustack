@@ -1,0 +1,223 @@
+#!/usr/bin/env bash
+# uzustack-gbrain-repo-policy — gbrain repo ingest 用の per-remote trust tier。
+#
+# Usage:
+#   uzustack-gbrain-repo-policy get [<remote-url>]
+#     指定 remote の tier を出す。URL 未指定なら現 repo の origin を使う。
+#     0 で exit、出力は read-write / read-only / deny / unset のいずれか。
+#
+#   uzustack-gbrain-repo-policy set <remote-url> <read-write|read-only|deny>
+#     指定 remote の tier を保存する。成功なら 0 で exit。
+#
+#   uzustack-gbrain-repo-policy list
+#     全 entry を "<key>\t<tier>" で出す。key 順 sort。
+#
+#   uzustack-gbrain-repo-policy normalize <url>
+#     remote URL の正規化 (canonical) key を出す。他 skill / test が同じ
+#     collapsing logic を必要とする時に使う。
+#
+#   uzustack-gbrain-repo-policy --help
+#
+# Storage:
+#   ~/.uzustack/gbrain-repo-policy.json、mode 0600。
+#
+# File format:
+#   {
+#     "_schema_version": 2,
+#     "github.com/foo/bar": "read-write",
+#     "github.com/baz/qux": "deny"
+#   }
+#
+# Tier semantics:
+#   read-write — agent が当 repo の page を search も write もできる。
+#   read-only  — agent が search できるが page を絶対 write しない。
+#                (caller layer で enforce、本 binary は決定の保存のみ。)
+#   deny       — gbrain interaction を一切しない。
+#
+# Legacy migration:
+#   `_schema_version` が無い (または version < 2) の file を read した時、
+#   legacy `allow` 値を atomic に `read-write` へ rewrite し、
+#   `_schema_version: 2` を追加する。実際に値を変更した時に stderr に log line
+#   を出す。idempotent: 二度実行しても安全。
+#
+# Env:
+#   UZUSTACK_HOME — ~/.uzustack state directory を override (他 uzustack-*
+#                   bin と整合。test で多用)。
+set -euo pipefail
+
+STATE_DIR="${UZUSTACK_HOME:-$HOME/.uzustack}"
+POLICY_FILE="$STATE_DIR/gbrain-repo-policy.json"
+SCHEMA_VERSION=2
+
+die() { echo "uzustack-gbrain-repo-policy: $*" >&2; exit 2; }
+
+require_jq() {
+  if ! command -v jq >/dev/null 2>&1; then
+    die "jq が必要。install: brew install jq"
+  fi
+}
+
+# normalize <url> — canonical 形式: lowercase host + path、protocol 無し、
+# userinfo 無し、末尾 .git や / を除く。SSH shorthand (git@host:path) は
+# https://host/path と同じ key になるよう collapse する。
+normalize() {
+  local url="$1"
+  [ -z "$url" ] && { echo ""; return 0; }
+  # protocol:// を strip
+  url="${url#*://}"
+  # userinfo (git@、user:password@ 等) を strip — 最初の @ までを除く。
+  # ただし @ が path 内ではなく userinfo の場合のみ。
+  case "$url" in
+    *@*)
+      local before_at="${url%%@*}"
+      case "$before_at" in
+        */*|*:*) : ;;  # @ は path 内 — そのまま残す
+        *) url="${url#*@}" ;;
+      esac
+      ;;
+  esac
+  # SSH shorthand: github.com:foo/bar → github.com/foo/bar。最初の / より前の
+  # hostname-part に colon があるときのみ。bash の `${var/:/\/}` は escape が
+  # tricky なので sed の方が clear。
+  local head="${url%%/*}"
+  case "$head" in
+    *:*) url=$(printf '%s' "$url" | sed 's|:|/|') ;;
+  esac
+  # 末尾 .git を strip
+  url="${url%.git}"
+  # 末尾 / を strip
+  url="${url%/}"
+  # 全体を lowercase。GitHub と多くの host は path について case-insensitive
+  # なので、collapse すれば "Foo/Bar" と "foo/bar" の重複 entry を防げる。
+  printf '%s\n' "$url" | tr '[:upper:]' '[:lower:]'
+}
+
+# ensure_file — policy file が無ければ作成、legacy なら migrate する。
+# 実際に値を rewrite した時のみ stderr に migration log line を 1 度だけ出す。
+ensure_file() {
+  require_jq
+  mkdir -p "$STATE_DIR"
+
+  if [ ! -f "$POLICY_FILE" ]; then
+    # 新規 file — schema version のみ、entry 無し
+    local tmp
+    tmp=$(mktemp "$POLICY_FILE.tmp.XXXXXX")
+    printf '{"_schema_version":%d}\n' "$SCHEMA_VERSION" > "$tmp"
+    mv "$tmp" "$POLICY_FILE"
+    chmod 0600 "$POLICY_FILE"
+    return 0
+  fi
+
+  # file が既存 — validate、必要なら migrate
+  local raw
+  if ! raw=$(cat "$POLICY_FILE" 2>/dev/null); then
+    die "$POLICY_FILE を read できない"
+  fi
+
+  # JSON が壊れている → quarantine して新規開始
+  if ! echo "$raw" | jq empty 2>/dev/null; then
+    local ts
+    ts=$(date +%Y%m%d-%H%M%S)
+    local quarantine="$POLICY_FILE.corrupt-$ts"
+    mv "$POLICY_FILE" "$quarantine"
+    echo "uzustack-gbrain-repo-policy: 壊れた policy file を $quarantine に隔離、新規開始" >&2
+    local tmp
+    tmp=$(mktemp "$POLICY_FILE.tmp.XXXXXX")
+    printf '{"_schema_version":%d}\n' "$SCHEMA_VERSION" > "$tmp"
+    mv "$tmp" "$POLICY_FILE"
+    chmod 0600 "$POLICY_FILE"
+    return 0
+  fi
+
+  # schema version を確認
+  local version
+  version=$(echo "$raw" | jq -r '._schema_version // 0')
+  if [ "$version" -ge "$SCHEMA_VERSION" ]; then
+    return 0
+  fi
+
+  # migrate: `allow` → `read-write` に rename、_schema_version を追加
+  local allow_count migrated
+  allow_count=$(echo "$raw" | jq '[to_entries[] | select(.key != "_schema_version" and .value == "allow")] | length')
+  migrated=$(echo "$raw" | jq --argjson v "$SCHEMA_VERSION" '
+    (to_entries | map(
+      if .key == "_schema_version" then empty
+      elif .value == "allow" then .value = "read-write"
+      else .
+      end
+    ) | from_entries) + {_schema_version: $v}
+  ')
+  local tmp
+  tmp=$(mktemp "$POLICY_FILE.tmp.XXXXXX")
+  printf '%s\n' "$migrated" > "$tmp"
+  mv "$tmp" "$POLICY_FILE"
+  chmod 0600 "$POLICY_FILE"
+  if [ "$allow_count" -gt 0 ]; then
+    echo "[uzustack-gbrain-repo-policy] $allow_count 件の legacy allow entry を read-write に migrate" >&2
+  fi
+}
+
+cmd_get() {
+  local url="${1:-}"
+  if [ -z "$url" ]; then
+    url=$(git remote get-url origin 2>/dev/null || true)
+    if [ -z "$url" ]; then
+      echo "unset"
+      return 0
+    fi
+  fi
+  local key
+  key=$(normalize "$url")
+  if [ -z "$key" ]; then
+    echo "unset"
+    return 0
+  fi
+  ensure_file
+  jq -r --arg key "$key" '.[$key] // "unset"' "$POLICY_FILE"
+}
+
+cmd_set() {
+  local url="${1:-}"
+  local tier="${2:-}"
+  [ -z "$url" ] && die "usage: set <remote-url> <tier>"
+  [ -z "$tier" ] && die "usage: set <remote-url> <tier>"
+  case "$tier" in
+    read-write|read-only|deny) ;;
+    *) die "tier が無効: '$tier' (read-write / read-only / deny のいずれか)" ;;
+  esac
+  local key
+  key=$(normalize "$url")
+  [ -z "$key" ] && die "remote URL を normalize できない: $url"
+  ensure_file
+  local tmp
+  tmp=$(mktemp "$POLICY_FILE.tmp.XXXXXX")
+  jq --arg key "$key" --arg tier "$tier" '.[$key] = $tier' "$POLICY_FILE" > "$tmp"
+  mv "$tmp" "$POLICY_FILE"
+  chmod 0600 "$POLICY_FILE"
+  echo "Set $key → $tier"
+}
+
+cmd_list() {
+  if [ ! -f "$POLICY_FILE" ]; then
+    # list するもの無し。read のためだけに file を作らない
+    return 0
+  fi
+  ensure_file
+  jq -r 'to_entries[] | select(.key != "_schema_version") | "\(.key)\t\(.value)"' "$POLICY_FILE" | sort
+}
+
+cmd_normalize() {
+  local url="${1:-}"
+  [ -z "$url" ] && die "usage: normalize <url>"
+  normalize "$url"
+}
+
+case "${1:-}" in
+  get) shift; cmd_get "$@" ;;
+  set) shift; cmd_set "$@" ;;
+  list) shift; cmd_list "$@" ;;
+  normalize) shift; cmd_normalize "$@" ;;
+  --help|-h|help) sed -n '2,47p' "$0" | sed 's/^# \{0,1\}//' ;;
+  "") die "usage: uzustack-gbrain-repo-policy {get|set|list|normalize|--help}" ;;
+  *) die "不明な subcommand: $1" ;;
+esac
