@@ -1,16 +1,13 @@
 /**
  * Host config registry.
  *
- * Phase 3 step-47 (Tier 1): claude + 9 host config (codex / cursor / factory /
- * gbrain / hermes / kiro / openclaw / opencode / slate) を upstream から機械 port
- * 配置済。9 host は frontmatter.mode='allowlist' を使うが allowlist 実装は
- * Phase 4+ で fail-loud のため、`bun run gen:skill-docs --host all` 実行時は
- * gen-skill-docs.ts 側の per-host try-catch で「Phase 4+ で実装」明示メッセージを
- * 出して exit 0 で抜ける。実際に SKILL.md を生成するのは claude のみ。
+ * Phase 3 step-47: claude + 9 host config (codex / cursor / factory /
+ * gbrain / hermes / kiro / openclaw / opencode / slate) を upstream から
+ * 機械 port 配置。Phase 3 の挙動（claude のみ実生成、9 host は per-host
+ * try-catch で graceful fail）と Phase 4+ で必要な追加 port 詳細は
+ * scripts/gen-skill-docs.ts 冒頭参照。
  *
- * Phase 4+ で他 host を有効化する時は scripts/gen-skill-docs.ts に upstream の
- * external host machinery（processExternalHost / allowlist transformFrontmatter /
- * openai.yaml metadata / openclaw 専用生成 等）を機械 port すれば通る。
+ * Adding a new host: create hosts/<name>.ts, import here, add to ALL_HOST_CONFIGS.
  */
 
 import type { HostConfig } from '../scripts/host-config';
