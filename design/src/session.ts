@@ -1,6 +1,6 @@
 /**
- * Session state management for multi-turn design iteration.
- * Session files are JSON in /tmp, keyed by PID + timestamp.
+ * 複数ターン design iteration のための session 状態管理。
+ * session file は PID + timestamp を key とする JSON を /tmp に置く。
  */
 
 import fs from "fs";
@@ -17,21 +17,21 @@ export interface DesignSession {
 }
 
 /**
- * Generate a unique session ID from PID + timestamp.
+ * PID + timestamp で一意な session ID を生成。
  */
 export function createSessionId(): string {
   return `${process.pid}-${Date.now()}`;
 }
 
 /**
- * Get the file path for a session.
+ * session file の path を取得。
  */
 export function sessionPath(sessionId: string): string {
   return path.join("/tmp", `design-session-${sessionId}.json`);
 }
 
 /**
- * Create a new session after initial generation.
+ * 初回生成後に新規 session を作成。
  */
 export function createSession(
   responseId: string,
@@ -54,7 +54,7 @@ export function createSession(
 }
 
 /**
- * Read an existing session from disk.
+ * disk から既存 session を読み出し。
  */
 export function readSession(sessionFilePath: string): DesignSession {
   const content = fs.readFileSync(sessionFilePath, "utf-8");
@@ -62,7 +62,7 @@ export function readSession(sessionFilePath: string): DesignSession {
 }
 
 /**
- * Update a session with new iteration data.
+ * 新しい iteration data で session を更新。
  */
 export function updateSession(
   session: DesignSession,

@@ -1,6 +1,6 @@
 /**
- * Vision-based quality gate for generated mockups.
- * Uses GPT-4o vision to verify text readability, layout completeness, and visual coherence.
+ * 生成 mockup に対する vision-based 品質 gate。
+ * GPT-4o vision で text 可読性 / layout 完全性 / visual coherence を検証する。
  */
 
 import fs from "fs";
@@ -12,7 +12,7 @@ export interface CheckResult {
 }
 
 /**
- * Check a generated mockup against the original brief.
+ * 生成 mockup を元 brief に照らして check。
  */
 export async function checkMockup(imagePath: string, brief: string): Promise<CheckResult> {
   const apiKey = requireApiKey();
@@ -64,12 +64,12 @@ export async function checkMockup(imagePath: string, brief: string): Promise<Che
     if (!response.ok) {
       const error = await response.text();
       if (response.status === 403 && error.includes("organization must be verified")) {
-        console.error("OpenAI organization verification required. Go to https://platform.openai.com/settings/organization to verify.");
-        return { pass: true, issues: "OpenAI org not verified — vision check skipped" };
+        console.error("OpenAI organization verification 未完了。https://platform.openai.com/settings/organization で verify が必要。");
+        return { pass: true, issues: "OpenAI org 未 verified — vision check を skip" };
       }
-      // Non-blocking: if vision check fails, default to PASS with warning
+      // 非 blocking：vision check 失敗時は warning 付きで PASS にする
       console.error(`Vision check API error (${response.status}): ${error}`);
-      return { pass: true, issues: "Vision check unavailable — skipped" };
+      return { pass: true, issues: "vision check 利用不可 — skip" };
     }
 
     const data = await response.json() as any;
@@ -79,7 +79,7 @@ export async function checkMockup(imagePath: string, brief: string): Promise<Che
       return { pass: true, issues: "" };
     }
 
-    // Extract issues after "FAIL:"
+    // "FAIL:" 以降の issue を抽出
     const issues = content.replace(/^FAIL:\s*/i, "").trim();
     return { pass: false, issues: issues || content };
   } finally {
@@ -88,7 +88,7 @@ export async function checkMockup(imagePath: string, brief: string): Promise<Che
 }
 
 /**
- * Standalone check command: check an existing image against a brief.
+ * 単独 check command：既存 image を brief に照らして check。
  */
 export async function checkCommand(imagePath: string, brief: string): Promise<void> {
   const result = await checkMockup(imagePath, brief);

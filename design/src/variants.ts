@@ -1,7 +1,7 @@
 /**
- * Generate N design variants from a brief.
- * Uses staggered parallel: 1s delay between API calls to avoid rate limits.
- * Falls back to exponential backoff on 429s.
+ * brief から N 個の design variant を生成。
+ * 段階並列：API call 間に 1s delay を入れて rate limit を回避する。
+ * 429 で fallback として exponential backoff を行う。
  */
 
 import fs from "fs";
@@ -16,11 +16,11 @@ export interface VariantsOptions {
   outputDir: string;
   size?: string;
   quality?: string;
-  viewports?: string; // "desktop,tablet,mobile" — generates at multiple sizes
+  viewports?: string; // "desktop,tablet,mobile" — 複数 size で生成
 }
 
 const STYLE_VARIATIONS = [
-  "", // First variant uses the brief as-is
+  "", // 1 番目の variant は brief をそのまま使用
   "Use a bolder, more dramatic visual style with stronger contrast and larger typography.",
   "Use a calmer, more minimal style with generous whitespace and subtle colors.",
   "Use a warmer, more approachable style with rounded corners and friendly typography.",
@@ -30,7 +30,7 @@ const STYLE_VARIATIONS = [
 ];
 
 /**
- * Generate a single variant with retry on 429.
+ * variant を 1 個生成、429 で retry。
  */
 async function generateVariant(
   apiKey: string,
@@ -44,9 +44,9 @@ async function generateVariant(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (attempt > 0) {
-      // Exponential backoff: 2s, 4s, 8s
+      // exponential backoff: 2s / 4s / 8s
       const delay = Math.pow(2, attempt) * 1000;
-      console.error(`  Rate limited, retrying in ${delay / 1000}s...`);
+      console.error(`  rate limited、${delay / 1000}s 後に retry...`);
       await new Promise(r => setTimeout(r, delay));
     }
 
@@ -78,7 +78,7 @@ async function generateVariant(
       if (!response.ok) {
         const error = await response.text();
         if (response.status === 403 && error.includes("organization must be verified")) {
-          return { path: outputPath, success: false, error: "OpenAI organization verification required. Go to https://platform.openai.com/settings/organization to verify." };
+          return { path: outputPath, success: false, error: "OpenAI organization verification 未完了。https://platform.openai.com/settings/organization で verify が必要。" };
         }
         return { path: outputPath, success: false, error: `API error (${response.status}): ${error.slice(0, 200)}` };
       }
@@ -87,7 +87,7 @@ async function generateVariant(
       const imageItem = data.output?.find((item: any) => item.type === "image_generation_call");
 
       if (!imageItem?.result) {
-        return { path: outputPath, success: false, error: "No image data in response" };
+        return { path: outputPath, success: false, error: "response に image data なし" };
       }
 
       fs.writeFileSync(outputPath, Buffer.from(imageItem.result, "base64"));
@@ -105,7 +105,7 @@ async function generateVariant(
 }
 
 /**
- * Generate N variants with staggered parallel execution.
+ * 段階並列で N 個の variant を生成。
  */
 export async function variants(options: VariantsOptions): Promise<void> {
   const apiKey = requireApiKey();
@@ -117,19 +117,19 @@ export async function variants(options: VariantsOptions): Promise<void> {
 
   fs.mkdirSync(options.outputDir, { recursive: true });
 
-  // If viewports specified, generate responsive variants instead of style variants
+  // viewports 指定時は style variant ではなく responsive variant を生成
   if (options.viewports) {
     await generateResponsiveVariants(apiKey, baseBrief, options.outputDir, options.viewports, quality);
     return;
   }
 
-  const count = Math.min(options.count, 7); // Cap at 7 style variations
+  const count = Math.min(options.count, 7); // style variation は 7 個に cap
   const size = options.size || "1536x1024";
 
-  console.error(`Generating ${count} variants...`);
+  console.error(`${count} 件の variant を生成中...`);
   const startTime = Date.now();
 
-  // Staggered parallel: start each call 1.5s apart
+  // 段階並列：各 call を 1.5s 間隔で開始
   const promises: Promise<{ path: string; success: boolean; error?: string }>[] = [];
 
   for (let i = 0; i < count; i++) {
@@ -140,12 +140,12 @@ export async function variants(options: VariantsOptions): Promise<void> {
 
     const outputPath = path.join(options.outputDir, `variant-${String.fromCharCode(65 + i)}.png`);
 
-    // Stagger: wait 1.5s between launches
+    // stagger: 起動間に 1.5s 待機
     const delay = i * 1500;
     promises.push(
       new Promise(resolve => setTimeout(resolve, delay))
         .then(() => {
-          console.error(`  Starting variant ${String.fromCharCode(65 + i)}...`);
+          console.error(`  variant ${String.fromCharCode(65 + i)} を開始...`);
           return generateVariant(apiKey, prompt, outputPath, size, quality);
         })
     );
@@ -170,9 +170,9 @@ export async function variants(options: VariantsOptions): Promise<void> {
     }
   }
 
-  console.error(`\n${succeeded.length}/${count} variants generated (${elapsed}s)`);
+  console.error(`\n${succeeded.length}/${count} 件の variant 生成完了 (${elapsed}s)`);
 
-  // Output structured result to stdout
+  // 構造化結果を stdout に出力
   console.log(JSON.stringify({
     outputDir: options.outputDir,
     count,
@@ -200,11 +200,11 @@ async function generateResponsiveVariants(
   const configs = viewportList.map(v => VIEWPORT_CONFIGS[v]).filter(Boolean);
 
   if (configs.length === 0) {
-    console.error(`No valid viewports. Use: desktop, tablet, mobile`);
+    console.error(`有効な viewport なし。指定可能：desktop / tablet / mobile`);
     process.exit(1);
   }
 
-  console.error(`Generating responsive variants: ${configs.map(c => c.desc).join(", ")}...`);
+  console.error(`responsive variant を生成中: ${configs.map(c => c.desc).join(", ")}...`);
   const startTime = Date.now();
 
   const promises = configs.map((config, i) => {
@@ -219,7 +219,7 @@ async function generateResponsiveVariants(
     return new Promise<{ path: string; success: boolean; error?: string }>(resolve =>
       setTimeout(resolve, delay)
     ).then(() => {
-      console.error(`  Starting ${config.desc}...`);
+      console.error(`  ${config.desc} を開始...`);
       return generateVariant(apiKey, prompt, outputPath, config.size, quality);
     });
   });
@@ -239,7 +239,7 @@ async function generateResponsiveVariants(
     }
   }
 
-  console.error(`\n${succeeded.length}/${configs.length} responsive variants generated (${elapsed}s)`);
+  console.error(`\n${succeeded.length}/${configs.length} 件の responsive variant 生成完了 (${elapsed}s)`);
   console.log(JSON.stringify({
     outputDir,
     viewports: viewportList,

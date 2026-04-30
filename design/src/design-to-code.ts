@@ -1,7 +1,7 @@
 /**
- * Design-to-Code Prompt Generator.
- * Extracts implementation instructions from an approved mockup via GPT-4o vision.
- * Produces a structured prompt the agent can use to implement the design.
+ * Design-to-Code Prompt Generator。
+ * approved mockup から GPT-4o vision で実装指示を抽出する。
+ * agent が design 実装に使える構造化された prompt を出力する。
  */
 
 import fs from "fs";
@@ -17,7 +17,7 @@ export interface DesignToCodeResult {
 }
 
 /**
- * Generate a structured implementation prompt from an approved mockup.
+ * approved mockup から構造化された実装 prompt を生成。
  */
 export async function generateDesignToCodePrompt(
   imagePath: string,
@@ -26,7 +26,7 @@ export async function generateDesignToCodePrompt(
   const apiKey = requireApiKey();
   const imageData = fs.readFileSync(imagePath).toString("base64");
 
-  // Read DESIGN.md if available for additional context
+  // 追加 context 用に DESIGN.md があれば読み込む
   const designConstraints = repoRoot ? readDesignConstraints(repoRoot) : null;
 
   const controller = new AbortController();

@@ -1,9 +1,9 @@
 /**
- * Generate HTML comparison board for user review of design variants.
- * Opens in headed Chrome via $B goto. User picks favorite, rates, comments, submits.
- * Agent reads feedback from hidden DOM element.
+ * design variant の user review 用 HTML comparison board を生成。
+ * `$B goto` で headed Chrome で開き、user が favorite を選び、評価し、
+ * comment を書き、submit する。agent は hidden DOM element から feedback を読む。
  *
- * Design spec: single column, full-width mockups, APP UI aesthetic.
+ * Design spec: 単一 column、full-width mockup、APP UI aesthetic。
  */
 
 import fs from "fs";
@@ -15,46 +15,46 @@ export interface CompareOptions {
 }
 
 /**
- * Generate the comparison board HTML page.
+ * comparison board の HTML page を生成。
  */
 export function generateCompareHtml(images: string[]): string {
   const variantLabels = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
   const variantCards = images.map((imgPath, i) => {
     const label = variantLabels[i] || `${i + 1}`;
-    // Embed images as base64 data URIs for self-contained HTML
+    // self-contained HTML 化のため image を base64 data URI で埋め込む
     const imgData = fs.readFileSync(imgPath).toString("base64");
     const ext = path.extname(imgPath).slice(1) || "png";
 
     return `
     <div class="variant" data-variant="${label}">
       <div class="variant-header">
-        <span class="variant-label">Option ${label}</span>
-        <span class="variant-desc" id="variant-desc-${label}">Design direction ${label}</span>
+        <span class="variant-label">案 ${label}</span>
+        <span class="variant-desc" id="variant-desc-${label}">方向 ${label}</span>
       </div>
-      <img src="data:image/${ext};base64,${imgData}" alt="Option ${label}" />
+      <img src="data:image/${ext};base64,${imgData}" alt="案 ${label}" />
       <div class="variant-controls">
         <label class="pick-label">
           <input type="radio" name="preferred" value="${label}" />
-          <span class="pick-text">Pick</span>
-          <span class="pick-confirm" style="display:none;">We'll move forward with Option ${label}</span>
+          <span class="pick-text">選択</span>
+          <span class="pick-confirm" style="display:none;">案 ${label} で進めます</span>
         </label>
         <div class="stars" data-variant="${label}">
           ${[1,2,3,4,5].map(n => `<span class="star" data-value="${n}">★</span>`).join("")}
         </div>
         <input type="text" class="feedback-input" data-variant="${label}"
-               placeholder="What do you like/dislike?" />
-        <button class="more-like-this" data-variant="${label}">More like this</button>
+               placeholder="気に入った点・気になる点は？" />
+        <button class="more-like-this" data-variant="${label}">これに近いものを生成</button>
       </div>
     </div>`;
   }).join("\n");
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Design Exploration</title>
+<title>Design 探索</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -327,10 +327,10 @@ export function generateCompareHtml(images: string[]): string {
     text-align: center;
   }
 
-  /* Hidden result elements for agent polling */
+  /* agent polling 用の hidden 結果 element */
   #status, #feedback-result { display: none; }
 
-  /* Skeleton loading state */
+  /* skeleton loading state */
   .skeleton {
     background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
     background-size: 200% 100%;
@@ -347,9 +347,9 @@ export function generateCompareHtml(images: string[]): string {
 <body>
 
 <div class="header">
-  <h1>Design Exploration</h1>
+  <h1>Design 探索</h1>
   <span class="meta">
-    ${images.length} options
+    ${images.length} 案
     <span class="view-toggle">
       <button class="active" data-view="list">Large</button>
       <button data-view="grid">Grid</button>
@@ -363,35 +363,35 @@ export function generateCompareHtml(images: string[]): string {
 
 <div class="bottom-section">
   <div class="submit-column">
-    <h3>Overall direction</h3>
-    <p class="direction-hint">e.g. "Use A's layout with C's fox icon" or "Make it more minimal" or "I want the problem statement text but bigger"</p>
+    <h3>全体方針</h3>
+    <p class="direction-hint">例：「A の layout に C の fox icon」「もっと minimal に」「問題提起の文を大きく」</p>
     <textarea class="overall-textarea" id="overall-feedback"
-              placeholder="Combine elements, request changes, or describe what you want..."></textarea>
+              placeholder="element を組合せ、変更を request、または欲しい仕様を記述..."></textarea>
     <div class="submit-status" id="submit-status"></div>
-    <button class="submit-btn" id="submit-btn">Take my feedback and continue →</button>
+    <button class="submit-btn" id="submit-btn">feedback を反映して進める →</button>
   </div>
   <div class="regen-column">
-    <h3>Want to explore more?</h3>
+    <h3>もっと探索する？</h3>
     <div class="regen-controls">
-      <button class="regen-chiclet" data-action="different">Totally different</button>
-      <button class="regen-chiclet" data-action="match">Match my design</button>
+      <button class="regen-chiclet" data-action="different">全く違うもの</button>
+      <button class="regen-chiclet" data-action="match">design に合わせる</button>
     </div>
     <input type="text" class="regen-custom" id="regen-custom-input"
-           placeholder="Tell us what you want different..." />
-    <button class="regen-btn" id="regen-btn">Regenerate →</button>
+           placeholder="変更点を入力..." />
+    <button class="regen-btn" id="regen-btn">再生成 →</button>
   </div>
 </div>
 
 <div class="success-msg" id="success-msg">
-  Feedback submitted! Return to your coding agent.
+  feedback 送信完了。coding agent に戻る。
 </div>
 
-<!-- Hidden elements for agent polling -->
+<!-- agent polling 用の hidden element -->
 <div id="status"></div>
 <div id="feedback-result"></div>
 
 <script>
-  // View toggle
+  // view toggle
   document.querySelectorAll('.view-toggle button').forEach(function(btn) {
     btn.addEventListener('click', function() {
       document.querySelectorAll('.view-toggle button').forEach(function(b) { b.classList.remove('active'); });
@@ -405,22 +405,22 @@ export function generateCompareHtml(images: string[]): string {
     });
   });
 
-  // Pick confirmation
+  // pick confirmation
   document.querySelectorAll('input[name="preferred"]').forEach(function(radio) {
     radio.addEventListener('change', function() {
-      // Hide all confirmations first
+      // 確認表示を一旦全て非表示
       document.querySelectorAll('.pick-confirm').forEach(function(el) { el.style.display = 'none'; });
       document.querySelectorAll('.pick-text').forEach(function(el) { el.style.display = ''; });
-      // Show confirmation on the selected one
+      // 選択中のものに確認を表示
       var label = radio.closest('.pick-label');
       label.querySelector('.pick-text').style.display = 'none';
       label.querySelector('.pick-confirm').style.display = '';
-      // Update submit status
-      document.getElementById('submit-status').textContent = "We'll run with Option " + radio.value;
+      // submit status を更新
+      document.getElementById('submit-status').textContent = "案 " + radio.value + " で進めます";
     });
   });
 
-  // Star rating
+  // star rating
   document.querySelectorAll('.stars').forEach(starsEl => {
     const stars = starsEl.querySelectorAll('.star');
     let rating = 0;
@@ -435,7 +435,7 @@ export function generateCompareHtml(images: string[]): string {
     });
   });
 
-  // Regenerate chiclets (toggle active)
+  // regenerate chiclet（active 切替）
   document.querySelectorAll('.regen-chiclet').forEach(chiclet => {
     chiclet.addEventListener('click', () => {
       document.querySelectorAll('.regen-chiclet').forEach(c => c.classList.remove('active'));
@@ -443,19 +443,19 @@ export function generateCompareHtml(images: string[]): string {
     });
   });
 
-  // More like this buttons
+  // more like this button
   document.querySelectorAll('.more-like-this').forEach(btn => {
     btn.addEventListener('click', () => {
       const variant = btn.dataset.variant;
-      // Set regeneration context
+      // regeneration context を設定
       document.querySelectorAll('.regen-chiclet').forEach(c => c.classList.remove('active'));
-      document.getElementById('regen-custom-input').value = 'More like variant ' + variant;
-      // Trigger regenerate
+      document.getElementById('regen-custom-input').value = '案 ' + variant + ' に近い';
+      // regenerate を起動
       submitRegenerate('more_like_' + variant);
     });
   });
 
-  // Regenerate button
+  // regenerate button
   document.getElementById('regen-btn').addEventListener('click', () => {
     const activeChiclet = document.querySelector('.regen-chiclet.active');
     const customInput = document.getElementById('regen-custom-input').value;
@@ -488,15 +488,15 @@ export function generateCompareHtml(images: string[]): string {
     document.getElementById('submit-btn').style.display = 'none';
     document.getElementById('success-msg').style.display = 'block';
     document.getElementById('success-msg').innerHTML =
-      'Feedback received! Return to your coding agent.' +
-      '<br><small style="color:#666;margin-top:8px;display:block;">Want to make more changes? Run <code>/design-shotgun</code> again.</small>';
+      'feedback を受信。coding agent に戻る。' +
+      '<br><small style="color:#666;margin-top:8px;display:block;">さらに変更する？ <code>/design-shotgun</code> を再実行。</small>';
   }
 
   function showRegeneratingState() {
     disableAllInputs();
     document.querySelector('.variants').innerHTML =
       '<div style="text-align:center;padding:80px 24px;color:#666;">' +
-      '<div style="font-size:24px;margin-bottom:12px;">Generating new designs...</div>' +
+      '<div style="font-size:24px;margin-bottom:12px;">新 design を生成中...</div>' +
       '<div class="skeleton" style="width:60px;height:60px;border-radius:50%;margin:0 auto;"></div>' +
       '</div>';
     var _regenBar = document.querySelector('.regenerate-bar') || document.querySelector('.regen-column');
@@ -511,15 +511,15 @@ export function generateCompareHtml(images: string[]): string {
   function startProgressPolling() {
     if (!window.__UZUSTACK_SERVER_URL) return;
     var pollCount = 0;
-    var maxPolls = 150; // 5 min at 2s intervals
+    var maxPolls = 150; // 2s 間隔で 5 分
     var pollInterval = setInterval(function() {
       pollCount++;
       if (pollCount >= maxPolls) {
         clearInterval(pollInterval);
         document.querySelector('.variants').innerHTML =
           '<div style="text-align:center;padding:80px 24px;color:#666;">' +
-          '<div style="font-size:18px;margin-bottom:8px;">Something went wrong.</div>' +
-          '<div>Run <code>/design-shotgun</code> again in your coding agent.</div>' +
+          '<div style="font-size:18px;margin-bottom:8px;">問題が発生しました。</div>' +
+          '<div>coding agent で <code>/design-shotgun</code> を再実行。</div>' +
           '</div>';
         return;
       }
@@ -532,12 +532,12 @@ export function generateCompareHtml(images: string[]): string {
           }
         })
         .catch(function() {
-          // Server gone, stop polling
+          // server 終了、polling 停止
           clearInterval(pollInterval);
           document.querySelector('.variants').innerHTML =
             '<div style="text-align:center;padding:80px 24px;color:#666;">' +
-            '<div style="font-size:18px;margin-bottom:8px;">Connection lost.</div>' +
-            '<div>Run <code>/design-shotgun</code> again in your coding agent.</div>' +
+            '<div style="font-size:18px;margin-bottom:8px;">接続切断。</div>' +
+            '<div>coding agent で <code>/design-shotgun</code> を再実行。</div>' +
             '</div>';
         });
     }, 2000);
@@ -548,10 +548,10 @@ export function generateCompareHtml(images: string[]): string {
     var json = JSON.stringify(feedback, null, 2);
     document.getElementById('success-msg').style.display = 'block';
     document.getElementById('success-msg').innerHTML =
-      '<div style="color:#c00;margin-bottom:8px;">Connection lost. Copy your feedback below and paste it in your coding agent:</div>' +
+      '<div style="color:#c00;margin-bottom:8px;">接続切断。以下の feedback を copy して coding agent に paste:</div>' +
       '<pre style="text-align:left;background:#f5f5f5;padding:12px;border-radius:4px;font-size:12px;overflow-x:auto;cursor:pointer;" onclick="navigator.clipboard.writeText(this.textContent)">' +
       json.replace(/</g, '&lt;') + '</pre>' +
-      '<small style="color:#666;">Click to copy</small>';
+      '<small style="color:#666;">click で copy</small>';
   }
 
   function submitRegenerate(detail) {
@@ -569,7 +569,7 @@ export function generateCompareHtml(images: string[]): string {
     });
   }
 
-  // Submit button
+  // submit button
   document.getElementById('submit-btn').addEventListener('click', function() {
     var feedback = collectFeedback();
     feedback.regenerated = false;
@@ -617,7 +617,7 @@ export function generateCompareHtml(images: string[]): string {
 }
 
 /**
- * Compare command: generate comparison board HTML from image files.
+ * Compare command：image file から comparison board HTML を生成。
  */
 export function compare(options: CompareOptions): void {
   const html = generateCompareHtml(options.images);

@@ -1,9 +1,9 @@
 /**
- * Multi-turn design iteration using OpenAI Responses API.
+ * OpenAI Responses API を使った複数ターンの design iteration。
  *
- * Primary: uses previous_response_id for conversational threading.
- * Fallback: if threading doesn't retain visual context, re-generates
- * with original brief + accumulated feedback in a single prompt.
+ * Primary: previous_response_id で会話 thread を継続。
+ * Fallback: thread が visual context を保持しない場合、元 brief +
+ * 累積 feedback を 1 つの prompt にまとめて再生成する。
  */
 
 import fs from "fs";
@@ -12,25 +12,25 @@ import { requireApiKey } from "./auth";
 import { readSession, updateSession } from "./session";
 
 export interface IterateOptions {
-  session: string;   // Path to session JSON file
-  feedback: string;  // User feedback text
-  output: string;    // Output path for new PNG
+  session: string;   // session JSON file path
+  feedback: string;  // user feedback 文
+  output: string;    // 新 PNG の出力 path
 }
 
 /**
- * Iterate on an existing design using session state.
+ * session 状態を使って既存 design を iterate。
  */
 export async function iterate(options: IterateOptions): Promise<void> {
   const apiKey = requireApiKey();
   const session = readSession(options.session);
 
-  console.error(`Iterating on session ${session.id}...`);
-  console.error(`  Previous iterations: ${session.feedbackHistory.length}`);
+  console.error(`session ${session.id} を iterate 中...`);
+  console.error(`  これまでの iteration: ${session.feedbackHistory.length}`);
   console.error(`  Feedback: "${options.feedback}"`);
 
   const startTime = Date.now();
 
-  // Try multi-turn with previous_response_id first
+  // まず previous_response_id で multi-turn を試行
   let success = false;
   let responseId = "";
 
@@ -42,10 +42,10 @@ export async function iterate(options: IterateOptions): Promise<void> {
     fs.writeFileSync(options.output, Buffer.from(result.imageData, "base64"));
     success = true;
   } catch (err: any) {
-    console.error(`  Threading failed: ${err.message}`);
-    console.error("  Falling back to re-generation with accumulated feedback...");
+    console.error(`  threading 失敗: ${err.message}`);
+    console.error("  累積 feedback で再生成に fallback...");
 
-    // Fallback: re-generate with original brief + all feedback
+    // Fallback: 元 brief + 全 feedback で再生成
     const accumulatedPrompt = buildAccumulatedPrompt(
       session.originalBrief,
       [...session.feedbackHistory, options.feedback]
@@ -62,9 +62,9 @@ export async function iterate(options: IterateOptions): Promise<void> {
   if (success) {
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     const size = fs.statSync(options.output).size;
-    console.error(`Generated (${elapsed}s, ${(size / 1024).toFixed(0)}KB) → ${options.output}`);
+    console.error(`生成完了 (${elapsed}s, ${(size / 1024).toFixed(0)}KB) → ${options.output}`);
 
-    // Update session
+    // session を更新
     updateSession(session, responseId, options.feedback, options.output);
 
     console.log(JSON.stringify({
@@ -104,9 +104,9 @@ async function callWithThreading(
       const error = await response.text();
       if (response.status === 403 && error.includes("organization must be verified")) {
         throw new Error(
-          "OpenAI organization verification required.\n"
-          + "Go to https://platform.openai.com/settings/organization to verify.\n"
-          + "After verification, wait up to 15 minutes for access to propagate.",
+          "OpenAI organization verification 未完了。\n"
+          + "https://platform.openai.com/settings/organization で verify が必要。\n"
+          + "verify 後、access propagation に最大 15 分かかる。",
         );
       }
       throw new Error(`API error (${response.status}): ${error.slice(0, 300)}`);
@@ -116,7 +116,7 @@ async function callWithThreading(
     const imageItem = data.output?.find((item: any) => item.type === "image_generation_call");
 
     if (!imageItem?.result) {
-      throw new Error("No image data in threaded response");
+      throw new Error("threaded response に image data なし");
     }
 
     return { responseId: data.id, imageData: imageItem.result };
@@ -151,9 +151,9 @@ async function callFresh(
       const error = await response.text();
       if (response.status === 403 && error.includes("organization must be verified")) {
         throw new Error(
-          "OpenAI organization verification required.\n"
-          + "Go to https://platform.openai.com/settings/organization to verify.\n"
-          + "After verification, wait up to 15 minutes for access to propagate.",
+          "OpenAI organization verification 未完了。\n"
+          + "https://platform.openai.com/settings/organization で verify が必要。\n"
+          + "verify 後、access propagation に最大 15 分かかる。",
         );
       }
       throw new Error(`API error (${response.status}): ${error.slice(0, 300)}`);
@@ -163,7 +163,7 @@ async function callFresh(
     const imageItem = data.output?.find((item: any) => item.type === "image_generation_call");
 
     if (!imageItem?.result) {
-      throw new Error("No image data in fresh response");
+      throw new Error("fresh response に image data なし");
     }
 
     return { responseId: data.id, imageData: imageItem.result };
@@ -173,7 +173,7 @@ async function callFresh(
 }
 
 function buildAccumulatedPrompt(originalBrief: string, feedback: string[]): string {
-  // Cap to last 5 iterations to limit accumulation attack surface
+  // 累積 attack surface を抑えるため直近 5 iteration に cap
   const recentFeedback = feedback.slice(-5);
   const lines = [
     originalBrief,
