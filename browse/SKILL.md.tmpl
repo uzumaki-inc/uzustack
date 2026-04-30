@@ -1,0 +1,34 @@
+---
+name: browse
+preamble-tier: 1
+version: 0.0.0
+description: |
+  QA テスト + サイト dogfood 用の高速 headless browser。任意の URL に
+  navigate、要素操作、ページ状態の確認、操作前後の差分、注釈付き
+  screenshot、レスポンシブレイアウト確認、フォーム / アップロード /
+  ダイアログのテスト、要素状態 assertion を実行する。1 コマンド ~100ms。
+  機能テスト、デプロイ確認、ユーザーフロー dogfood、エビデンス付き
+  バグ起票が必要なときに使用する。「ブラウザで開いて」「サイトをテスト」
+  「screenshot を撮って」「dogfood」と要求されたときに使用する。
+triggers:
+  - ブラウザでページを開く
+  - headless browser
+  - ページの screenshot を撮る
+status: phase6-reserved
+---
+
+{{PREAMBLE}}
+
+# browse — Phase 6 で対応予定
+
+このスキルは uzustack の Phase 6（browse / extension 独自実装フェーズ）で
+本実装される予定です。Phase 3 cluster D C 段階では skill 名予約として
+スタブのみ配置されています。
+
+upstream の `_upstream/gstack/browse/` 配下に gstack 版の本実装があります
+（参照のみ可能、uzustack の setup / skill / bin から一切呼び出されません）。
+
+## 関連
+
+- 上流参照：`_upstream/gstack/browse/`（取り込まない、subtree 温存）
+- Phase 6 で uzustack 独自 browse 実装と同時に本実装される予定

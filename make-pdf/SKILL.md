@@ -1,0 +1,37 @@
+---
+name: make-pdf
+preamble-tier: 1
+version: 0.0.0
+description: |
+  任意の markdown file を出版品質の PDF に変換する。1in margin、
+  賢い page break、page 番号、cover page、running header、curly quote
+  と em dash、clickable TOC、対角の DRAFT watermark を備える。
+  draft ではなく完成した artifact。「PDF を作成」「PDF に export」
+  「markdown を PDF に」「ドキュメントを生成」と要求されたときに使用する。
+  Voice triggers (speech-to-text aliases): "これを PDF に", "PDF にして", "PDF に export", "markdown を PDF に変換", "PDF を生成".
+triggers:
+  - markdown を PDF に
+  - PDF を生成
+  - make pdf
+  - export pdf
+status: phase6-reserved
+---
+<!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
+<!-- Regenerate: bun run gen:skill-docs -->
+
+
+
+# make-pdf — Phase 6 で対応予定
+
+このスキルは uzustack の Phase 6（browse / extension 独自実装フェーズ）で
+本実装される予定です。Phase 3 cluster D C 段階では skill 名予約として
+スタブのみ配置されています（step-45 (γ) 採用、src 翻訳は Phase 6）。
+
+upstream の `_upstream/gstack/make-pdf/` 配下に gstack 版の本実装
+（CLI binary + src + test）があります（参照のみ可能、uzustack の
+setup / skill / bin から一切呼び出されません）。
+
+## 関連
+
+- 上流参照：`_upstream/gstack/make-pdf/`（取り込まない、subtree 温存）
+- Phase 6 で uzustack 独自実装（browse / extension と同時）に本実装される予定

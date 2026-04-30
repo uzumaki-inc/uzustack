@@ -1,0 +1,35 @@
+---
+name: connect-chrome
+version: 0.0.0
+description: |
+  Chromium 接続用の alias。AI 制御の Chromium を起動し、sidebar extension で
+  リアルタイムに動作を観察する。本実装は /open-uzustack-browser と同等。
+  「Chrome に接続」「connect chrome」「Chrome を開く」と要求されたときに使用する。
+  Voice triggers (speech-to-text aliases): "Chrome に接続".
+triggers:
+  - Chrome に接続
+  - connect chrome
+  - Chromium を開く
+status: phase6-reserved
+---
+<!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
+<!-- Regenerate: bun run gen:skill-docs -->
+
+
+
+# connect-chrome — Phase 6 で対応予定
+
+このスキルは uzustack の Phase 6（browse / extension 独自実装フェーズ）で
+本実装される予定です。Phase 3 cluster D C 段階では skill 名予約として
+スタブのみ配置されています。
+
+upstream の `_upstream/gstack/connect-chrome/` は `open-gstack-browser/` への
+symlink です（upstream の合成構造）。uzustack 側は `name: connect-chrome` を正として
+独立した stub に配置しています。upstream の `name:` フィールドは
+`open-gstack-browser` のままになっており、合成バグの可能性が懸念事項として
+残っています（Phase 6 着手時に再確認予定）。
+
+## 関連
+
+- 上流参照：`_upstream/gstack/connect-chrome/`（symlink → `open-gstack-browser/`、取り込まない、subtree 温存）
+- Phase 6 で uzustack 独自 browser 実装と同時に本実装される予定（`open-uzustack-browser` の alias 扱いも含めて Phase 6 で確定）
