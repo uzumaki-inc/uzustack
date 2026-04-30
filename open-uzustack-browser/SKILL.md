@@ -1,0 +1,35 @@
+---
+name: open-uzustack-browser
+version: 0.0.0
+description: |
+  uzustack Browser — AI 制御の Chromium with sidebar extension を起動する。
+  すべての動作をリアルタイムで観察できる可視 browser window を開く。
+  sidebar は live activity feed と chat を表示する。Anti-bot stealth 内蔵。
+  「uzustack browser を開く」「browser を起動」「Chrome に接続」
+  「Chrome を開く」「実 browser」「Chromium を起動」「side panel」
+  「browser を制御」と要求されたときに使用する。
+  Voice triggers (speech-to-text aliases): "browser を見せて".
+triggers:
+  - uzustack browser を開く
+  - Chromium を起動
+  - browser を見せて
+status: phase6-reserved
+---
+<!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
+<!-- Regenerate: bun run gen:skill-docs -->
+
+
+
+# open-uzustack-browser — Phase 6 で対応予定
+
+このスキルは uzustack の Phase 6（browse / extension 独自実装フェーズ）で
+本実装される予定です。Phase 3 cluster D C 段階では skill 名予約として
+スタブのみ配置されています。
+
+upstream の `_upstream/gstack/open-gstack-browser/` 配下に gstack 版の本実装があります
+（参照のみ可能、uzustack の setup / skill / bin から一切呼び出されません）。
+uzustack 側では `open-uzustack-browser` に改名して配置している。
+
+## 関連
+
+- 上流参照：`_upstream/gstack/open-gstack-browser/`（取り込まない、subtree 温存）
