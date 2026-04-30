@@ -1,7 +1,6 @@
 /**
- * Visual diff between two mockups using GPT-4o vision.
- * Identifies what changed between design iterations or between
- * an approved mockup and the live implementation.
+ * GPT-4o vision を使った 2 mockup 間の visual diff。
+ * design iteration 間 または approved mockup と live 実装との差分を識別する。
  */
 
 import fs from "fs";
@@ -10,11 +9,11 @@ import { requireApiKey } from "./auth";
 export interface DiffResult {
   differences: { area: string; description: string; severity: string }[];
   summary: string;
-  matchScore: number; // 0-100, how closely they match
+  matchScore: number; // 0-100、一致度
 }
 
 /**
- * Compare two images and describe the visual differences.
+ * 2 image を比較し visual difference を記述。
  */
 export async function diffMockups(
   beforePath: string,
@@ -75,7 +74,7 @@ Focus on layout, typography, colors, spacing, and element presence/absence. Igno
     if (!response.ok) {
       const error = await response.text();
       console.error(`Diff API error (${response.status}): ${error.slice(0, 200)}`);
-      return { differences: [], summary: "Diff unavailable", matchScore: -1 };
+      return { differences: [], summary: "diff 利用不可", matchScore: -1 };
     }
 
     const data = await response.json() as any;
@@ -87,8 +86,8 @@ Focus on layout, typography, colors, spacing, and element presence/absence. Igno
 }
 
 /**
- * Verify a live implementation against an approved design mockup.
- * Combines diff with a pass/fail gate.
+ * live 実装を approved design mockup に照らして検証。
+ * diff に pass/fail gate を組み合わせる。
  */
 export async function verifyAgainstMockup(
   mockupPath: string,
@@ -96,7 +95,7 @@ export async function verifyAgainstMockup(
 ): Promise<{ pass: boolean; matchScore: number; diff: DiffResult }> {
   const diff = await diffMockups(mockupPath, screenshotPath);
 
-  // Pass if matchScore >= 70 and no high-severity differences
+  // matchScore >= 70 かつ high-severity 差分なしで pass
   const highSeverity = diff.differences.filter(d => d.severity === "high");
   const pass = diff.matchScore >= 70 && highSeverity.length === 0;
 

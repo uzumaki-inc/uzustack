@@ -1,10 +1,10 @@
 /**
- * Auth resolution for OpenAI API access.
+ * OpenAI API access のための認証解決。
  *
- * Resolution order:
+ * 解決順:
  * 1. ~/.uzustack/openai.json → { "api_key": "sk-..." }
- * 2. OPENAI_API_KEY environment variable
- * 3. null (caller handles guided setup or fallback)
+ * 2. OPENAI_API_KEY 環境変数
+ * 3. null（caller が guided setup または fallback を扱う）
  */
 
 import fs from "fs";
@@ -13,7 +13,7 @@ import path from "path";
 const CONFIG_PATH = path.join(process.env.HOME || "~", ".uzustack", "openai.json");
 
 export function resolveApiKey(): string | null {
-  // 1. Check ~/.uzustack/openai.json
+  // 1. ~/.uzustack/openai.json を確認
   try {
     if (fs.existsSync(CONFIG_PATH)) {
       const content = fs.readFileSync(CONFIG_PATH, "utf-8");
@@ -23,10 +23,10 @@ export function resolveApiKey(): string | null {
       }
     }
   } catch {
-    // Fall through to env var
+    // 環境変数 check へ fall through
   }
 
-  // 2. Check environment variable
+  // 2. 環境変数を確認
   if (process.env.OPENAI_API_KEY) {
     return process.env.OPENAI_API_KEY;
   }
@@ -35,7 +35,7 @@ export function resolveApiKey(): string | null {
 }
 
 /**
- * Save an API key to ~/.uzustack/openai.json with 0600 permissions.
+ * API key を ~/.uzustack/openai.json に 0600 permissions で保存。
  */
 export function saveApiKey(key: string): void {
   const dir = path.dirname(CONFIG_PATH);
@@ -45,18 +45,18 @@ export function saveApiKey(key: string): void {
 }
 
 /**
- * Get API key or exit with setup instructions.
+ * API key を取得、未設定なら setup 案内を出して exit。
  */
 export function requireApiKey(): string {
   const key = resolveApiKey();
   if (!key) {
-    console.error("No OpenAI API key found.");
+    console.error("OpenAI API key 未設定。");
     console.error("");
-    console.error("Run: $D setup");
-    console.error("  or save to ~/.uzustack/openai.json: { \"api_key\": \"sk-...\" }");
-    console.error("  or set OPENAI_API_KEY environment variable");
+    console.error("実行: $D setup");
+    console.error("  または ~/.uzustack/openai.json に保存: { \"api_key\": \"sk-...\" }");
+    console.error("  または OPENAI_API_KEY 環境変数を設定");
     console.error("");
-    console.error("Get a key at: https://platform.openai.com/api-keys");
+    console.error("key 取得先: https://platform.openai.com/api-keys");
     process.exit(1);
   }
   return key;

@@ -1,12 +1,12 @@
 /**
- * HTTP server for the design comparison board feedback loop.
+ * design comparison board の feedback loop 用 HTTP server。
  *
- * Replaces the broken file:// + DOM polling approach. The server:
- * 1. Serves the comparison board HTML over HTTP
- * 2. Injects __UZUSTACK_SERVER_URL so the board POSTs feedback here
- * 3. Prints feedback JSON to stdout (agent reads it)
- * 4. Stays alive across regeneration rounds (stateful)
- * 5. Auto-opens in the user's default browser
+ * 壊れていた file:// + DOM polling 方式の置き換え。本 server は：
+ * 1. comparison board HTML を HTTP で serve
+ * 2. __UZUSTACK_SERVER_URL を inject、board からこの server に feedback POST
+ * 3. feedback JSON を stdout に出力（agent が読む）
+ * 4. 再生成サイクル間で alive を維持（stateful）
+ * 5. user の default browser で自動 open
  *
  * State machine:
  *
@@ -21,15 +21,15 @@
  *      │
  *      └──(timeout)──► exit 1
  *
- * Feedback delivery (two channels, both always active):
- *   Stdout: feedback JSON (one line per event) — for foreground mode
- *   Disk:   feedback-pending.json (regenerate/remix) or feedback.json (submit)
- *           written next to the HTML file — for background mode polling
+ * Feedback delivery（2 channel、いずれも常時 active）:
+ *   Stdout: feedback JSON（event 1 件 = 1 行）— foreground mode 用
+ *   Disk:   HTML file 隣接の feedback-pending.json (regenerate/remix) または
+ *           feedback.json (submit) — background mode polling 用
  *
- * The agent typically backgrounds $D serve and polls for feedback-pending.json.
- * When found: read it, delete it, generate new variants, POST /api/reload.
+ * agent は通常 $D serve を background 化、feedback-pending.json を polling する。
+ * 検出時：読み取り → 削除 → 新 variant 生成 → POST /api/reload。
  *
- * Stderr: structured telemetry (SERVE_STARTED, SERVE_FEEDBACK_RECEIVED, etc.)
+ * Stderr: 構造化 telemetry（SERVE_STARTED / SERVE_FEEDBACK_RECEIVED 等）。
  */
 
 import fs from "fs";
@@ -40,8 +40,8 @@ import { spawn } from "child_process";
 export interface ServeOptions {
   html: string;
   port?: number;
-  hostname?: string; // default '127.0.0.1' — localhost only
-  timeout?: number; // seconds, default 600 (10 min)
+  hostname?: string; // default '127.0.0.1' — localhost のみ
+  timeout?: number; // 秒、default 600（10 分）
 }
 
 type ServerState = "serving" | "regenerating" | "done";
@@ -49,14 +49,14 @@ type ServerState = "serving" | "regenerating" | "done";
 export async function serve(options: ServeOptions): Promise<void> {
   const { html, port = 0, hostname = "127.0.0.1", timeout = 600 } = options;
 
-  // Validate HTML file exists
+  // HTML file 存在確認
   if (!fs.existsSync(html)) {
     console.error(`SERVE_ERROR: HTML file not found: ${html}`);
     process.exit(1);
   }
 
-  // Security: anchor all file reads to the initial HTML's directory.
-  // Prevents /api/reload from reading arbitrary files via path traversal.
+  // security: file 読み取りを初期 HTML の directory に固定。
+  // /api/reload 経由 path traversal による任意 file 読み取りを防ぐ。
   const allowedDir = fs.realpathSync(path.dirname(path.resolve(html)));
 
   let htmlContent = fs.readFileSync(html, "utf-8");
@@ -69,12 +69,12 @@ export async function serve(options: ServeOptions): Promise<void> {
     fetch(req) {
       const url = new URL(req.url);
 
-      // Serve the comparison board HTML
+      // comparison board HTML を serve
       if (
         req.method === "GET" &&
         (url.pathname === "/" || url.pathname === "/index.html")
       ) {
-        // Inject the server URL so the board can POST feedback
+        // server URL を inject、board が feedback POST できるようにする
         const injected = htmlContent.replace(
           "</head>",
           `<script>window.__UZUSTACK_SERVER_URL = ${JSON.stringify(url.origin)};</script>\n</head>`,
@@ -84,17 +84,17 @@ export async function serve(options: ServeOptions): Promise<void> {
         });
       }
 
-      // Progress polling endpoint (used by board during regeneration)
+      // progress polling endpoint（regeneration 中に board が使う）
       if (req.method === "GET" && url.pathname === "/api/progress") {
         return Response.json({ status: state });
       }
 
-      // Feedback submission from the board
+      // board からの feedback 送信
       if (req.method === "POST" && url.pathname === "/api/feedback") {
         return handleFeedback(req);
       }
 
-      // Reload endpoint (used by the agent to swap in new board HTML)
+      // reload endpoint（agent が新 board HTML に差し替えるのに使う）
       if (req.method === "POST" && url.pathname === "/api/reload") {
         return handleReload(req);
       }
@@ -108,10 +108,10 @@ export async function serve(options: ServeOptions): Promise<void> {
 
   console.error(`SERVE_STARTED: port=${actualPort} html=${html}`);
 
-  // Auto-open in user's default browser
+  // user の default browser で自動 open
   openBrowser(boardUrl);
 
-  // Set timeout
+  // timeout 設定
   timeoutTimer = setTimeout(() => {
     console.error(`SERVE_TIMEOUT: after=${timeout}s`);
     server.stop();
@@ -126,7 +126,7 @@ export async function serve(options: ServeOptions): Promise<void> {
       return Response.json({ error: "Invalid JSON" }, { status: 400 });
     }
 
-    // Validate expected shape
+    // 期待 shape を validate
     if (typeof body !== "object" || body === null) {
       return Response.json({ error: "Expected JSON object" }, { status: 400 });
     }
@@ -139,11 +139,11 @@ export async function serve(options: ServeOptions): Promise<void> {
 
     console.error(`SERVE_FEEDBACK_RECEIVED: type=${action}`);
 
-    // Print feedback JSON to stdout (for foreground mode)
+    // feedback JSON を stdout 出力（foreground mode 用）
     console.log(JSON.stringify(body));
 
-    // ALWAYS write feedback to disk so the agent can poll for it
-    // (agent typically backgrounds $D serve, can't read stdout)
+    // 常に feedback を disk へ書き出し、agent が polling できるようにする
+    // （agent は通常 $D serve を background 化するため stdout を読めない）
     const feedbackDir = path.dirname(html);
     const feedbackFile = isSubmit ? "feedback.json" : "feedback-pending.json";
     const feedbackPath = path.join(feedbackDir, feedbackFile);
@@ -153,7 +153,7 @@ export async function serve(options: ServeOptions): Promise<void> {
       state = "done";
       if (timeoutTimer) clearTimeout(timeoutTimer);
 
-      // Give the response time to send before exiting
+      // exit 前に response 送信時間を確保
       setTimeout(() => {
         server.stop();
         process.exit(0);
@@ -164,7 +164,7 @@ export async function serve(options: ServeOptions): Promise<void> {
 
     if (isRegenerate) {
       state = "regenerating";
-      // Reset timeout for regeneration (agent needs time to generate new variants)
+      // regeneration 用に timeout リセット（agent は新 variant 生成の時間が必要）
       if (timeoutTimer) clearTimeout(timeoutTimer);
       timeoutTimer = setTimeout(() => {
         console.error(`SERVE_TIMEOUT: after=${timeout}s (during regeneration)`);
@@ -194,9 +194,8 @@ export async function serve(options: ServeOptions): Promise<void> {
       );
     }
 
-    // Security: resolve symlinks and validate the reload path is within the
-    // allowed directory (anchored to the initial HTML file's parent).
-    // Prevents path traversal via /api/reload reading arbitrary files.
+    // security: symlink を解決し、reload path が allowedDir 内かを validate。
+    // /api/reload 経由 path traversal による任意 file 読み取りを防ぐ。
     const resolvedReload = fs.realpathSync(path.resolve(newHtmlPath));
     if (
       !resolvedReload.startsWith(allowedDir + path.sep) &&
@@ -208,13 +207,13 @@ export async function serve(options: ServeOptions): Promise<void> {
       );
     }
 
-    // Swap the HTML content
+    // HTML content を差し替え
     htmlContent = fs.readFileSync(resolvedReload, "utf-8");
     state = "serving";
 
     console.error(`SERVE_RELOADED: html=${newHtmlPath}`);
 
-    // Reset timeout
+    // timeout リセット
     if (timeoutTimer) clearTimeout(timeoutTimer);
     timeoutTimer = setTimeout(() => {
       console.error(`SERVE_TIMEOUT: after=${timeout}s`);
@@ -225,13 +224,13 @@ export async function serve(options: ServeOptions): Promise<void> {
     return Response.json({ reloaded: true });
   }
 
-  // Keep the process alive
+  // process を生かし続ける
   await new Promise(() => {});
 }
 
 /**
- * Open a URL in the user's default browser.
- * Handles macOS (open), Linux (xdg-open), and headless environments.
+ * user の default browser で URL を open。
+ * macOS (open) / Linux (xdg-open) / headless 環境に対応。
  */
 function openBrowser(url: string): void {
   const platform = process.platform;
@@ -242,9 +241,9 @@ function openBrowser(url: string): void {
   } else if (platform === "linux") {
     cmd = "xdg-open";
   } else {
-    // Windows or unknown — just print the URL
+    // Windows または unknown — URL 出力のみ
     console.error(`SERVE_BROWSER_MANUAL: url=${url}`);
-    console.error(`Open this URL in your browser: ${url}`);
+    console.error(`browser で URL を open: ${url}`);
     return;
   }
 
@@ -256,8 +255,8 @@ function openBrowser(url: string): void {
     child.unref();
     console.error(`SERVE_BROWSER_OPENED: url=${url}`);
   } catch {
-    // open/xdg-open not available (headless CI environment)
+    // open / xdg-open 利用不可（headless CI 環境）
     console.error(`SERVE_BROWSER_MANUAL: url=${url}`);
-    console.error(`Open this URL in your browser: ${url}`);
+    console.error(`browser で URL を open: ${url}`);
   }
 }

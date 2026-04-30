@@ -1,5 +1,5 @@
 /**
- * Tests for the $D gallery command — design history timeline generation.
+ * $D gallery command の test — design history timeline 生成。
  */
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
@@ -32,13 +32,13 @@ describe('Gallery generation', () => {
     fs.mkdirSync(emptyDir, { recursive: true });
 
     const html = generateGalleryHtml(emptyDir);
-    expect(html).toContain('No design history yet');
+    expect(html).toContain('design 履歴なし');
     expect(html).toContain('/design-shotgun');
   });
 
   test('nonexistent directory returns "No history" page', () => {
     const html = generateGalleryHtml('/nonexistent/path');
-    expect(html).toContain('No design history yet');
+    expect(html).toContain('design 履歴なし');
   });
 
   test('single session with approved variant', () => {
@@ -58,12 +58,12 @@ describe('Gallery generation', () => {
 
     const html = generateGalleryHtml(path.join(tmpDir, 'designs'));
     expect(html).toContain('Design History');
-    expect(html).toContain('1 exploration');
+    expect(html).toContain('1 件の exploration');
     expect(html).toContain('homepage');
     expect(html).toContain('2026-03-27');
     expect(html).toContain('approved');
     expect(html).toContain('Great spacing and colors');
-    // Should have 3 variant images (base64)
+    // 3 個の variant image (base64) が含まれる
     expect(html).toContain('data:image/png;base64,');
   });
 
@@ -85,8 +85,8 @@ describe('Gallery generation', () => {
     }));
 
     const html = generateGalleryHtml(dir);
-    expect(html).toContain('2 explorations');
-    // Dashboard (Mar 15) should appear before settings (Mar 1)
+    expect(html).toContain('2 件の exploration');
+    // Dashboard (Mar 15) は settings (Mar 1) より前に出るはず
     const dashIdx = html.indexOf('dashboard');
     const settingsIdx = html.indexOf('settings');
     expect(dashIdx).toBeLessThan(settingsIdx);
@@ -101,10 +101,10 @@ describe('Gallery generation', () => {
     fs.writeFileSync(path.join(session, 'approved.json'), 'NOT VALID JSON {{{');
 
     const html = generateGalleryHtml(dir);
-    // Should still render the session, just without any variant marked as approved
+    // session 自体は表示し続ける、ただし approved variant 表示なし
     expect(html).toContain('Design History');
     expect(html).toContain('broken');
-    // The class "approved" should not appear on any variant div (only in CSS definition)
+    // どの variant div にも "approved" class が付かないこと（CSS 定義のみ）
     expect(html).not.toContain('class="gallery-variant approved"');
   });
 
@@ -118,7 +118,7 @@ describe('Gallery generation', () => {
 
     const html = generateGalleryHtml(dir);
     expect(html).toContain('draft');
-    // No variant should be marked as approved
+    // どの variant にも approved 印がつかない
     expect(html).not.toContain('class="gallery-variant approved"');
   });
 
@@ -129,11 +129,11 @@ describe('Gallery generation', () => {
     createTestPng(path.join(session, 'variant-A.png'));
 
     const html = generateGalleryHtml(dir);
-    // No external CSS/JS/image links
+    // 外部 CSS/JS/image link なし
     expect(html).not.toContain('href="http');
     expect(html).not.toContain('src="http');
     expect(html).not.toContain('<link');
-    // All images are base64
+    // 全 image が base64
     expect(html).toContain('data:image/png;base64,');
   });
 });

@@ -1,11 +1,11 @@
 /**
- * Tests for the $D serve command — HTTP server for comparison board feedback.
+ * $D serve command の test — comparison board feedback 用 HTTP server。
  *
- * Tests the stateful server lifecycle:
+ * stateful な server lifecycle を test する：
  * - SERVING → POST submit → DONE (exit 0)
  * - SERVING → POST regenerate → REGENERATING → POST reload → SERVING
  * - Timeout → exit 1
- * - Error handling (missing HTML, malformed JSON, missing reload path)
+ * - error 処理（HTML 欠如、不正 JSON、reload path 欠如）
  */
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
@@ -16,7 +16,7 @@ import * as path from 'path';
 let tmpDir: string;
 let boardHtml: string;
 
-// Create a minimal 1x1 pixel PNG for test variants
+// test variant 用に minimal 1x1 pixel PNG を作成
 function createTestPng(filePath: string): void {
   const png = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/58BAwAI/AL+hc2rNAAAAABJRU5ErkJggg==',
@@ -29,7 +29,7 @@ beforeAll(() => {
   tmpDir = '/tmp/serve-test-' + Date.now();
   fs.mkdirSync(tmpDir, { recursive: true });
 
-  // Create test PNGs and generate comparison board
+  // test PNG を作成、comparison board を生成
   createTestPng(path.join(tmpDir, 'variant-A.png'));
   createTestPng(path.join(tmpDir, 'variant-B.png'));
   createTestPng(path.join(tmpDir, 'variant-C.png'));
@@ -47,7 +47,7 @@ afterAll(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-// ─── Serve as HTTP module (not subprocess) ────────────────────────
+// ─── HTTP module として serve（subprocess なし）────────────────────────
 
 describe('Serve HTTP endpoints', () => {
   let server: ReturnType<typeof Bun.serve>;
@@ -124,7 +124,7 @@ describe('Serve HTTP endpoints', () => {
     const html = await res.text();
     expect(html).toContain('__UZUSTACK_SERVER_URL');
     expect(html).toContain(baseUrl);
-    expect(html).toContain('Design Exploration');
+    expect(html).toContain('Design 探索');
   });
 
   test('GET /api/progress returns current state', async () => {
@@ -154,7 +154,7 @@ describe('Serve HTTP endpoints', () => {
     expect(data.action).toBe('submitted');
     expect(state).toBe('done');
 
-    // Verify feedback.json was written
+    // feedback.json が書き込まれたか確認
     const written = JSON.parse(fs.readFileSync(path.join(tmpDir, 'feedback.json'), 'utf-8'));
     expect(written.preferred).toBe('A');
     expect(written.ratings.A).toBe(4);
@@ -162,7 +162,7 @@ describe('Serve HTTP endpoints', () => {
 
   test('POST /api/feedback with regenerate sets state and writes feedback-pending.json', async () => {
     state = 'serving';
-    // Clean up any prior pending file
+    // 既存 pending file を掃除
     const pendingPath = path.join(tmpDir, 'feedback-pending.json');
     if (fs.existsSync(pendingPath)) fs.unlinkSync(pendingPath);
 
@@ -185,12 +185,12 @@ describe('Serve HTTP endpoints', () => {
     expect(data.action).toBe('regenerate');
     expect(state).toBe('regenerating');
 
-    // Progress should reflect regenerating state
+    // progress が regenerating state を反映するはず
     const progress = await fetch(`${baseUrl}/api/progress`);
     const pd = await progress.json();
     expect(pd.status).toBe('regenerating');
 
-    // Agent can poll for feedback-pending.json
+    // agent が feedback-pending.json を polling 可能
     expect(fs.existsSync(pendingPath)).toBe(true);
     const pending = JSON.parse(fs.readFileSync(pendingPath, 'utf-8'));
     expect(pending.regenerated).toBe(true);
@@ -240,7 +240,7 @@ describe('Serve HTTP endpoints', () => {
   test('POST /api/reload swaps HTML and resets state to serving', async () => {
     state = 'regenerating';
 
-    // Create a new board HTML
+    // 新 board HTML を作成
     const newBoard = path.join(tmpDir, 'new-board.html');
     fs.writeFileSync(newBoard, '<html><body>New board content</body></html>');
 
@@ -253,7 +253,7 @@ describe('Serve HTTP endpoints', () => {
     expect(data.reloaded).toBe(true);
     expect(state).toBe('serving');
 
-    // Verify the new HTML is served
+    // 新 HTML が serve されているか確認
     const pageRes = await fetch(baseUrl);
     const pageHtml = await pageRes.text();
     expect(pageHtml).toContain('New board content');
@@ -274,7 +274,7 @@ describe('Serve HTTP endpoints', () => {
   });
 });
 
-// ─── Path traversal protection in /api/reload ─────────────────────
+// ─── /api/reload の path traversal protection ─────────────────────
 
 describe('Serve /api/reload — path traversal protection', () => {
   let server: ReturnType<typeof Bun.serve>;
@@ -283,11 +283,11 @@ describe('Serve /api/reload — path traversal protection', () => {
   let allowedDir: string;
 
   beforeAll(() => {
-    // Production-equivalent allowedDir anchored to tmpDir
+    // production と等価な allowedDir、tmpDir に固定
     allowedDir = fs.realpathSync(tmpDir);
     htmlContent = fs.readFileSync(boardHtml, 'utf-8');
 
-    // This server mirrors the production serve() with the path validation fix
+    // 本 server は production serve() を path validation 修正込みで mirror
     server = Bun.serve({
       port: 0,
       fetch(req) {
@@ -306,7 +306,7 @@ describe('Serve /api/reload — path traversal protection', () => {
             if (!body.html || !fs.existsSync(body.html)) {
               return Response.json({ error: `HTML file not found: ${body.html}` }, { status: 400 });
             }
-            // Production path validation — same as design/src/serve.ts
+            // production の path validation — design/src/serve.ts と同じ
             const resolvedReload = fs.realpathSync(path.resolve(body.html));
             if (!resolvedReload.startsWith(allowedDir + path.sep) && resolvedReload !== allowedDir) {
               return Response.json({ error: `Path must be within: ${allowedDir}` }, { status: 403 });
@@ -365,13 +365,13 @@ describe('Serve /api/reload — path traversal protection', () => {
     const data = await res.json();
     expect(data.reloaded).toBe(true);
 
-    // Verify the new content is served
+    // 新 content が serve されているか確認
     const page = await fetch(baseUrl);
     expect(await page.text()).toContain('Safe reload');
   });
 });
 
-// ─── Full lifecycle: regeneration round-trip ──────────────────────
+// ─── full lifecycle: regeneration round-trip ──────────────────────
 
 describe('Full regeneration lifecycle', () => {
   let server: ReturnType<typeof Bun.serve>;
@@ -420,7 +420,7 @@ describe('Full regeneration lifecycle', () => {
   afterAll(() => { server.stop(); });
 
   test('regenerate → reload → submit round-trip', async () => {
-    // Step 1: User clicks regenerate
+    // Step 1: user が regenerate を click
     expect(state).toBe('serving');
     const regen = await fetch(`${baseUrl}/api/feedback`, {
       method: 'POST',
@@ -430,11 +430,11 @@ describe('Full regeneration lifecycle', () => {
     expect((await regen.json()).action).toBe('regenerate');
     expect(state).toBe('regenerating');
 
-    // Step 2: Progress shows regenerating
+    // Step 2: progress が regenerating を返す
     const prog1 = await (await fetch(`${baseUrl}/api/progress`)).json();
     expect(prog1.status).toBe('regenerating');
 
-    // Step 3: Agent generates new variants and reloads
+    // Step 3: agent が新 variant を生成し reload
     const newBoard = path.join(tmpDir, 'round2-board.html');
     fs.writeFileSync(newBoard, '<html><body>Round 2 variants</body></html>');
     const reload = await fetch(`${baseUrl}/api/reload`, {
@@ -445,11 +445,11 @@ describe('Full regeneration lifecycle', () => {
     expect((await reload.json()).reloaded).toBe(true);
     expect(state).toBe('serving');
 
-    // Step 4: Progress shows serving (board would auto-refresh)
+    // Step 4: progress が serving を返す（board が auto-refresh するはず）
     const prog2 = await (await fetch(`${baseUrl}/api/progress`)).json();
     expect(prog2.status).toBe('serving');
 
-    // Step 5: User submits on round 2
+    // Step 5: user が round 2 で submit
     const submit = await fetch(`${baseUrl}/api/feedback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

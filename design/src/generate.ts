@@ -1,5 +1,5 @@
 /**
- * Generate UI mockups via OpenAI Responses API with image_generation tool.
+ * OpenAI Responses API + image_generation tool で UI mockup を生成。
  */
 
 import fs from "fs";
@@ -27,8 +27,8 @@ export interface GenerateResult {
 }
 
 /**
- * Call OpenAI Responses API with image_generation tool.
- * Returns the response ID and base64 image data.
+ * OpenAI Responses API を image_generation tool 付きで呼び出す。
+ * response ID と base64 image data を返す。
  */
 async function callImageGeneration(
   apiKey: string,
@@ -62,9 +62,9 @@ async function callImageGeneration(
       const error = await response.text();
       if (response.status === 403 && error.includes("organization must be verified")) {
         throw new Error(
-          "OpenAI organization verification required.\n"
-          + "Go to https://platform.openai.com/settings/organization to verify.\n"
-          + "After verification, wait up to 15 minutes for access to propagate.",
+          "OpenAI organization verification 未完了。\n"
+          + "https://platform.openai.com/settings/organization で verify が必要。\n"
+          + "verify 後、access propagation に最大 15 分かかる。",
         );
       }
       throw new Error(`API error (${response.status}): ${error.slice(0, 200)}`);
@@ -78,7 +78,7 @@ async function callImageGeneration(
 
     if (!imageItem?.result) {
       throw new Error(
-        `No image data in response. Output types: ${data.output?.map((o: any) => o.type).join(", ") || "none"}`
+        `response に image data なし。output types: ${data.output?.map((o: any) => o.type).join(", ") || "none"}`
       );
     }
 
@@ -92,12 +92,12 @@ async function callImageGeneration(
 }
 
 /**
- * Generate a single mockup from a brief.
+ * brief から mockup を 1 枚生成。
  */
 export async function generate(options: GenerateOptions): Promise<GenerateResult> {
   const apiKey = requireApiKey();
 
-  // Parse the brief
+  // brief を parse
   const prompt = options.briefFile
     ? parseBrief(options.briefFile, true)
     : parseBrief(options.brief!, false);
@@ -113,21 +113,21 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
       console.error(`Retry ${attempt}/${maxRetries}...`);
     }
 
-    // Generate the image
+    // image を生成
     const startTime = Date.now();
     const { responseId, imageData } = await callImageGeneration(apiKey, prompt, size, quality);
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
-    // Write to disk
+    // disk へ書き出し
     const outputDir = path.dirname(options.output);
     fs.mkdirSync(outputDir, { recursive: true });
     const imageBuffer = Buffer.from(imageData, "base64");
     fs.writeFileSync(options.output, imageBuffer);
 
-    // Create session
+    // session を作成
     const session = createSession(responseId, prompt, options.output);
 
-    console.error(`Generated (${elapsed}s, ${(imageBuffer.length / 1024).toFixed(0)}KB) → ${options.output}`);
+    console.error(`生成完了 (${elapsed}s, ${(imageBuffer.length / 1024).toFixed(0)}KB) → ${options.output}`);
 
     lastResult = {
       outputPath: options.output,
@@ -135,7 +135,7 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
       responseId,
     };
 
-    // Quality check if requested
+    // 指定があれば quality check
     if (options.check) {
       const checkResult = await checkMockup(options.output, prompt);
       lastResult.checkResult = checkResult;
@@ -146,7 +146,7 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
       } else {
         console.error(`Quality check: FAIL — ${checkResult.issues}`);
         if (attempt < maxRetries) {
-          console.error("Will retry...");
+          console.error("retry します...");
         }
       }
     } else {
@@ -154,7 +154,7 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
     }
   }
 
-  // Output result as JSON to stdout
+  // 結果を JSON で stdout 出力
   console.log(JSON.stringify(lastResult, null, 2));
   return lastResult!;
 }
