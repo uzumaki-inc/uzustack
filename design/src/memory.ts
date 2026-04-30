@@ -1,14 +1,13 @@
 /**
- * Design Memory — extract visual language from approved mockups into DESIGN.md.
+ * Design Memory — approved mockup から visual language を抽出して DESIGN.md に反映。
  *
- * After a mockup is approved, uses GPT-4o vision to extract:
- * - Color palette (hex values)
- * - Typography (font families, sizes, weights)
- * - Spacing patterns (padding, margins, gaps)
- * - Layout conventions (grid, alignment, hierarchy)
+ * mockup 承認後、GPT-4o vision で次を抽出する：
+ * - color palette（hex 値）
+ * - typography（font family、size、weight）
+ * - spacing pattern（padding、margin、gap）
+ * - layout convention（grid、alignment、hierarchy）
  *
- * If DESIGN.md exists, merges extracted patterns with existing design system.
- * If no DESIGN.md, creates one from the extracted patterns.
+ * DESIGN.md があれば抽出 pattern を既存 design system に merge、なければ新規作成する。
  */
 
 import fs from "fs";
@@ -24,7 +23,7 @@ export interface ExtractedDesign {
 }
 
 /**
- * Extract visual language from an approved mockup PNG.
+ * approved mockup PNG から visual language を抽出。
  */
 export async function extractDesignLanguage(imagePath: string): Promise<ExtractedDesign> {
   const apiKey = requireApiKey();
@@ -72,7 +71,7 @@ Extract real values from what you see. Be specific about hex colors and font siz
     });
 
     if (!response.ok) {
-      console.error(`Vision extraction failed (${response.status})`);
+      console.error(`vision 抽出失敗 (${response.status})`);
       return defaultDesign();
     }
 
@@ -80,7 +79,7 @@ Extract real values from what you see. Be specific about hex colors and font siz
     const content = data.choices?.[0]?.message?.content?.trim() || "";
     return JSON.parse(content) as ExtractedDesign;
   } catch (err: any) {
-    console.error(`Design extraction error: ${err.message}`);
+    console.error(`design 抽出 error: ${err.message}`);
     return defaultDesign();
   } finally {
     clearTimeout(timeout);
@@ -93,14 +92,14 @@ function defaultDesign(): ExtractedDesign {
     typography: [],
     spacing: [],
     layout: [],
-    mood: "Unable to extract design language",
+    mood: "design language 抽出不可",
   };
 }
 
 /**
- * Write or update DESIGN.md with extracted design patterns.
- * If DESIGN.md exists, appends an "Extracted from mockup" section.
- * If not, creates a new one.
+ * 抽出 design pattern を DESIGN.md に書き出し / 更新。
+ * DESIGN.md があれば "Extracted Design Language" section を append、
+ * なければ新規作成する。
  */
 export function updateDesignMd(
   repoRoot: string,
@@ -113,10 +112,10 @@ export function updateDesignMd(
   const section = formatExtractedSection(extracted, sourceMockup, timestamp);
 
   if (fs.existsSync(designPath)) {
-    // Append to existing DESIGN.md
+    // 既存 DESIGN.md に append
     const existing = fs.readFileSync(designPath, "utf-8");
 
-    // Check if there's already an extracted section, replace it
+    // 既に extracted section があれば置換
     const marker = "## Extracted Design Language";
     if (existing.includes(marker)) {
       const before = existing.split(marker)[0];
@@ -124,14 +123,14 @@ export function updateDesignMd(
     } else {
       fs.writeFileSync(designPath, existing.trimEnd() + "\n\n" + section);
     }
-    console.error(`Updated DESIGN.md with extracted design language`);
+    console.error(`DESIGN.md を抽出 design language で更新`);
   } else {
-    // Create new DESIGN.md
+    // DESIGN.md を新規作成
     const content = `# Design System
 
 ${section}`;
     fs.writeFileSync(designPath, content);
-    console.error(`Created DESIGN.md with extracted design language`);
+    console.error(`DESIGN.md を抽出 design language で新規作成`);
   }
 }
 
@@ -189,14 +188,14 @@ function formatExtractedSection(
 }
 
 /**
- * Read DESIGN.md and return it as a constraint string for brief construction.
- * If no DESIGN.md exists, returns null (explore wide).
+ * DESIGN.md を読んで brief 構築用の constraint 文字列として返す。
+ * DESIGN.md がなければ null（自由探索）。
  */
 export function readDesignConstraints(repoRoot: string): string | null {
   const designPath = path.join(repoRoot, "DESIGN.md");
   if (!fs.existsSync(designPath)) return null;
 
   const content = fs.readFileSync(designPath, "utf-8");
-  // Truncate to first 2000 chars to keep brief reasonable
+  // brief を妥当 size に保つため最初 2000 文字に切り詰め
   return content.slice(0, 2000);
 }

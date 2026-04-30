@@ -1,9 +1,9 @@
 /**
- * Commit 0: Prototype validation
- * Sends 3 design briefs to GPT Image API via Responses API.
- * Validates: text rendering quality, layout accuracy, visual coherence.
+ * Commit 0: prototype validation
+ * 3 個の design brief を Responses API 経由で GPT Image API に送る。
+ * 検証対象：text rendering 品質、layout 精度、visual coherence。
  *
- * Run: OPENAI_API_KEY=$(cat ~/.uzustack/openai.json | python3 -c "import sys,json;print(json.load(sys.stdin)['api_key'])") bun run design/prototype.ts
+ * 実行: OPENAI_API_KEY=$(cat ~/.uzustack/openai.json | python3 -c "import sys,json;print(json.load(sys.stdin)['api_key'])") bun run design/prototype.ts
  */
 
 import fs from "fs";
@@ -13,7 +13,7 @@ const API_KEY = process.env.OPENAI_API_KEY
   || JSON.parse(fs.readFileSync(path.join(process.env.HOME!, ".uzustack/openai.json"), "utf-8")).api_key;
 
 if (!API_KEY) {
-  console.error("No API key found. Set OPENAI_API_KEY or save to ~/.uzustack/openai.json");
+  console.error("API key 未設定。OPENAI_API_KEY を設定するか ~/.uzustack/openai.json に保存。");
   process.exit(1);
 }
 
@@ -43,7 +43,7 @@ async function generateMockup(brief: { name: string; prompt: string }) {
   const startTime = Date.now();
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120_000); // 2 min timeout
+  const timeout = setTimeout(() => controller.abort(), 120_000); // 2 分 timeout
 
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -73,13 +73,13 @@ async function generateMockup(brief: { name: string; prompt: string }) {
   const data = await response.json() as any;
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
-  // Find the image generation result in output
+  // output から image generation 結果を取得
   const imageItem = data.output?.find((item: any) =>
     item.type === "image_generation_call"
   );
 
   if (!imageItem?.result) {
-    console.error("No image data in response. Output types:",
+    console.error("response に image data なし。output types:",
       data.output?.map((o: any) => o.type));
     console.error("Full response:", JSON.stringify(data, null, 2).slice(0, 500));
     return null;
@@ -121,22 +121,22 @@ async function main() {
   const succeeded = results.filter(r => r.path);
   const failed = results.filter(r => !r.path);
 
-  console.log(`${succeeded.length}/${results.length} generated successfully`);
+  console.log(`${succeeded.length}/${results.length} 件生成成功`);
 
   if (failed.length > 0) {
-    console.log(`Failed: ${failed.map(f => f.name).join(", ")}`);
+    console.log(`失敗: ${failed.map(f => f.name).join(", ")}`);
   }
 
   if (succeeded.length > 0) {
-    console.log(`\nGenerated mockups:`);
+    console.log(`\n生成 mockup:`);
     for (const r of succeeded) {
       console.log(`  ${r.path}`);
     }
-    console.log(`\nOpen in Finder: open ${OUTPUT_DIR}`);
+    console.log(`\nFinder で開く: open ${OUTPUT_DIR}`);
   }
 
   if (succeeded.length === 0) {
-    console.log("\nPROTOTYPE FAILED: No mockups generated. Re-evaluate approach.");
+    console.log("\nPROTOTYPE FAILED: mockup 生成 0、approach の再検討が必要。");
     process.exit(1);
   }
 }

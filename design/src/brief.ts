@@ -1,5 +1,5 @@
 /**
- * Structured design brief — the interface between skill prose and image generation.
+ * 構造化された design brief — skill 側の散文と image generation の間の interface。
  */
 
 export interface DesignBrief {
@@ -8,12 +8,12 @@ export interface DesignBrief {
   style: string;          // "Dark theme, cream accents, minimal"
   elements: string[];     // ["builder name", "score badge", "narrative letter"]
   constraints?: string;   // "Max width 1024px, mobile-first"
-  reference?: string;     // DESIGN.md excerpt or style reference text
-  screenType: string;     // "desktop-dashboard" | "mobile-app" | "landing-page" | etc.
+  reference?: string;     // DESIGN.md の抜粋または style reference 文
+  screenType: string;     // "desktop-dashboard" | "mobile-app" | "landing-page" 等
 }
 
 /**
- * Convert a structured brief to a prompt string for image generation.
+ * 構造化 brief を image generation 用の prompt 文字列に変換。
  */
 export function briefToPrompt(brief: DesignBrief): string {
   const lines: string[] = [
@@ -41,17 +41,17 @@ export function briefToPrompt(brief: DesignBrief): string {
 }
 
 /**
- * Parse a brief from either a plain text string or a JSON file path.
+ * 平文 string または JSON file path から brief を parse。
  */
 export function parseBrief(input: string, isFile: boolean): string {
   if (!isFile) {
-    // Plain text prompt — use directly
+    // 平文 prompt — そのまま使用
     return input;
   }
 
-  // JSON file — parse and convert to prompt
+  // JSON file — parse して prompt 化
   const raw = Bun.file(input);
-  // We'll read it synchronously via fs since Bun.file is async
+  // Bun.file は async のため fs 経由で同期読み込み
   const fs = require("fs");
   const content = fs.readFileSync(input, "utf-8");
   const brief: DesignBrief = JSON.parse(content);
