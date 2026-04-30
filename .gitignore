@@ -28,6 +28,7 @@ Thumbs.db
 
 # bun
 .bun/
+.*.bun-build
 
 # Claude Code（個人マシン状態 / dev-setup の生成物）
 .claude/skills/

@@ -6,7 +6,10 @@
  *   read .tmpl → find {{PLACEHOLDERS}} → resolve from registry → format → write .md
  *
  * Phase 3 status:
- *   - Claude のみ enabled (hosts/index.ts の ALL_HOST_CONFIGS で他 host を未登録)
+ *   - Claude が現実に動かす唯一の host（出力を実際に生成するのは claude のみ）
+ *   - step-47 (Tier 1) で 9 host config を upstream から登録済（codex / cursor / factory /
+ *     gbrain / hermes / kiro / openclaw / opencode / slate）。`--host all` 時は per-host
+ *     try-catch で 9 host の allowlist throw を catch、claude のみ生成する。
  *   - resolver は空 stub (resolvers/index.ts 参照、Phase 4+ で本体に置換)
  *   - frontmatter は denylist mode のみ実装、allowlist は Phase 4+ で fail-loud
  *
@@ -237,68 +240,82 @@ const hostsToRun: Host[] = HOST_ARG_VAL === 'all' ? ALL_HOST_NAMES : [HOST_ARG_V
 
 // 160KB ≒ 40K tokens; runaway preamble/resolver growth の警戒線（hard gate ではない）。
 const TOKEN_CEILING_BYTES = 160_000;
-let hasChanges = false;
-const tokenBudget: Array<{ skill: string; lines: number; tokens: number }> = [];
 
 const tmplPaths = findTemplates();
+const failures: { host: string; error: Error }[] = [];
 
 for (const currentHost of hostsToRun) {
-  const currentHostConfig = getHostConfig(currentHost);
+  let hasChanges = false;
+  const tokenBudget: Array<{ skill: string; lines: number; tokens: number }> = [];
 
-  for (const tmplPath of tmplPaths) {
-    const dir = path.basename(path.dirname(tmplPath));
+  try {
+    const currentHostConfig = getHostConfig(currentHost);
 
-    if (currentHostConfig.generation.includeSkills?.length) {
-      if (!currentHostConfig.generation.includeSkills.includes(dir)) continue;
-    }
-    if (currentHostConfig.generation.skipSkills?.length) {
-      if (currentHostConfig.generation.skipSkills.includes(dir)) continue;
-    }
+    for (const tmplPath of tmplPaths) {
+      const dir = path.basename(path.dirname(tmplPath));
 
-    const { outputPath, content } = processTemplate(tmplPath, currentHost);
-    const relOutput = path.relative(ROOT, outputPath);
-
-    if (DRY_RUN) {
-      const existing = fs.existsSync(outputPath) ? fs.readFileSync(outputPath, 'utf-8') : '';
-      if (existing !== content) {
-        console.log(`STALE: ${relOutput}`);
-        hasChanges = true;
-      } else {
-        console.log(`FRESH: ${relOutput}`);
+      if (currentHostConfig.generation.includeSkills?.length) {
+        if (!currentHostConfig.generation.includeSkills.includes(dir)) continue;
       }
-    } else {
-      fs.writeFileSync(outputPath, content);
-      console.log(`GENERATED: ${relOutput}`);
+      if (currentHostConfig.generation.skipSkills?.length) {
+        if (currentHostConfig.generation.skipSkills.includes(dir)) continue;
+      }
+
+      const { outputPath, content } = processTemplate(tmplPath, currentHost);
+      const relOutput = path.relative(ROOT, outputPath);
+
+      if (DRY_RUN) {
+        const existing = fs.existsSync(outputPath) ? fs.readFileSync(outputPath, 'utf-8') : '';
+        if (existing !== content) {
+          console.log(`STALE: ${relOutput}`);
+          hasChanges = true;
+        } else {
+          console.log(`FRESH: ${relOutput}`);
+        }
+      } else {
+        fs.writeFileSync(outputPath, content);
+        console.log(`GENERATED: ${relOutput}`);
+      }
+
+      const lines = content.split('\n').length;
+      const tokens = Math.round(content.length / 4);
+      tokenBudget.push({ skill: relOutput, lines, tokens });
+
+      if (content.length > TOKEN_CEILING_BYTES) {
+        console.warn(`⚠️  TOKEN CEILING: ${relOutput} is ${content.length} bytes (~${tokens} tokens), exceeds ${TOKEN_CEILING_BYTES} byte ceiling (~40K tokens)`);
+      }
     }
 
-    const lines = content.split('\n').length;
-    const tokens = Math.round(content.length / 4);
-    tokenBudget.push({ skill: relOutput, lines, tokens });
-
-    if (content.length > TOKEN_CEILING_BYTES) {
-      console.warn(`⚠️  TOKEN CEILING: ${relOutput} is ${content.length} bytes (~${tokens} tokens), exceeds ${TOKEN_CEILING_BYTES} byte ceiling (~40K tokens)`);
+    if (DRY_RUN && hasChanges) {
+      console.error(`\nGenerated SKILL.md files are stale (${currentHost} host). Run: bun run gen:skill-docs --host ${currentHost}`);
+      if (HOST_ARG_VAL !== 'all') process.exit(1);
+      failures.push({ host: currentHost, error: new Error('Stale files detected') });
     }
+
+    if (!DRY_RUN && tokenBudget.length > 0) {
+      tokenBudget.sort((a, b) => b.lines - a.lines);
+      const totalLines = tokenBudget.reduce((s, t) => s + t.lines, 0);
+      const totalTokens = tokenBudget.reduce((s, t) => s + t.tokens, 0);
+
+      console.log('');
+      console.log(`Token Budget (${currentHost} host)`);
+      console.log('═'.repeat(60));
+      for (const t of tokenBudget) {
+        const name = t.skill.replace(/\/SKILL\.md$/, '');
+        console.log(`  ${name.padEnd(30)} ${String(t.lines).padStart(5)} lines  ~${String(t.tokens).padStart(6)} tokens`);
+      }
+      console.log('─'.repeat(60));
+      console.log(`  ${'TOTAL'.padEnd(30)} ${String(totalLines).padStart(5)} lines  ~${String(totalTokens).padStart(6)} tokens`);
+      console.log('');
+    }
+  } catch (e) {
+    failures.push({ host: currentHost, error: e as Error });
+    console.error(`WARNING: ${currentHost} generation failed: ${(e as Error).message}`);
   }
 }
 
-if (DRY_RUN && hasChanges) {
-  console.error(`\nGenerated SKILL.md files are stale. Run: bun run gen:skill-docs`);
-  process.exit(1);
-}
-
-if (!DRY_RUN && tokenBudget.length > 0) {
-  tokenBudget.sort((a, b) => b.lines - a.lines);
-  const totalLines = tokenBudget.reduce((s, t) => s + t.lines, 0);
-  const totalTokens = tokenBudget.reduce((s, t) => s + t.tokens, 0);
-
-  console.log('');
-  console.log(`Token Budget`);
-  console.log('═'.repeat(60));
-  for (const t of tokenBudget) {
-    const name = t.skill.replace(/\/SKILL\.md$/, '');
-    console.log(`  ${name.padEnd(30)} ${String(t.lines).padStart(5)} lines  ~${String(t.tokens).padStart(6)} tokens`);
-  }
-  console.log('─'.repeat(60));
-  console.log(`  ${'TOTAL'.padEnd(30)} ${String(totalLines).padStart(5)} lines  ~${String(totalTokens).padStart(6)} tokens`);
-  console.log('');
+// --host all: report failures. Only exit(1) if claude failed.
+if (failures.length > 0 && HOST_ARG_VAL === 'all') {
+  console.error(`\n${failures.length} host(s) failed: ${failures.map(f => f.host).join(', ')}`);
+  if (failures.some(f => f.host === 'claude')) process.exit(1);
 }
