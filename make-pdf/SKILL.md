@@ -34,4 +34,3 @@ setup / skill / bin から一切呼び出されません）。
 ## 関連
 
 - 上流参照：`_upstream/gstack/make-pdf/`（取り込まない、subtree 温存）
-- Phase 6 で uzustack 独自実装（browse / extension と同時）に本実装される予定

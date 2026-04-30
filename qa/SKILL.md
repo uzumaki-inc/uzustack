@@ -37,4 +37,3 @@ upstream の `_upstream/gstack/qa/` 配下に gstack 版の本実装がありま
 ## 関連
 
 - 上流参照：`_upstream/gstack/qa/`（取り込まない、subtree 温存）
-- Phase 6 で uzustack 独自 browse 実装と同時に本実装される予定

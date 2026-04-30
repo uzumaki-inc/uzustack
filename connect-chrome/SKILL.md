@@ -24,12 +24,9 @@ status: phase6-reserved
 スタブのみ配置されています。
 
 upstream の `_upstream/gstack/connect-chrome/` は `open-gstack-browser/` への
-symlink です（upstream の合成構造）。uzustack 側は `name: connect-chrome` を正として
-独立した stub に配置しています。upstream の `name:` フィールドは
-`open-gstack-browser` のままになっており、合成バグの可能性が懸念事項として
-残っています（Phase 6 着手時に再確認予定）。
+symlink です。upstream の `name:` フィールドは `open-gstack-browser` のままで、
+uzustack 側は `name: connect-chrome` を正として独立した stub に配置しています。
 
 ## 関連
 
 - 上流参照：`_upstream/gstack/connect-chrome/`（symlink → `open-gstack-browser/`、取り込まない、subtree 温存）
-- Phase 6 で uzustack 独自 browser 実装と同時に本実装される予定（`open-uzustack-browser` の alias 扱いも含めて Phase 6 で確定）
