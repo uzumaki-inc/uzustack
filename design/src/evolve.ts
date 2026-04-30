@@ -1,8 +1,7 @@
 /**
- * Screenshot-to-Mockup Evolution.
- * Takes a screenshot of the live site and generates a mockup showing
- * how it SHOULD look based on a design brief.
- * Starts from reality, not blank canvas.
+ * Screenshot-to-Mockup Evolution。
+ * live site の screenshot を元に、design brief に沿って「あるべき姿」の mockup を生成する。
+ * blank canvas からではなく現実から起点する。
  */
 
 import fs from "fs";
@@ -10,33 +9,32 @@ import path from "path";
 import { requireApiKey } from "./auth";
 
 export interface EvolveOptions {
-  screenshot: string;  // Path to current site screenshot
-  brief: string;       // What to change ("make it calmer", "fix the hierarchy")
-  output: string;      // Output path for evolved mockup
+  screenshot: string;  // 現状 site の screenshot path
+  brief: string;       // 変更指示 ("make it calmer"、"fix the hierarchy" 等)
+  output: string;      // 進化版 mockup の出力 path
 }
 
 /**
- * Generate an evolved mockup from an existing screenshot + brief.
- * Sends the screenshot as context to GPT-4o with image generation,
- * asking it to produce a new version incorporating the brief's changes.
+ * 既存 screenshot + brief から進化版 mockup を生成。
+ * screenshot を context として GPT-4o に送り、image generation tool で
+ * brief の変更を反映した新版を生成する。
  */
 export async function evolve(options: EvolveOptions): Promise<void> {
   const apiKey = requireApiKey();
   const screenshotData = fs.readFileSync(options.screenshot).toString("base64");
 
-  console.error(`Evolving ${options.screenshot} with: "${options.brief}"`);
+  console.error(`${options.screenshot} を進化、変更指示: "${options.brief}"`);
   const startTime = Date.now();
 
-  // Use the Responses API with both a text prompt referencing the screenshot
-  // and the image_generation tool to produce the evolved version.
-  // Since we can't send reference images directly to image_generation,
-  // we describe the current state in detail first via vision, then generate.
+  // Responses API で screenshot を参照する text prompt と image_generation tool を併用し
+  // 進化版を生成する。reference image を image_generation に直接渡せないため、
+  // 先に vision で現状を詳細記述してから生成する。
 
-  // Step 1: Analyze current screenshot
+  // Step 1: 現状 screenshot を分析
   const analysis = await analyzeScreenshot(apiKey, screenshotData);
-  console.error(`  Analyzed current design: ${analysis.slice(0, 100)}...`);
+  console.error(`  現状 design を分析: ${analysis.slice(0, 100)}...`);
 
-  // Step 2: Generate evolved version using analysis + brief
+  // Step 2: 分析結果 + brief で進化版を生成
   const evolvedPrompt = [
     "Generate a pixel-perfect UI mockup that is an improved version of an existing design.",
     "",
@@ -73,9 +71,9 @@ export async function evolve(options: EvolveOptions): Promise<void> {
       const error = await response.text();
       if (response.status === 403 && error.includes("organization must be verified")) {
         throw new Error(
-          "OpenAI organization verification required.\n"
-          + "Go to https://platform.openai.com/settings/organization to verify.\n"
-          + "After verification, wait up to 15 minutes for access to propagate.",
+          "OpenAI organization verification 未完了。\n"
+          + "https://platform.openai.com/settings/organization で verify が必要。\n"
+          + "verify 後、access propagation に最大 15 分かかる。",
         );
       }
       throw new Error(`API error (${response.status}): ${error.slice(0, 300)}`);
@@ -85,7 +83,7 @@ export async function evolve(options: EvolveOptions): Promise<void> {
     const imageItem = data.output?.find((item: any) => item.type === "image_generation_call");
 
     if (!imageItem?.result) {
-      throw new Error("No image data in response");
+      throw new Error("response に image data なし");
     }
 
     fs.mkdirSync(path.dirname(options.output), { recursive: true });
@@ -93,7 +91,7 @@ export async function evolve(options: EvolveOptions): Promise<void> {
     fs.writeFileSync(options.output, imageBuffer);
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.error(`Generated (${elapsed}s, ${(imageBuffer.length / 1024).toFixed(0)}KB) → ${options.output}`);
+    console.error(`生成完了 (${elapsed}s, ${(imageBuffer.length / 1024).toFixed(0)}KB) → ${options.output}`);
 
     console.log(JSON.stringify({
       outputPath: options.output,
@@ -106,7 +104,7 @@ export async function evolve(options: EvolveOptions): Promise<void> {
 }
 
 /**
- * Analyze a screenshot to produce a detailed description for re-generation.
+ * screenshot を分析して再生成用の詳細記述を生成。
  */
 async function analyzeScreenshot(apiKey: string, imageBase64: string): Promise<string> {
   const controller = new AbortController();
@@ -140,11 +138,11 @@ async function analyzeScreenshot(apiKey: string, imageBase64: string): Promise<s
     });
 
     if (!response.ok) {
-      return "Unable to analyze screenshot";
+      return "screenshot 分析不可";
     }
 
     const data = await response.json() as any;
-    return data.choices?.[0]?.message?.content?.trim() || "Unable to analyze screenshot";
+    return data.choices?.[0]?.message?.content?.trim() || "screenshot 分析不可";
   } finally {
     clearTimeout(timeout);
   }

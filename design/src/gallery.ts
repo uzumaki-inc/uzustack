@@ -1,7 +1,7 @@
 /**
- * Design history gallery — generates an HTML timeline of all design explorations
- * for a project. Shows every approved/rejected variant, feedback notes, organized
- * by date. Self-contained HTML with base64-embedded images.
+ * Design history gallery — project の全 design exploration を HTML timeline で生成。
+ * 全 approved/rejected variant + feedback note を date 順で表示。
+ * base64 埋め込み image による self-contained HTML。
  */
 
 import fs from "fs";
@@ -17,7 +17,7 @@ interface SessionData {
   name: string;
   date: string;
   approved: any | null;
-  variants: string[]; // paths to variant PNGs
+  variants: string[]; // variant PNG の path
 }
 
 export function generateGalleryHtml(designsDir: string): string {
@@ -34,17 +34,17 @@ export function generateGalleryHtml(designsDir: string): string {
     const sessionDir = path.join(designsDir, entry.name);
     let approved: any = null;
 
-    // Read approved.json if it exists
+    // approved.json があれば読む
     const approvedPath = path.join(sessionDir, "approved.json");
     if (fs.existsSync(approvedPath)) {
       try {
         approved = JSON.parse(fs.readFileSync(approvedPath, "utf-8"));
       } catch {
-        // Corrupted JSON, skip but still show the session
+        // JSON 破損、session 自体は表示し続ける
       }
     }
 
-    // Find variant PNGs
+    // variant PNG を検索
     const variants: string[] = [];
     try {
       const files = fs.readdirSync(sessionDir);
@@ -55,10 +55,10 @@ export function generateGalleryHtml(designsDir: string): string {
       }
       variants.sort();
     } catch {
-      // Can't read directory, skip
+      // directory 読み取り不可、skip
     }
 
-    // Extract date from directory name (e.g., homepage-20260327)
+    // directory 名から date を抽出（例: homepage-20260327）
     const dateMatch = entry.name.match(/(\d{8})$/);
     const date = dateMatch
       ? `${dateMatch[1].slice(0, 4)}-${dateMatch[1].slice(4, 6)}-${dateMatch[1].slice(6, 8)}`
@@ -77,7 +77,7 @@ export function generateGalleryHtml(designsDir: string): string {
     return generateEmptyGallery();
   }
 
-  // Sort by date, newest first
+  // date 順、新しい順で sort
   sessions.sort((a, b) => b.date.localeCompare(a.date));
 
   const sessionCards = sessions.map(session => {
@@ -95,7 +95,7 @@ export function generateGalleryHtml(designsDir: string): string {
           </div>
         </div>`;
       } catch {
-        return ""; // Skip unreadable images
+        return ""; // 読めない image を skip
       }
     }).filter(Boolean).join("\n");
 
@@ -115,7 +115,7 @@ export function generateGalleryHtml(designsDir: string): string {
   }).join("\n");
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -200,7 +200,7 @@ export function generateGalleryHtml(designsDir: string): string {
 <body>
 <div class="header">
   <h1>Design History</h1>
-  <div class="meta">${sessions.length} exploration${sessions.length === 1 ? "" : "s"}</div>
+  <div class="meta">${sessions.length} 件の exploration</div>
 </div>
 <div class="gallery">
   ${sessionCards}
@@ -211,7 +211,7 @@ export function generateGalleryHtml(designsDir: string): string {
 
 function generateEmptyGallery(): string {
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -228,8 +228,8 @@ function generateEmptyGallery(): string {
 </head>
 <body>
 <div class="empty">
-  <h2>No design history yet</h2>
-  <p>Run <code>/design-shotgun</code> to start exploring design directions.</p>
+  <h2>design 履歴なし</h2>
+  <p><code>/design-shotgun</code> で design 探索を開始。</p>
 </div>
 </body>
 </html>`;
@@ -240,7 +240,7 @@ function escapeHtml(str: string): string {
 }
 
 /**
- * Gallery command: generate HTML timeline from design explorations.
+ * Gallery command：design exploration から HTML timeline を生成。
  */
 export function gallery(options: GalleryOptions): void {
   const html = generateGalleryHtml(options.designsDir);

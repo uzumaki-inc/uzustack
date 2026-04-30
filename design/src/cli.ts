@@ -1,15 +1,15 @@
 /**
- * uzustack design CLI — stateless CLI for AI-powered design generation.
+ * uzustack design CLI — AI による design 生成のための stateless CLI。
  *
- * Unlike the browse binary (persistent Chromium daemon), the design binary
- * is stateless: each invocation makes API calls and writes files. Session
- * state for multi-turn iteration is a JSON file in /tmp.
+ * browse binary（永続 Chromium daemon）と異なり、design binary は stateless で、
+ * 起動ごとに API call と file 書き込みを行う。複数ターン iteration の session 状態は
+ * /tmp 配下の JSON file で持つ。
  *
  * Flow:
- *   1. Parse command + flags from argv
- *   2. Resolve auth (~/. uzustack/openai.json → OPENAI_API_KEY → guided setup)
- *   3. Execute command (API call → write PNG/HTML)
- *   4. Print result JSON to stdout
+ *   1. argv から command + flags を parse
+ *   2. 認証を解決（~/.uzustack/openai.json → OPENAI_API_KEY → guided setup）
+ *   3. command を実行（API call → PNG/HTML 書き出し）
+ *   4. 結果 JSON を stdout に出力
  */
 
 import { COMMANDS } from "./commands";
@@ -27,7 +27,7 @@ import { serve } from "./serve";
 import { gallery } from "./gallery";
 
 function parseArgs(argv: string[]): { command: string; flags: Record<string, string | boolean> } {
-  const args = argv.slice(2); // skip bun/node and script path
+  const args = argv.slice(2); // bun/node と script path を skip
   if (args.length === 0) {
     printUsage();
     process.exit(0);
@@ -54,26 +54,26 @@ function parseArgs(argv: string[]): { command: string; flags: Record<string, str
 }
 
 function printUsage(): void {
-  console.log("uzustack design — AI-powered UI mockup generation\n");
+  console.log("uzustack design — AI による UI mockup 生成\n");
   console.log("Commands:");
   for (const [name, info] of COMMANDS) {
     console.log(`  ${name.padEnd(12)} ${info.description}`);
     console.log(`  ${"".padEnd(12)} ${info.usage}`);
   }
-  console.log("\nAuth: ~/.uzustack/openai.json or OPENAI_API_KEY env var");
+  console.log("\nAuth: ~/.uzustack/openai.json または OPENAI_API_KEY 環境変数");
   console.log("Setup: $D setup");
 }
 
 async function runSetup(): Promise<void> {
   const existing = resolveApiKey();
   if (existing) {
-    console.log("Existing API key found. Running smoke test...");
+    console.log("既存の API key を検出。smoke test を実行...");
   } else {
-    console.log("No API key found. Please enter your OpenAI API key.");
-    console.log("Get one at: https://platform.openai.com/api-keys");
-    console.log("(Needs image generation permissions)\n");
+    console.log("API key 未設定。OpenAI API key の入力が必要。");
+    console.log("取得先: https://platform.openai.com/api-keys");
+    console.log("(image generation 権限が必要)\n");
 
-    // Read from stdin
+    // stdin から読む
     process.stdout.write("API key: ");
     const reader = Bun.stdin.stream().getReader();
     const { value } = await reader.read();
@@ -81,16 +81,16 @@ async function runSetup(): Promise<void> {
     const key = new TextDecoder().decode(value).trim();
 
     if (!key || !key.startsWith("sk-")) {
-      console.error("Invalid key. Must start with 'sk-'.");
+      console.error("key 形式不正、'sk-' で始まる必要あり。");
       process.exit(1);
     }
 
     saveApiKey(key);
-    console.log("Key saved to ~/.uzustack/openai.json (0600 permissions).");
+    console.log("~/.uzustack/openai.json に保存（0600 permissions）。");
   }
 
-  // Smoke test
-  console.log("\nRunning smoke test (generating a simple image)...");
+  // smoke test
+  console.log("\nsmoke test 実行中（simple image を生成）...");
   try {
     await generate({
       brief: "A simple blue square centered on a white background. Minimal, geometric, clean.",
@@ -98,10 +98,10 @@ async function runSetup(): Promise<void> {
       size: "1024x1024",
       quality: "low",
     });
-    console.log("\nSmoke test PASSED. Design generation is working.");
+    console.log("\nSmoke test PASSED — design generation 動作確認。");
   } catch (err: any) {
     console.error(`\nSmoke test FAILED: ${err.message}`);
-    console.error("Check your API key and organization verification status.");
+    console.error("API key と organization verification status を確認。");
     process.exit(1);
   }
 }
@@ -110,7 +110,7 @@ async function main(): Promise<void> {
   const { command, flags } = parseArgs(process.argv);
 
   if (!COMMANDS.has(command)) {
-    console.error(`Unknown command: ${command}`);
+    console.error(`未知の command: ${command}`);
     printUsage();
     process.exit(1);
   }
@@ -133,12 +133,12 @@ async function main(): Promise<void> {
       break;
 
     case "compare": {
-      // Parse --images as glob or multiple files
+      // --images を glob または複数 file として parse
       const imagesArg = flags.images as string;
       const images = await resolveImagePaths(imagesArg);
       const outputPath = (flags.output as string) || "/tmp/uzustack-design-board.html";
       compare({ images, output: outputPath });
-      // If --serve flag is set, start HTTP server for the board
+      // --serve flag があれば board の HTTP server を起動
       if (flags.serve) {
         await serve({
           html: outputPath,
@@ -151,10 +151,10 @@ async function main(): Promise<void> {
     case "prompt": {
       const promptImage = flags.image as string;
       if (!promptImage) {
-        console.error("--image is required");
+        console.error("--image が必要");
         process.exit(1);
       }
-      console.error(`Generating implementation prompt from ${promptImage}...`);
+      console.error(`${promptImage} から implementation prompt を生成中...`);
       const proc2 = Bun.spawn(["git", "rev-parse", "--show-toplevel"]);
       const root = (await new Response(proc2.stdout).text()).trim();
       const d2c = await generateDesignToCodePrompt(promptImage, root || undefined);
@@ -189,10 +189,10 @@ async function main(): Promise<void> {
     case "extract": {
       const imagePath = flags.image as string;
       if (!imagePath) {
-        console.error("--image is required");
+        console.error("--image が必要");
         process.exit(1);
       }
-      console.error(`Extracting design language from ${imagePath}...`);
+      console.error(`${imagePath} から design language を抽出中...`);
       const extracted = await extractDesignLanguage(imagePath);
       const proc = Bun.spawn(["git", "rev-parse", "--show-toplevel"]);
       const repoRoot = (await new Response(proc.stdout).text()).trim();
@@ -207,10 +207,10 @@ async function main(): Promise<void> {
       const before = flags.before as string;
       const after = flags.after as string;
       if (!before || !after) {
-        console.error("--before and --after are required");
+        console.error("--before と --after が必要");
         process.exit(1);
       }
-      console.error(`Comparing ${before} vs ${after}...`);
+      console.error(`${before} と ${after} を比較中...`);
       const diffResult = await diffMockups(before, after);
       console.log(JSON.stringify(diffResult, null, 2));
       break;
@@ -220,10 +220,10 @@ async function main(): Promise<void> {
       const mockup = flags.mockup as string;
       const screenshot = flags.screenshot as string;
       if (!mockup || !screenshot) {
-        console.error("--mockup and --screenshot are required");
+        console.error("--mockup と --screenshot が必要");
         process.exit(1);
       }
-      console.error(`Verifying implementation against approved mockup...`);
+      console.error(`approved mockup に対して implementation を検証中...`);
       const verifyResult = await verifyAgainstMockup(mockup, screenshot);
       console.error(`Match: ${verifyResult.matchScore}/100 — ${verifyResult.pass ? "PASS" : "FAIL"}`);
       console.log(JSON.stringify(verifyResult, null, 2));
@@ -255,15 +255,15 @@ async function main(): Promise<void> {
 }
 
 /**
- * Resolve image paths from a glob pattern or comma-separated list.
+ * glob pattern または comma 区切り list から image paths を解決。
  */
 async function resolveImagePaths(input: string): Promise<string[]> {
   if (!input) {
-    console.error("--images is required. Provide glob pattern or comma-separated paths.");
+    console.error("--images が必要 (glob pattern または comma 区切りの path)");
     process.exit(1);
   }
 
-  // Check if it's a glob pattern
+  // glob pattern か判定
   if (input.includes("*")) {
     const glob = new Bun.Glob(input);
     const paths: string[] = [];
@@ -275,7 +275,7 @@ async function resolveImagePaths(input: string): Promise<string[]> {
     return paths.sort();
   }
 
-  // Comma-separated or single path
+  // comma 区切りまたは単一 path
   return input.split(",").map(p => p.trim());
 }
 
