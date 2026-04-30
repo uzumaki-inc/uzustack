@@ -1,0 +1,32 @@
+---
+name: setup-browser-cookies
+preamble-tier: 1
+version: 0.0.0
+description: |
+  実 Chromium browser の cookie を headless browse session に import する。
+  対話的な picker UI を開いて、import する cookie domain を選択する。
+  認証済みページの QA テスト前に使用する。「cookie を import」
+  「サイトに login」「browser を認証」と要求されたときに使用する。
+triggers:
+  - browser cookie の import
+  - test サイトに login
+  - 認証済み session のセットアップ
+status: phase6-reserved
+---
+<!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
+<!-- Regenerate: bun run gen:skill-docs -->
+
+
+
+# setup-browser-cookies — Phase 6 で対応予定
+
+このスキルは uzustack の Phase 6（browse / extension 独自実装フェーズ）で
+本実装される予定です。Phase 3 cluster D C 段階では skill 名予約として
+スタブのみ配置されています。
+
+upstream の `_upstream/gstack/setup-browser-cookies/` 配下に gstack 版の本実装があります
+（参照のみ可能、uzustack の setup / skill / bin から一切呼び出されません）。
+
+## 関連
+
+- 上流参照：`_upstream/gstack/setup-browser-cookies/`（取り込まない、subtree 温存）
