@@ -88,6 +88,8 @@ uzustack は [`garrytan/gstack`](https://github.com/garrytan/gstack) を **subtr
 gstack の優れた仕組みを継承しつつ、Claude Codeに特化し、日本語経営者コンテキストで一次設計しています。
 また、著者自身がObsidianの愛好家なので、Obsidianとの親和性を意識して作成しています。
 
+uzustack の構築哲学・原則（Boil the Lake / Search Before Building / User Sovereignty / Build for Yourself）は [ETHOS.md](ETHOS.md) に集約しています（gstack の ETHOS を翻訳・経営者文脈に翻案したもの）。
+
 
 ---
 
