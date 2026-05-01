@@ -1,0 +1,181 @@
+---
+name: benchmark-models
+type: translated
+preamble-tier: 1
+version: 1.0.0
+description: |
+  uzustack skill 向けの cross-model benchmark。同じ prompt を Claude /
+  GPT（Codex CLI 経由）/ Gemini に side-by-side で流し、latency / token /
+  cost、および任意で LLM judge による品質を比較する。「skill X にどの model が
+  実際に最適か？」を vibe ではなく data で答える。web ページの performance
+  計測 skill である `/benchmark` とは別物。
+  「benchmark models」「model を比較」「compare models」「cross-model 比較」
+  「model shootout」「どの model が一番か」「which model is best for X」
+  と要求されたときに使用する。
+  Voice triggers (speech-to-text aliases): "compare models", "model を比較", "model shootout", "which model is best", "どの model が一番か".
+triggers:
+  - cross model benchmark
+  - cross-model 比較
+  - compare claude gpt gemini
+  - claude gpt gemini を比較
+  - benchmark skill across models
+  - model 横断で skill を比較
+  - which model should I use
+  - どの model を使うべきか
+allowed-tools:
+  - Bash
+  - Read
+  - AskUserQuestion
+---
+<!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
+<!-- Regenerate: bun run gen:skill-docs -->
+
+
+
+# /benchmark-models — model 横断の skill benchmark
+
+`/benchmark-models` workflow を実行している。`uzustack-model-benchmark` binary を
+wrap し、prompt の選択、provider の確認、auth の preview、benchmark 実行までを
+対話的に進める。
+
+`/benchmark` とは別物 — そちらは web ページの performance（Core Web Vitals /
+load time）を計測する。本 skill は uzustack skill または任意 prompt に対する
+AI model の performance を計測する。
+
+---
+
+## Step 0: binary を locate
+
+```bash
+BIN="$HOME/.claude/skills/uzustack/bin/uzustack-model-benchmark"
+[ -x "$BIN" ] || BIN=".claude/skills/uzustack/bin/uzustack-model-benchmark"
+[ -x "$BIN" ] || { echo "ERROR: uzustack-model-benchmark not found. uzustack install dir で ./setup を実行すること。" >&2; exit 1; }
+echo "BIN: $BIN"
+```
+
+見つからなければ、停止して uzustack を再 install するようユーザーに伝える。
+
+---
+
+## Step 1: prompt を選ぶ
+
+preamble format で AskUserQuestion を発火：
+- **Re-ground:** 現在の project + branch
+- **Simplify:** 「cross-model benchmark は同じ prompt を 2-3 個の AI model に流して、
+  speed / cost / output 品質を比較する。どの prompt を使う？」
+- **RECOMMENDATION:** A — 実 skill での benchmark は raw generation だけでなく
+  tool-use の差まで露呈させるから。
+- **Options:**
+  - A) 自分の uzustack skill のいずれかを benchmark する（次に skill を選ぶ）。Completeness: 10/10
+  - B) inline prompt を使う — 次の turn で打ち込む。Completeness: 8/10
+  - C) disk 上の prompt file を指す — 次の turn で path を指定する。Completeness: 8/10
+
+A の場合：top-level の uzustack skill のうち SKILL.md を持つものを一覧（
+`find . -maxdepth 2 -name SKILL.md -not -path './.*'` の結果）し、2 つ目の
+AskUserQuestion でユーザーに選んでもらう。選んだ SKILL.md path を prompt file として使う。
+
+B の場合：inline prompt をユーザーに尋ね、`--prompt "<text>"` で逐語使用する。
+
+C の場合：path を尋ねて存在を確認、positional argument として使う。
+
+---
+
+## Step 2: provider を選ぶ
+
+```bash
+"$BIN" --prompt "unused, dry-run" --models claude,gpt,gemini --dry-run
+```
+
+dry-run output を提示する。「Adapter availability」section が、実際にどの provider が
+動くか（OK）/ skip されるか（NOT READY — remediation hint 付き）をユーザーに伝える。
+
+3 つすべてが NOT READY の場合：明確なメッセージで停止 — auth 済の provider が
+1 つも無いと benchmark を走らせられない。`claude login` / `codex login` / `gemini login` /
+`export GOOGLE_API_KEY` を提案する。
+
+少なくとも 1 つが OK の場合、AskUserQuestion：
+- **Simplify:** 「どの model を含めるか？ 上の dry-run で auth 済のものを表示した。
+  unauth のものは綺麗に skip される — batch を中断はしない。」
+- **RECOMMENDATION:** A（auth 済の全 provider） — できるだけ多く走らせる方が
+  比較が豊かになるから。
+- **Options:**
+  - A) auth 済の全 provider。Completeness: 10/10
+  - B) Claude のみ。Completeness: 6/10（cross-model signal 無し — Claude 単独 benchmark には
+    `/ship` の review を使う方が良い）
+  - C) 2 つを選ぶ — 次の turn で指定する。Completeness: 8/10
+
+---
+
+## Step 3: judge の有無を決める
+
+```bash
+[ -n "$ANTHROPIC_API_KEY" ] || grep -q 'ANTHROPIC' "$HOME/.claude/.credentials.json" 2>/dev/null && echo "JUDGE_AVAILABLE" || echo "JUDGE_UNAVAILABLE"
+```
+
+judge が利用可能なら、AskUserQuestion：
+- **Simplify:** 「品質 judge は各 model の output を 0-10 scale で採点する。
+  Anthropic の Claude を tiebreaker として使う。1 run につき ~$0.05 追加。
+  latency / cost だけでなく output 品質を気にする場合に推奨。」
+- **RECOMMENDATION:** A — そもそも本 skill の意義は速度ではなく品質の比較。
+- **Options:**
+  - A) judge を有効化（~$0.05 追加）。Completeness: 10/10
+  - B) judge を skip — speed / cost / token のみ。Completeness: 7/10
+
+judge が利用不能なら、本質問は skip し `--judge` flag は省略する。
+
+---
+
+## Step 4: benchmark を実行
+
+Step 1 / 2 / 3 の決定から command を組み立てる：
+
+```bash
+"$BIN" <prompt-spec> --models <picked-models> [--judge] --output table
+```
+
+`<prompt-spec>` は `--prompt "<text>"`（Step 1B）または file path（Step 1A / 1C）、
+`<picked-models>` は Step 2 の comma 区切り list。
+
+output は到着順に stream する。これは遅い — 各 provider が prompt を full に
+実行する。prompt の複雑さと `--judge` の有無により 30 秒〜5 分。
+
+---
+
+## Step 5: 結果を解釈する
+
+table 印字後、ユーザー向けに要約する：
+- **Fastest** — latency が最小の provider
+- **Cheapest** — cost が最小の provider
+- **Highest quality**（`--judge` を走らせた場合のみ）— score が最高の provider
+- **Best overall** — judgment を働かせる。judge 走行時：品質加重。それ以外：
+  ユーザーが取るべき trade-off を述べる。
+
+いずれかの provider が error を返した場合（auth / timeout / rate_limit）、
+remediation path を併記して call out する。
+
+---
+
+## Step 6: 結果を保存するか offer
+
+AskUserQuestion：
+- **Simplify:** 「本 benchmark を JSON 保存して、将来の run と比較できるようにするか？」
+- **RECOMMENDATION:** A — provider が model を update すると skill の performance は
+  drift する。saved baseline は品質 regression を捕える。
+- **Options:**
+  - A) `~/.uzustack/benchmarks/<date>-<skill-or-prompt-slug>.json` に保存。Completeness: 10/10
+  - B) print のみ、保存しない。Completeness: 5/10（trend data が消える）
+
+A の場合：`--output json` で再 run、tee で日付付き file に保存。path を
+ユーザーに表示し、将来の run と diff できるようにする。
+
+---
+
+## Important Rules
+
+- **Step 2 の dry-run なしで実 benchmark を走らせない。** ユーザーは API call を
+  消費する前に auth 状況を見る必要がある。
+- **model 名を hardcode しない。** 必ず Step 2 の選択から渡す。binary が残りを処理する。
+- **`--judge` を auto include しない。** 実コストが付く。ユーザーが opt-in する。
+- **auth 済 provider が 0 個なら STOP。** benchmark を試行しない — 有用な output は出ない。
+- **cost は可視。** 各 run の table に provider 単位の cost が出る。次の run の前に
+  ユーザーが見るべき。
