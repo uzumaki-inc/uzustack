@@ -1,15 +1,15 @@
 ---
 name: investigate
-type: translated
+preamble-tier: 2
 version: 1.0.0
 description: |
-  根本原因調査による体系的デバッグ。4 つのフェーズ：調査、分析、仮説立案、実装。
-  鉄則：根本原因なくして修正なし。
-  「デバッグして」「このバグを直して」「なぜ壊れたか」「このエラーを調査して」
-  「根本原因分析」と要求されたときに使用する。
-  ユーザーがエラー、500 エラー、スタックトレース、予期しない挙動を報告したり、
-  「昨日は動いていた」と言ったり、何かが動かなくなった原因をトラブルシューティング
-  しているときは、（直接デバッグせず）能動的にこの skill を起動する。
+  Systematic debugging with root cause investigation. Four phases: investigate,
+  analyze, hypothesize, implement. Iron Law: no fixes without root cause.
+  Use when asked to "debug this", "fix this bug", "why is this broken",
+  "investigate this error", or "root cause analysis".
+  Proactively invoke this skill (do NOT debug directly) when the user reports
+  errors, 500 errors, stack traces, unexpected behavior, "it was working
+  yesterday", or is troubleshooting why something stopped working. (gstack)
 allowed-tools:
   - Bash
   - Read
@@ -20,146 +20,201 @@ allowed-tools:
   - AskUserQuestion
   - WebSearch
 triggers:
-  - デバッグして
-  - このバグを直して
-  - なぜ壊れたか
-  - 根本原因分析
-  - このエラーを調査して
+  - debug this
+  - fix this bug
+  - why is this broken
+  - root cause analysis
+  - investigate this error
+hooks:
+  PreToolUse:
+    - matcher: "Edit"
+      hooks:
+        - type: command
+          command: "bash ${CLAUDE_SKILL_DIR}/../freeze/bin/check-freeze.sh"
+          statusMessage: "Checking debug scope boundary..."
+    - matcher: "Write"
+      hooks:
+        - type: command
+          command: "bash ${CLAUDE_SKILL_DIR}/../freeze/bin/check-freeze.sh"
+          statusMessage: "Checking debug scope boundary..."
 ---
 
-# 体系的デバッグ
+{{PREAMBLE}}
 
-## 鉄則
+# Systematic Debugging
 
-**根本原因の調査なしに修正してはならない。**
+## Iron Law
 
-症状の修正はモグラ叩きを生む。根本原因に対処しない修正はすべて、次のバグを見つけにくくする。まず根本原因を見つけ、それから修正する。
+**NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST.**
+
+Fixing symptoms creates whack-a-mole debugging. Every fix that doesn't address root cause makes the next bug harder to find. Find the root cause, then fix it.
 
 ---
 
-## フェーズ 1：根本原因の調査
+{{GBRAIN_CONTEXT_LOAD}}
 
-仮説を立てる前に、コンテキストを集める。
+## Phase 1: Root Cause Investigation
 
-1. **症状の収集**：エラーメッセージ、スタックトレース、再現手順を読む。ユーザーから十分なコンテキストが提供されていなければ、AskUserQuestion で 1 つずつ質問する。
+Gather context before forming any hypothesis.
 
-2. **コードを読む**：症状から潜在的な原因に向けてコードパスを辿る。Grep で全ての参照を探し、Read でロジックを理解する。
+1. **Collect symptoms:** Read the error messages, stack traces, and reproduction steps. If the user hasn't provided enough context, ask ONE question at a time via AskUserQuestion.
 
-3. **直近の変更を確認**：
+2. **Read the code:** Trace the code path from the symptom back to potential causes. Use Grep to find all references, Read to understand the logic.
+
+3. **Check recent changes:**
    ```bash
    git log --oneline -20 -- <affected-files>
    ```
-   以前は動いていたか？何が変わったか？回帰の場合、根本原因は diff の中にある。
+   Was this working before? What changed? A regression means the root cause is in the diff.
 
-4. **再現**：バグを決定的にトリガーできるか？できなければ、進める前により多くの証拠を集める。
+4. **Reproduce:** Can you trigger the bug deterministically? If not, gather more evidence before proceeding.
 
-出力：**「根本原因の仮説：...」** ― 何が、なぜ間違っているかについての具体的で検証可能な主張。
+5. **Check investigation history:** Search prior learnings for investigations on the same files. Recurring bugs in the same area are an architectural smell. If prior investigations exist, note patterns and check if the root cause was structural.
+
+{{LEARNINGS_SEARCH}}
+
+Output: **"Root cause hypothesis: ..."** — a specific, testable claim about what is wrong and why.
 
 ---
 
-## フェーズ 2：パターン分析
+## Scope Lock
 
-このバグが既知のパターンに合致するかを確認する：
+After forming your root cause hypothesis, lock edits to the affected module to prevent scope creep.
 
-| パターン | 兆候 | 探す場所 |
+```bash
+[ -x "${CLAUDE_SKILL_DIR}/../freeze/bin/check-freeze.sh" ] && echo "FREEZE_AVAILABLE" || echo "FREEZE_UNAVAILABLE"
+```
+
+**If FREEZE_AVAILABLE:** Identify the narrowest directory containing the affected files. Write it to the freeze state file:
+
+```bash
+STATE_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.gstack}"
+mkdir -p "$STATE_DIR"
+echo "<detected-directory>/" > "$STATE_DIR/freeze-dir.txt"
+echo "Debug scope locked to: <detected-directory>/"
+```
+
+Substitute `<detected-directory>` with the actual directory path (e.g., `src/auth/`). Tell the user: "Edits restricted to `<dir>/` for this debug session. This prevents changes to unrelated code. Run `/unfreeze` to remove the restriction."
+
+If the bug spans the entire repo or the scope is genuinely unclear, skip the lock and note why.
+
+**If FREEZE_UNAVAILABLE:** Skip scope lock. Edits are unrestricted.
+
+---
+
+## Phase 2: Pattern Analysis
+
+Check if this bug matches a known pattern:
+
+| Pattern | Signature | Where to look |
 |---------|-----------|---------------|
-| 競合状態 | 断続的、タイミング依存 | 共有状態への並行アクセス |
-| nil/null 伝播 | NoMethodError、TypeError | Optional 値のガード漏れ |
-| 状態破壊 | 一貫性のないデータ、部分更新 | トランザクション、コールバック、フック |
-| 統合の失敗 | タイムアウト、予期しないレスポンス | 外部 API 呼び出し、サービス境界 |
-| 設定のドリフト | ローカルでは動く、staging/prod で失敗 | 環境変数、フィーチャーフラグ、DB 状態 |
-| 古いキャッシュ | 古いデータが表示、キャッシュクリアで直る | Redis、CDN、ブラウザキャッシュ、Turbo |
+| Race condition | Intermittent, timing-dependent | Concurrent access to shared state |
+| Nil/null propagation | NoMethodError, TypeError | Missing guards on optional values |
+| State corruption | Inconsistent data, partial updates | Transactions, callbacks, hooks |
+| Integration failure | Timeout, unexpected response | External API calls, service boundaries |
+| Configuration drift | Works locally, fails in staging/prod | Env vars, feature flags, DB state |
+| Stale cache | Shows old data, fixes on cache clear | Redis, CDN, browser cache, Turbo |
 
-さらに以下も確認：
-- `TODOS.md` で関連する既知の問題を探す
-- `git log` で同じ領域の過去の修正を探す ― **同じファイルで繰り返されるバグはアーキテクチャの匂い** であり、偶然ではない
+Also check:
+- `TODOS.md` for related known issues
+- `git log` for prior fixes in the same area — **recurring bugs in the same files are an architectural smell**, not a coincidence
 
-**外部パターン検索**：上記の既知のパターンのどれにも合致しない場合、WebSearch で：
-- `"{framework} {generic error type}"` ― **まずサニタイズ**：ホスト名、IP、ファイルパス、SQL、顧客データを除去。生メッセージではなくエラーカテゴリで検索する。
-- `"{library} {component} known issues"`
+**External pattern search:** If the bug doesn't match a known pattern above, WebSearch for:
+- "{framework} {generic error type}" — **sanitize first:** strip hostnames, IPs, file paths, SQL, customer data. Search the error category, not the raw message.
+- "{library} {component} known issues"
 
-WebSearch が利用できない場合は、この検索をスキップして仮説検証に進む。文書化された解決策や既知の依存関係のバグが見つかれば、フェーズ 3 で候補仮説として提示する。
-
----
-
-## フェーズ 3：仮説検証
-
-修正を書く前に、仮説を検証する。
-
-1. **仮説の確認**：疑わしい根本原因の場所に、一時的なログ文、アサーション、デバッグ出力を追加する。再現を実行する。証拠は合致するか？
-
-2. **仮説が間違っていた場合**：次の仮説を立てる前に、エラーの検索を検討する。**まずサニタイズ** ― ホスト名、IP、ファイルパス、SQL 断片、顧客識別子、内部・専有データをエラーメッセージから除去する。フレームワークと汎用エラー型のみで検索：`"{component} {sanitized error type} {framework version}"`。エラーメッセージが具体的すぎて安全にサニタイズできない場合は、検索をスキップ。WebSearch が利用できなければスキップして進む。その後、フェーズ 1 に戻る。さらに証拠を集める。推測してはならない。
-
-3. **3 ストライクルール**：3 つの仮説が失敗したら、**停止する**。AskUserQuestion を使う：
-   ```
-   3 つの仮説を検証したが、どれも合致しない。これは単純なバグではなく
-   アーキテクチャの問題かもしれない。
-
-   A) 調査を続ける ― 新しい仮説がある：[記述]
-   B) 人間のレビューにエスカレート ― システムを知る人が必要
-   C) ログを追加して待つ ― 該当領域を計装し、次回捕まえる
-   ```
-
-**赤信号** ― 以下が見えたら速度を落とす：
-- 「とりあえずの修正」 ― 「とりあえず」などというものは存在しない。きちんと直すか、エスカレートするか。
-- データフローを辿る前に修正を提案している ― 推測している証拠。
-- 各修正が別の場所で新しい問題を露呈する ― 間違ったレイヤー、間違ったコードではない。
+If WebSearch is unavailable, skip this search and proceed with hypothesis testing. If a documented solution or known dependency bug surfaces, present it as a candidate hypothesis in Phase 3.
 
 ---
 
-## フェーズ 4：実装
+## Phase 3: Hypothesis Testing
 
-根本原因が確認できたら：
+Before writing ANY fix, verify your hypothesis.
 
-1. **症状ではなく根本原因を修正する**。実際の問題を解消する最小の変更を行う。
+1. **Confirm the hypothesis:** Add a temporary log statement, assertion, or debug output at the suspected root cause. Run the reproduction. Does the evidence match?
 
-2. **最小の差分**：触れるファイル数最少、変更行数最少。隣接コードのリファクタリング衝動に抵抗する。
+2. **If the hypothesis is wrong:** Before forming the next hypothesis, consider searching for the error. **Sanitize first** — strip hostnames, IPs, file paths, SQL fragments, customer identifiers, and any internal/proprietary data from the error message. Search only the generic error type and framework context: "{component} {sanitized error type} {framework version}". If the error message is too specific to sanitize safely, skip the search. If WebSearch is unavailable, skip and proceed. Then return to Phase 1. Gather more evidence. Do not guess.
 
-3. **リグレッションテストを書く**：
-   - 修正なしで **失敗** する（テストが意味を持つ証拠）
-   - 修正ありで **成功** する（修正が動く証拠）
-
-4. **テストスイート全体を実行する**。出力を貼る。リグレッションは許容しない。
-
-5. **修正が 5 ファイルを超える場合**：AskUserQuestion で影響範囲を確認する：
+3. **3-strike rule:** If 3 hypotheses fail, **STOP**. Use AskUserQuestion:
    ```
-   この修正は N ファイルに及ぶ。バグ修正としては影響範囲が大きい。
-   A) 進める ― 根本原因が本当にこれらのファイルに及んでいる
-   B) 分割 ― クリティカルパスを今修正、残りは延期
-   C) 再考 ― より的を絞ったアプローチがあるかもしれない
+   3 hypotheses tested, none match. This may be an architectural issue
+   rather than a simple bug.
+
+   A) Continue investigating — I have a new hypothesis: [describe]
+   B) Escalate for human review — this needs someone who knows the system
+   C) Add logging and wait — instrument the area and catch it next time
+   ```
+
+**Red flags** — if you see any of these, slow down:
+- "Quick fix for now" — there is no "for now." Fix it right or escalate.
+- Proposing a fix before tracing data flow — you're guessing.
+- Each fix reveals a new problem elsewhere — wrong layer, not wrong code.
+
+---
+
+## Phase 4: Implementation
+
+Once root cause is confirmed:
+
+1. **Fix the root cause, not the symptom.** The smallest change that eliminates the actual problem.
+
+2. **Minimal diff:** Fewest files touched, fewest lines changed. Resist the urge to refactor adjacent code.
+
+3. **Write a regression test** that:
+   - **Fails** without the fix (proves the test is meaningful)
+   - **Passes** with the fix (proves the fix works)
+
+4. **Run the full test suite.** Paste the output. No regressions allowed.
+
+5. **If the fix touches >5 files:** Use AskUserQuestion to flag the blast radius:
+   ```
+   This fix touches N files. That's a large blast radius for a bug fix.
+   A) Proceed — the root cause genuinely spans these files
+   B) Split — fix the critical path now, defer the rest
+   C) Rethink — maybe there's a more targeted approach
    ```
 
 ---
 
-## フェーズ 5：検証とレポート
+## Phase 5: Verification & Report
 
-**再検証**：元のバグシナリオを再現し、修正されていることを確認する。これは任意ではない。
+**Fresh verification:** Reproduce the original bug scenario and confirm it's fixed. This is not optional.
 
-テストスイートを実行し、出力を貼る。
+Run the test suite and paste the output.
 
-構造化されたデバッグレポートを出力する：
+Output a structured debug report:
 ```
 DEBUG REPORT
 ════════════════════════════════════════
-症状:                [ユーザーが観察したもの]
-根本原因:            [実際に何が間違っていたか]
-修正:                [何を変更したか、file:line 参照付き]
-証拠:                [テスト出力、修正が動くことを示す再現試行]
-リグレッションテスト: [新しいテストの file:line]
-関連:                [TODOS.md の項目、同じ領域の過去のバグ、アーキテクチャノート]
-ステータス:          DONE | DONE_WITH_CONCERNS | BLOCKED
+Symptom:         [what the user observed]
+Root cause:      [what was actually wrong]
+Fix:             [what was changed, with file:line references]
+Evidence:        [test output, reproduction attempt showing fix works]
+Regression test: [file:line of the new test]
+Related:         [TODOS.md items, prior bugs in same area, architectural notes]
+Status:          DONE | DONE_WITH_CONCERNS | BLOCKED
 ════════════════════════════════════════
 ```
 
+Log the investigation as a learning for future sessions. Use `type: "investigation"` and include the affected files so future investigations on the same area can find this:
+
+```bash
+~/.claude/skills/gstack/bin/gstack-learnings-log '{"skill":"investigate","type":"investigation","key":"ROOT_CAUSE_KEY","insight":"ROOT_CAUSE_SUMMARY","confidence":9,"source":"observed","files":["affected/file1.ts","affected/file2.ts"]}'
+```
+
+{{LEARNINGS_LOG}}
+
+{{GBRAIN_SAVE_RESULTS}}
+
 ---
 
-## 重要なルール
+## Important Rules
 
-- **3 回以上の修正失敗 → 停止してアーキテクチャを問う**。失敗した仮説ではなく、間違ったアーキテクチャ。
-- **検証できない修正は絶対に適用しない**。再現できず確認できないなら、出荷しない。
-- **「これで直るはず」と言わない**。検証して証明する。テストを実行する。
-- **修正が 5 ファイルを超える → 影響範囲について AskUserQuestion** してから進める。
-- **完了ステータス**：
-  - DONE ― 根本原因を発見、修正適用、リグレッションテスト記述、全テスト pass
-  - DONE_WITH_CONCERNS ― 修正済みだが完全には検証できない（断続的なバグ、staging 必要 等）
-  - BLOCKED ― 調査後も根本原因不明、エスカレート済み
+- **3+ failed fix attempts → STOP and question the architecture.** Wrong architecture, not failed hypothesis.
+- **Never apply a fix you cannot verify.** If you can't reproduce and confirm, don't ship it.
+- **Never say "this should fix it."** Verify and prove it. Run the tests.
+- **If fix touches >5 files → AskUserQuestion** about blast radius before proceeding.
+- **Completion status:**
+  - DONE — root cause found, fix applied, regression test written, all tests pass
+  - DONE_WITH_CONCERNS — fixed but cannot fully verify (e.g., intermittent bug, requires staging)
+  - BLOCKED — root cause unclear after investigation, escalated

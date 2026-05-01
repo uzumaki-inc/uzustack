@@ -1,34 +1,56 @@
 #!/usr/bin/env bash
-# uzustack dev mode teardown: remove flat-expanded skill dirs from .claude/skills/.
-# Only removes entries whose SKILL.md symlink points inside the repo
-# (i.e. created by dev-setup; foreign skills under .claude/skills/ are preserved).
-#
-# Usage: bin/dev-teardown
-set -euo pipefail
-shopt -s nullglob
+# Remove local dev skill symlinks. Restores global gstack as the active install.
+set -e
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CLAUDE_SKILLS="$REPO_ROOT/.claude/skills"
-
-[[ -d "$CLAUDE_SKILLS" ]] || { echo "No dev mode active."; exit 0; }
 
 removed=()
 
-for entry in "$CLAUDE_SKILLS"/*/; do
-  entry="${entry%/}"
-  name="${entry##*/}"
-  link_target="$(readlink "$entry/SKILL.md" 2>/dev/null || true)"
-  if [[ "$link_target" == "$REPO_ROOT"/* ]]; then
-    rm -rf "$entry"
-    removed+=("$name")
+# ─── Clean up .claude/skills/ ─────────────────────────────────
+CLAUDE_SKILLS="$REPO_ROOT/.claude/skills"
+if [ -d "$CLAUDE_SKILLS" ]; then
+  for link in "$CLAUDE_SKILLS"/*/; do
+    name="$(basename "$link")"
+    [ "$name" = "gstack" ] && continue
+    if [ -L "${link%/}" ]; then
+      rm "${link%/}"
+      removed+=("claude/$name")
+    fi
+  done
+
+  if [ -L "$CLAUDE_SKILLS/gstack" ]; then
+    rm "$CLAUDE_SKILLS/gstack"
+    removed+=("claude/gstack")
   fi
-done
 
-rmdir "$CLAUDE_SKILLS" 2>/dev/null || true
-rmdir "$REPO_ROOT/.claude" 2>/dev/null || true
+  rmdir "$CLAUDE_SKILLS" 2>/dev/null || true
+  rmdir "$REPO_ROOT/.claude" 2>/dev/null || true
+fi
 
-if (( ${#removed[@]} > 0 )); then
+# ─── Clean up .agents/skills/ ────────────────────────────────
+AGENTS_SKILLS="$REPO_ROOT/.agents/skills"
+if [ -d "$AGENTS_SKILLS" ]; then
+  for link in "$AGENTS_SKILLS"/*/; do
+    name="$(basename "$link")"
+    [ "$name" = "gstack" ] && continue
+    if [ -L "${link%/}" ]; then
+      rm "${link%/}"
+      removed+=("agents/$name")
+    fi
+  done
+
+  if [ -L "$AGENTS_SKILLS/gstack" ]; then
+    rm "$AGENTS_SKILLS/gstack"
+    removed+=("agents/gstack")
+  fi
+
+  rmdir "$AGENTS_SKILLS" 2>/dev/null || true
+  rmdir "$REPO_ROOT/.agents" 2>/dev/null || true
+fi
+
+if [ ${#removed[@]} -gt 0 ]; then
   echo "Removed: ${removed[*]}"
 else
-  echo "No dev-mode symlinks found."
+  echo "No symlinks found."
 fi
+echo "Dev mode deactivated. Global gstack (~/.claude/skills/gstack) is now active."
