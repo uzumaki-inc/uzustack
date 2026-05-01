@@ -54,4 +54,12 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   REVIEW_ARMY: (_ctx, _args) => '',
   // Phase 4+ で plan からのスコープ drift 検出指示文を返す予定（Phase 4 / review・ship 連携の scope guard）
   SCOPE_DRIFT: (_ctx, _args) => '',
+  // Phase 4+ で browse 環境セットアップ指示文を返す予定（Phase 4 / browse 連携、office-hours・devex-review 等で使用）
+  BROWSE_SETUP: (_ctx, _args) => '',
+  // Phase 4+ で Codex / 別 LLM による second opinion 取得指示文を返す予定（Phase 4 / 外部 reviewer 連携、office-hours 等の plan 系で使用）
+  CODEX_SECOND_OPINION: (_ctx, _args) => '',
+  // Phase 4+ で design mockup（visual draft）生成指示文を返す予定（Phase 4 / design 系 skill 連携、office-hours で使用）
+  DESIGN_MOCKUP: (_ctx, _args) => '',
+  // Phase 4+ で design sketch（rough idea）生成指示文を返す予定（Phase 4 / design 系 skill 連携、office-hours で使用）
+  DESIGN_SKETCH: (_ctx, _args) => '',
 };
