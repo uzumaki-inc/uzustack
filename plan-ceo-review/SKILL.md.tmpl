@@ -6,7 +6,7 @@ interactive: true
 version: 1.0.0
 description: |
   経営者・創業者モードでのプランレビュー。問題を再考し、10 段階満点の製品を見つけ、
-  前提を challenge し、より良い製品が生まれるならスコープを拡張する。4 つのモード：
+  前提（premise）を challenge し、より良い製品が生まれるならスコープを拡張する。4 つのモード：
   スコープ拡張モード（SCOPE EXPANSION、大きく夢見る）、
   選択的拡張モード（SELECTIVE EXPANSION、スコープ維持 + 部分的選択）、
   スコープ維持モード（HOLD SCOPE、最大限の rigor）、
@@ -138,7 +138,7 @@ HANDOFF=$(ls -t ~/.uzustack/projects/$SLUG/*-$BRANCH-ceo-handoff-*.md 2>/dev/nul
 
 **セッション中の検出：** Step 0A（前提 challenge）の間、ユーザーが問題を articulate できない、問題定義を変え続ける、「I'm not sure」と答える、明らかに review ではなく explore している場合 — `/office-hours` を提案する：
 
-> 「まだ何を build するかを figuring out しているように聞こえる — それで全く問題ないが、それこそ /office-hours の役割。今 /office-hours を実行する？ 止まったところから再開する。」
+> 「まだ何を build するかを定めている途中のように聞こえる — それで全く問題ないが、それこそ /office-hours の役割。今 /office-hours を実行する？ 止まったところから再開する。」
 
 選択肢： A) はい、今 /office-hours を実行。 B) いいえ、続行。
 続行を選んだら、normal に進める — guilt なし、再質問なし。
@@ -428,7 +428,7 @@ context 依存の default：
 この section のルール：
 * catch-all error handling（`rescue StandardError`、`catch (Exception e)`、`except Exception`）は **常に** smell。具体的な exception を name 付けせよ。
 * generic な log message だけで error を catch するのは不十分。full context を log せよ：何を attempt していたか、どの引数で、どの user / request のために。
-* rescued されたすべての error は、backoff 付き retry、ユーザー可視メッセージ付き degrade、context を added して re-raise のいずれかでなければならない。「swallow して continue」はほとんど never acceptable。
+* rescued されたすべての error は、backoff 付き retry、ユーザー可視メッセージ付き degrade、context を加えて re-raise のいずれかでなければならない。「swallow して continue」はほとんど never acceptable。
 * GAP（rescue されるべき unrescued error）ごとに、rescue action とユーザーが見るべき内容を specify せよ。
 * LLM / AI service 呼び出しに特に：response が malformed のときどうなる？ empty のとき？ invalid な JSON を hallucinate したとき？ model が refusal を返したとき？ それぞれが distinct な failure mode。
 **STOP。** AskUserQuestion は issue ごとに 1 回。まとめない。Recommend + WHY。発見ゼロなら「No issues, moving on」。発見があれば AskUserQuestion を tool_use として **必ず call せよ**。応答まで進まない。
