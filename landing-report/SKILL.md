@@ -1,0 +1,165 @@
+---
+name: landing-report
+type: translated
+version: 0.1.0
+description: |
+  Workspace-aware ship 用の read-only queue dashboard。VERSION slot のうち
+  open PR が現在 claim しているもの、sibling Conductor workspace の WIP（近日 ship
+  しそうなもの）、次 /ship が pick する slot を表示する。mutation は一切なし — snapshot のみ。
+  「landing report」「ship queue」「open PR の状況」「次に claim する version は？」
+  と要求されたときに使用する。(uzustack)
+triggers:
+  - landing report
+  - version queue
+  - ship queue
+  - what version comes next
+  - show open PR versions
+  - landing report する
+  - ship queue 確認
+allowed-tools:
+  - Bash
+  - Read
+---
+<!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
+<!-- Regenerate: bun run gen:skill-docs -->
+
+# /landing-report — Version Queue Dashboard
+
+
+
+---
+
+## なぜ本 skill が存在するか
+
+5〜10 個の Conductor workspace を並行で動かしているとき、どの version 番号が誰に
+claim されており、次の `/ship` がどの slot に landing するかを **一目で把握** できると有用。
+本 skill は `/ship` が使うのと同じ `bin/uzustack-next-version` ユーティリティへの
+read-only な呼び出しで、何も mutate しない。VERSION 番号の `gh pr list` 相当と捉えてほしい。
+
+---
+
+## Step 1: platform と base branch の検出
+
+他 uzustack skill と同じ検出を行う。
+
+```bash
+BASE_BRANCH=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || \
+              gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null || \
+              echo main)
+echo "Base branch: $BASE_BRANCH"
+```
+
+---
+
+## Step 2: 現在の state を読む
+
+```bash
+CURRENT_VERSION=$(cat VERSION 2>/dev/null | tr -d '[:space:]' || echo "0.0.0.0")
+git fetch origin "$BASE_BRANCH" --quiet 2>/dev/null || true
+BASE_VERSION=$(git show "origin/$BASE_BRANCH:VERSION" 2>/dev/null | tr -d '[:space:]' || echo "$CURRENT_VERSION")
+echo "origin/$BASE_BRANCH VERSION: $BASE_VERSION"
+echo "branch HEAD VERSION: $CURRENT_VERSION"
+```
+
+---
+
+## Step 3: queue を query
+
+ユーティリティを bump level ごとに 3 回呼ぶ — micro/patch/minor/major で何を claim するかを
+ユーザーに見せるため。安価（同じ gh call を bun が cache する）。
+
+```bash
+for LEVEL in micro patch minor major; do
+  bun run bin/uzustack-next-version \
+    --base "$BASE_BRANCH" \
+    --bump "$LEVEL" \
+    --current-version "$BASE_VERSION" \
+    > "/tmp/landing-$LEVEL.json" 2>/dev/null || echo '{"offline":true}' > "/tmp/landing-$LEVEL.json"
+done
+```
+
+---
+
+## Step 4: dashboard を描画
+
+単一の table 出力を組み立てる。`patch` level の JSON を queue + siblings の正本として使う
+（bump level 間で identical、`.version` のみ異なる）。
+
+`jq` で抽出するもの：
+- `.host` — github | gitlab | unknown
+- `.offline` — query が失敗したか？
+- `.claimed` — `{pr, branch, version, url}` の配列
+- `.siblings` — 検出されたすべての sibling worktree
+- `.active_siblings` — 近日 ship しそうな subset
+
+下記の exact format で描画：
+
+```
+╔══════════════════════════════════════════════════════════════════╗
+║                    UZUSTACK LANDING REPORT                       ║
+╠══════════════════════════════════════════════════════════════════╣
+║ Repo:    <owner/repo>                                            ║
+║ Base:    <base> @ v<base-version>                                ║
+║ Host:    <github|gitlab|unknown>                                 ║
+║ Status:  <ONLINE|OFFLINE: queue-awareness unavailable>           ║
+╚══════════════════════════════════════════════════════════════════╝
+
+<base> 上で version を claim している open PR：
+  #1152  alpha-branch         → v1.7.0.0
+  #1153  beta-branch          → v1.7.0.0  ⚠ #1152 と collision
+  #1151  gamma-branch         → v1.6.5.0
+
+Sibling Conductor worktree（<workspace_root>）：
+  path                        branch                 VERSION      last commit   PR
+  ──────────────────────────────────────────────────────────────────────────────────
+  ../tokyo-v2                 feat/dashboard         v1.7.1.0    3h ago         none  ★ active
+  ../melbourne                feat/review            v1.6.0.0    12d ago        none
+  ../osaka                    feat/payments          v1.8.0.0    5h ago         #1155
+
+★ active = base より先行する VERSION + 24h 以内の最終 commit + open PR なし。
+  これらは近日 ship する可能性が高い。
+
+いま /ship を実行したら、claim するのは：
+  micro bump:  v1.6.3.1   (queue-advance: none)
+  patch bump:  v1.7.1.0   (claimed 1.7.0.0 を超えて bump)
+  minor bump:  v1.8.0.0   (claimed 1.7.0.0 を超えて bump)
+  major bump:  v2.0.0.0   (major collision なし)
+```
+
+offline / unknown-host の場合は短い block を print：
+
+```
+╔══════════════════════════════════════════════════════════════════╗
+║                    UZUSTACK LANDING REPORT                       ║
+╠══════════════════════════════════════════════════════════════════╣
+║ Status:  OFFLINE — queue-awareness unavailable                   ║
+║ Reason:  <warnings からの offline 理由>                          ║
+╚══════════════════════════════════════════════════════════════════╝
+
+Fallback: ローカル VERSION bump は引き続き機能するが、collision 検出は不可。
+```
+
+---
+
+## Step 5: 次のアクションを提案
+
+table を描画した後、次のうち **1 つ** を提案する：
+
+1. **queue に collision がある場合**（2 つの open PR が同一 version を claim）：
+   "⚠ 2 つの open PR が v<X> で collide している。後から merge した方は、先に merge した方の
+   CHANGELOG entry を上書きするか duplicate を land させる。どちらかの author に
+   /ship を再実行して次の free slot を取り直してもらうのが良い。"
+
+2. **active sibling がユーザーの branch version を outrank している場合：**
+   "Sibling worktree <path> が v<X> を <N>h 前に commit 済で PR 未作成。
+   先に ship されたら、本 branch は land 時に rebump が必要になる。"
+
+3. **すべてが clean な場合：**
+   "Queue は clean。次の /ship は conflict なく slot を claim する。"
+
+---
+
+## Plan Mode
+
+PLAN MODE EXCEPTION — ALWAYS RUN。本 skill は完全に read-only：file 書き込みなし、
+git mutation なし、network state 変更なし。plan mode で安全に実行可能。
