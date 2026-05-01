@@ -62,4 +62,6 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   DESIGN_MOCKUP: (_ctx, _args) => '',
   // Phase 4+ で design sketch（rough idea）生成指示文を返す予定（Phase 4 / design 系 skill 連携、office-hours で使用）
   DESIGN_SKETCH: (_ctx, _args) => '',
+  // Phase 4+ で developer experience（DX）監査の framework / dimensions 指示文を返す予定（Phase 4 / devex-review・plan-devex-review で使用）
+  DX_FRAMEWORK: (_ctx, _args) => '',
 };
