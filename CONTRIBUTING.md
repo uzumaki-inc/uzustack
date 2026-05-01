@@ -245,6 +245,7 @@ step-35 以降の bin 機械翻訳と既存 skill の .tmpl 化が「**置換ル
 | Garry Tan | uzustack 開発者 |
 | Y Combinator / YC | スタートアップ |
 | Garry Tan 個人を指す箇所 | OSS メンテナー |
+| Bezos / Munger / Jobs / Hastings / Horowitz / Altman / Rams / Graham / Chesky / Grove | 個人名維持（思考特性の attribution、business persona quote の出典として保持） |
 
 #### voice 軸（思想・規律の翻案）
 
@@ -255,6 +256,82 @@ step-35 以降の bin 機械翻訳と既存 skill の .tmpl 化が「**置換ル
 | Boil the Lake | 一晩でやり切る（Boil the Lake） |
 | Search Before Building | 作る前に探す（Search Before Building） |
 | "the gstack way" | "uzustack の流儀"（"the gstack way"） |
+
+#### voice 規約 v2 拡張（cluster 3.5 C1 = step-49 plan-ceo-review で確立）
+
+Phase 3.5 C1（plan-ceo-review = persona 翻案重要 skill）で plan / strategy review 系 skill が共有する persona 表現の訳語を確立。後続の plan 系 cluster（step-67〜75）で踏襲する。
+
+##### Mode / 状態名（plan-ceo-review の 4 mode 等）
+
+訳語と原文の併記形式で、初出時に `日本語（English）` で提示、以降は短縮日本語のみで参照可能。
+
+| gstack | uzustack |
+|---|---|
+| SCOPE EXPANSION | スコープ拡張モード（SCOPE EXPANSION）→ 短縮：拡張モード |
+| SELECTIVE EXPANSION | 選択的拡張モード（SELECTIVE EXPANSION）→ 短縮：選択的拡張モード |
+| HOLD SCOPE | スコープ維持モード（HOLD SCOPE）→ 短縮：維持モード |
+| SCOPE REDUCTION | スコープ縮減モード（SCOPE REDUCTION）→ 短縮：縮減モード |
+
+##### 経営者思考特性（cognitive patterns、industry leader 由来）
+
+各思考特性は具体的経営者・投資家の発言に紐づく persona 概念。訳語は意味重視、原文を併記して identity を保持する。
+
+| gstack | uzustack | 出典 |
+|---|---|---|
+| Classification instinct | 分類本能 | Bezos（一方通行 / 双方向ドア） |
+| Paranoid scanning | 強迫的スキャン | Grove |
+| Inversion reflex | 反転反射 | Munger |
+| Focus as subtraction | 引き算による集中 | Jobs |
+| People-first sequencing | 人材優先の順序付け | Horowitz / Hastings |
+| Speed calibration | 速度キャリブレーション | Bezos |
+| Proxy skepticism | プロキシ懐疑 | Bezos Day 1 |
+| Narrative coherence | ナラティブの一貫性 | — |
+| Temporal depth | 時間軸の深さ | Bezos at age 80 |
+| Founder-mode bias | 創業者モード偏向 | Chesky / Graham |
+| Wartime awareness | 戦時意識 | Horowitz |
+| Courage accumulation | 勇気の蓄積 | — |
+| Willfulness as strategy | 意志の強さは戦略 | Altman |
+| Leverage obsession | レバレッジ偏執 | Altman |
+| Hierarchy as service | 奉仕としての序列 | UI 系 |
+| Edge case paranoia | エッジケース偏執 | UI 系 |
+| Subtraction default | 引き算的標準 | Rams |
+| Design for trust | 信頼のデザイン | UI 系 |
+
+##### 経営者・builder persona 表現（metaphor / vision 系）
+
+訳語と併記、初出時に `日本語（English）` で提示。
+
+| gstack | uzustack |
+|---|---|
+| 10x check | 10 倍 check |
+| 10-star product | 10 段階満点の製品 |
+| cathedral | カテドラル |
+| platonic ideal | プラトン的理想形 |
+| dream big | 大きく夢見る |
+| premise | 前提（premise） |
+| Outside Voice | 外部視点（Outside Voice） |
+| founder mode | 創業者モード（founder-mode） |
+| wartime / peacetime | 戦時 / 平時 |
+
+##### Data flow / review 用語
+
+データフロー review の path 名は意味重視で訳す。`shadow paths` など voice 概念は原文併記。
+
+| gstack | uzustack |
+|---|---|
+| happy path | 正常路（happy path） |
+| nil path | nil 路 |
+| empty path | 空路 |
+| error path | エラー路（error path） |
+| shadow paths | 影路（shadow paths） |
+
+##### 翻訳指針
+
+- **persona 表現は意味で訳す**：直訳より「日本語で持つべき重み」を優先。例：`Boil the Lake` の「徹底的にやり切る」感を「一晩でやり切る」で表現
+- **Mode 名は初出併記、以降短縮**：`スコープ拡張モード（SCOPE EXPANSION）` 初出 → 「拡張モード」短縮
+- **思考特性は意味訳 + 出典維持**：個人名（Bezos / Munger 等）は attribution として保持、訳語は意味重視
+- **STOP / OK / CRITICAL GAP 等の inline marker**：英語維持（CLI 慣習との整合、voice 規約 v1 項目 1 と同型）
+- **AskUserQuestion / RECOMMENDATION 等の tool / framework 名**：英語維持（fixed identifier）
 
 #### 周辺ルール
 
