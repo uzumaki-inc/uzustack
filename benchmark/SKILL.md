@@ -3,16 +3,18 @@ name: benchmark
 version: 0.0.0
 description: |
   ページの performance 計測 skill。本実装は Phase 6 で配置予定。
-  「performance」「performance ベンチマーク」「benchmark」「page speed」
-  「ページ速度を計測」「Core Web Vitals」「Core Web Vitals 計測」
-  「lighthouse」「web vitals」「bundle size」「bundle 容量」「load time」
-  「読み込み時間」と要求されたときに使用する。
+  「performance benchmark」「performance ベンチマーク」「page speed」
+  「ページ速度を計測」「Core Web Vitals 計測」「bundle size 確認」
+  「load time 計測」「performance regression 検出」と要求されたときに使用する。
   Voice triggers (speech-to-text aliases): "speed test", "速度テスト", "check performance", "performance を確認".
 triggers:
   - performance benchmark
   - performance ベンチマーク
   - check page speed
   - ページ速度を計測
+  - Core Web Vitals 計測
+  - bundle size 確認
+  - load time 計測
   - detect performance regression
   - performance regression 検出
 status: phase6-reserved
