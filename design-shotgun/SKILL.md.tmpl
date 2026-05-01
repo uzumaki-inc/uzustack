@@ -1,0 +1,284 @@
+---
+name: design-shotgun
+type: translated
+preamble-tier: 2
+version: 1.0.0
+description: |
+  Design shotgun：複数 AI design variant を生成し、比較 board を開き、
+  構造化 feedback を集めて iterate する skill。standalone な design exploration、
+  いつでも実行可能。「design を探索」「option を見せて」「design variant」
+  「visual brainstorm」「この見た目が嫌」と要求されたときに使用する。
+  ユーザーが UI 機能を記述したがまだ visual を見ていないときに積極的に提案する。(uzustack)
+triggers:
+  - explore design variants
+  - show me design options
+  - visual design brainstorm
+  - design 探索
+  - design variant 生成
+  - visual brainstorm する
+allowed-tools:
+  - Bash
+  - Read
+  - Glob
+  - Grep
+  - Agent
+  - AskUserQuestion
+---
+
+{{PREAMBLE}}
+
+# /design-shotgun: Visual Design Exploration
+
+あなたは design brainstorming partner。複数の AI design variant を生成し、ユーザーの browser で side-by-side で開き、direction を承認するまで iterate する。これは visual brainstorming であって review process ではない。
+
+{{DESIGN_SETUP}}
+
+{{UX_PRINCIPLES}}
+
+## Step 0: Session Detection
+
+このプロジェクトの過去 design exploration session を確認：
+
+```bash
+eval "$(~/.claude/skills/uzustack/bin/uzustack-slug 2>/dev/null)"
+setopt +o nomatch 2>/dev/null || true
+_PREV=$(find ~/.uzustack/projects/$SLUG/designs/ -name "approved.json" -maxdepth 2 2>/dev/null | sort -r | head -5)
+[ -n "$_PREV" ] && echo "PREVIOUS_SESSIONS_FOUND" || echo "NO_PREVIOUS_SESSIONS"
+echo "$_PREV"
+```
+
+**`PREVIOUS_SESSIONS_FOUND` の場合：** 各 `approved.json` を読み summary を表示、それから AskUserQuestion：
+
+> "Previous design explorations for this project:
+> - [date]: [screen] — chose variant [X], feedback: '[summary]'
+>
+> A) Revisit — reopen the comparison board to adjust your choices
+> B) New exploration — start fresh with new or updated instructions
+> C) Something else"
+
+A：既存 variant PNG から board を再生成、開いて feedback loop を再開。
+B：Step 1 へ進む。
+
+**`NO_PREVIOUS_SESSIONS` の場合：** first-time message を表示：
+
+「これは /design-shotgun — visual brainstorming tool。複数の AI design direction を生成し、browser で side-by-side で開き、お気に入りを選んでもらう。開発中いつでも /design-shotgun を実行して、product のどの部分の design direction でも探索できる。さあ始めよう。」
+
+## Step 1: Context Gathering
+
+design-shotgun が plan-design-review、design-consultation、または別 skill から呼ばれた場合、呼び出し元 skill が既に context を集めている。`$_DESIGN_BRIEF` を確認し、set されていれば Step 2 へ skip。
+
+standalone 実行の場合、proper な design brief を組むため context を集める。
+
+**必要な context（5 dimension）：**
+1. **Who** — design は誰のため？（persona、audience、expertise level）
+2. **Job to be done** — ユーザーがこの screen / page で達成しようとしているのは何？
+3. **What exists** — codebase に既にあるものは何？（existing component、page、pattern）
+4. **User flow** — ユーザーはこの screen にどう来て、次にどこへ行く？
+5. **Edge cases** — 長い名前、ゼロ件、エラー状態、mobile、初回 vs power user
+
+**まず auto-gather：**
+
+```bash
+cat DESIGN.md 2>/dev/null | head -80 || echo "NO_DESIGN_MD"
+```
+
+```bash
+ls src/ app/ pages/ components/ 2>/dev/null | head -30
+```
+
+```bash
+setopt +o nomatch 2>/dev/null || true
+ls ~/.uzustack/projects/$SLUG/*office-hours* 2>/dev/null | head -5
+```
+
+DESIGN.md が存在すればユーザーに伝える：「DESIGN.md の design system を default で踏襲する。visual direction について off the reservation したいなら言って — design-shotgun はあなたの lead に従うが、default では逸脱しない。」
+
+**screenshot 用の live site を確認**（"これが嫌" の use case 用）：
+
+```bash
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 2>/dev/null || echo "NO_LOCAL_SITE"
+```
+
+local site が走っていて、ユーザーが URL を参照した、または「この見た目が嫌」と言った場合、現 page を screenshot し、`$D variants` の代わりに `$D evolve` を使い既存 design から improvement variant を生成する。
+
+**pre-filled context で AskUserQuestion：** codebase / DESIGN.md / office-hours 出力から推論したものを pre-fill。それから不足を尋ねる。全 gap をカバーする 1 つの質問として：
+
+> "Here's what I know: [pre-filled context]. I'm missing [gaps].
+> Tell me: [specific questions about the gaps].
+> How many variants? (default 3, up to 8 for important screens)"
+
+context gathering は最大 2 round、それから手元のもので進めて assumption を note する。
+
+## Step 2: Taste Memory
+
+persistent taste profile（cross-session）と per-session approved design の両方を読み、生成をユーザーの demonstrated taste へ bias する。
+
+**Persistent taste profile（v1 schema、`~/.uzustack/projects/$SLUG/taste-profile.json`）：**
+
+{{TASTE_PROFILE}}
+
+**Per-session approved.json file（legacy、引き続きサポート）：**
+
+```bash
+setopt +o nomatch 2>/dev/null || true
+_TASTE=$(find ~/.uzustack/projects/$SLUG/designs/ -name "approved.json" -maxdepth 2 2>/dev/null | sort -r | head -10)
+```
+
+過去 session があれば、各 `approved.json` を読み、approved variant から pattern を抽出する。これらを taste-profile.json 由来の signal と merge する — profile が既に「user prefers Geist font」（aggregated history から）と言っているなら、approved.json file は最近の特定承認 context を加える。
+
+直近 10 session に制限。各 file で JSON parse を try/catch（壊れた file は skip）。
+
+**design-shotgun session 後の taste profile 更新：** ユーザーが variant を選んだら `{{BIN_DIR}}/uzustack-taste-update approved <variant-path>` を呼ぶ。明示的に variant を reject したら `{{BIN_DIR}}/uzustack-taste-update rejected <variant-path>` を呼ぶ。CLI が approved.json からの schema migration、decay、conflict flag を扱う。
+
+## Step 3: Generate Variants
+
+出力 directory を構築：
+
+```bash
+eval "$(~/.claude/skills/uzustack/bin/uzustack-slug 2>/dev/null)"
+_DESIGN_DIR="$HOME/.uzustack/projects/$SLUG/designs/<screen-name>-$(date +%Y%m%d)"
+mkdir -p "$_DESIGN_DIR"
+echo "DESIGN_DIR: $_DESIGN_DIR"
+```
+
+`<screen-name>` は context gathering からの descriptive な kebab-case 名で置換する。
+
+### Step 3a: Concept Generation
+
+API call の前に、各 variant の design direction を記述する N 個の text concept を生成する。各 concept は minor な variation ではなく、distinct な creative direction。lettered list で提示：
+
+```
+I'll explore 3 directions:
+
+A) "Name" — one-line visual description of this direction
+B) "Name" — one-line visual description of this direction
+C) "Name" — one-line visual description of this direction
+```
+
+DESIGN.md、taste memory、ユーザー要求から各 concept を distinct にする。
+
+**Anti-convergence directive（hard requirement）：** 各 variant は **異なる font family / color palette / layout approach** を使うこと。2 variant が sibling のように見えたら — 同じ typographic feel、重なる color temperature、似た layout rhythm — どちらかが失敗。弱い方を意図的に異なる direction で regenerate する。
+
+具体テスト：誰かが 2 variant 間で headline text を入れ替えても気づかなければ、それらは似すぎ。variant は同じチームが 3 つの異なる coffee level で作ったものではなく、3 つの異なる design team から来たように感じるべき。
+
+### Step 3b: Concept Confirmation
+
+API credit を使う前に AskUserQuestion で確認：
+
+> "These are the {N} directions I'll generate. Each takes ~60s, but I'll run them all
+> in parallel so total time is ~60 seconds regardless of count."
+
+Options:
+- A) Generate all {N} — looks good
+- B) I want to change some concepts (tell me which)
+- C) Add more variants (I'll suggest additional directions)
+- D) Fewer variants (tell me which to drop)
+
+B：feedback を取り込み concept を再提示、再確認。最大 2 round。
+C：concept 追加、再提示、再確認。
+D：指定された concept を drop、再提示、再確認。
+
+### Step 3c: Parallel Generation
+
+**screenshot から evolve する場合**（ユーザーが「これが嫌」と言った場合）、まず 1 枚 screenshot：
+
+```bash
+$B screenshot "$_DESIGN_DIR/current.png"
+```
+
+**1 つの message で N 個の Agent subagent を起動**（並列実行）。各 variant について Agent tool を `subagent_type: "general-purpose"` で使う。各 agent は独立で、自分の生成 / quality check / verification / retry を扱う。
+
+**重要：$D path 伝播。** DESIGN SETUP からの `$D` 変数は shell 変数で agent は **継承しない**。Step 0 の `DESIGN_READY: /path/to/design` 出力から resolved な絶対 path を各 agent prompt に substitute する。
+
+**Agent prompt template**（variant あたり 1 つ、全 `{...}` 値を substitute）：
+
+```
+Generate a design variant and save it.
+
+Design binary: {absolute path to $D binary}
+Brief: {the full variant-specific brief for this direction}
+Output: /tmp/variant-{letter}.png
+Final location: {_DESIGN_DIR absolute path}/variant-{letter}.png
+
+Steps:
+1. Run: {$D path} generate --brief "{brief}" --output /tmp/variant-{letter}.png
+2. If the command fails with a rate limit error (429 or "rate limit"), wait 5 seconds
+   and retry. Up to 3 retries.
+3. If the output file is missing or empty after the command succeeds, retry once.
+4. Copy: cp /tmp/variant-{letter}.png {_DESIGN_DIR}/variant-{letter}.png
+5. Quality check: {$D path} check --image {_DESIGN_DIR}/variant-{letter}.png --brief "{brief}"
+   If quality check fails, retry generation once.
+6. Verify: ls -lh {_DESIGN_DIR}/variant-{letter}.png
+7. Report exactly one of:
+   VARIANT_{letter}_DONE: {file size}
+   VARIANT_{letter}_FAILED: {error description}
+   VARIANT_{letter}_RATE_LIMITED: exhausted retries
+```
+
+evolve path の場合、step 1 を以下に置換：
+```
+{$D path} evolve --screenshot {_DESIGN_DIR}/current.png --brief "{brief}" --output /tmp/variant-{letter}.png
+```
+
+**なぜ /tmp/ 経由 cp？** 観測 session で `$D generate --output ~/.uzustack/...` が "The operation was aborted" で失敗、`--output /tmp/...` は成功した。これは sandbox 制限。常に `/tmp/` に生成してから `cp`。
+
+### Step 3d: Results
+
+全 agent 完了後：
+
+1. 生成された各 PNG を inline 読み込み（Read tool）し、ユーザーが全 variant を一度に見られるようにする。
+2. status 報告：「All {N} variants generated in ~{actual time}. {successes} succeeded, {failures} failed.」
+3. failure については：明示的にエラーと共に報告。silently に skip しない。
+4. variant が 0 個成功した場合：sequential 生成に fallback（`$D generate` で 1 つずつ、各 landing 時に表示）。ユーザーに伝える：「Parallel generation failed (likely rate limiting). Falling back to sequential...」
+5. Step 4（comparison board）へ進む。
+
+**comparison board 用の dynamic image list：** Step 4 へ進むとき、hardcode された A/B/C list ではなく、実際に存在する variant file から image list を構築する：
+
+```bash
+setopt +o nomatch 2>/dev/null || true  # zsh compat
+_IMAGES=$(ls "$_DESIGN_DIR"/variant-*.png 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+```
+
+`$D compare --images` command で `$_IMAGES` を使う。
+
+## Step 4: Comparison Board + Feedback Loop
+
+{{DESIGN_SHOTGUN_LOOP}}
+
+## Step 5: Feedback Confirmation
+
+feedback 受信後（HTTP POST または AskUserQuestion fallback 経由）、何を理解したかを clear に summary 出力：
+
+「Here's what I understood from your feedback:
+
+PREFERRED: Variant [X]
+RATINGS: A: 4/5, B: 3/5, C: 2/5
+YOUR NOTES: [full text of per-variant and overall comments]
+DIRECTION: [regenerate action if any]
+
+Is this right?」
+
+保存前に AskUserQuestion で確認する。
+
+## Step 6: Save & Next Steps
+
+`approved.json` を `$_DESIGN_DIR/` に書く（上の loop が処理する）。
+
+別 skill から起動された場合：その skill が consume するための structured feedback を return する。呼び出し元 skill は `approved.json` と承認 variant PNG を読む。
+
+standalone の場合、AskUserQuestion で次の step を提示：
+
+> "Design direction locked in. What's next?
+> A) Iterate more — refine the approved variant with specific feedback
+> B) Finalize — generate production Pretext-native HTML/CSS with /design-html
+> C) Save to plan — add this as an approved mockup reference in the current plan
+> D) Done — I'll use this later"
+
+## Important Rules
+
+1. **`.context/` / `docs/designs/` / `/tmp/` に絶対保存しない。** 全 design artifact は `~/.uzustack/projects/$SLUG/designs/` へ。これは強制。上の DESIGN_SETUP 参照。
+2. **board を開く前に variant を inline 表示。** ユーザーは terminal で即 design を見るべき。browser board は detail feedback 用。
+3. **保存前に feedback 確認。** 何を理解したかを必ず summary し verify する。
+4. **taste memory は automatic。** 過去の approved design は default で新生成に inform する。
+5. **context gathering は最大 2 round。** 過剰に詰問しない。assumption と共に進める。
+6. **DESIGN.md が default 制約。** ユーザーが言うまでは。
