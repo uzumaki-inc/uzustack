@@ -8,25 +8,20 @@ description: |
   test runner / dead code detector / shell linter）を wrap し、weighted
   composite 0-10 score を計算、trend を継続追跡する。
   「health check」「健全性チェック」「code quality」「code 品質」
-  「how healthy is the codebase」「codebase はどれくらい健全か」
+  「how healthy is codebase」「codebase はどれくらい健全か」
   「run all checks」「全 check を実行」「quality score」「品質 score」
   と要求されたときに使用する。
-voice-triggers:
-  - "health check"
-  - "健全性チェック"
-  - "code quality"
-  - "code 品質"
-  - "quality score"
-  - "品質 score"
 triggers:
-  - code health check
-  - code 健全性チェック
-  - quality dashboard
-  - 品質 dashboard
+  - health check
+  - 健全性チェック
+  - code quality
+  - code 品質
   - how healthy is codebase
-  - codebase の健全性
+  - codebase はどれくらい健全か
   - run all checks
   - 全 check を実行
+  - quality score
+  - 品質 score
 allowed-tools:
   - Bash
   - Read
@@ -189,8 +184,8 @@ queue_component:   10 if ~/.uzustack/.brain-queue.jsonl has <10 lines;
 push_component:    10 if (now - mtime of ~/.uzustack/.brain-last-push) < 24h;
                     7 if <72h; 0 if >=72h. N/A if gbrain_sync_mode == off.
 gbrain_score     = 0.5 * doctor_component + 0.3 * queue_component + 0.2 * push_component
-                   (sync_mode が off の場合は 0.3 + 0.2 を doctor に再配分：
-                   gbrain_score = doctor_component)
+                   (sync_mode == off の場合、queue / push の weight (0.3 と 0.2) を
+                   doctor に統合し gbrain_score = doctor_component とする)
 ```
 
 `gbrain doctor --json` の呼び出しは **必ず** `timeout 5s` で wrap する。
