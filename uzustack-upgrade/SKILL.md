@@ -1,5 +1,6 @@
 ---
 name: uzustack-upgrade
+type: translated
 version: 1.1.0
 description: |
   uzustack を最新版に upgrade する。global vs vendored install を判別し、
