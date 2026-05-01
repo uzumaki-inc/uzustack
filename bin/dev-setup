@@ -1,78 +1,68 @@
 #!/usr/bin/env bash
-# uzustack dev mode: flat-expand repo-top skill dirs into <target>/.claude/skills/.
-# Claude Code only discovers .claude/skills/<name>/SKILL.md (no nesting).
+# Set up gstack for local development — test skills from within this repo.
 #
-# Usage:
-#   bin/dev-setup                       # mode A: set up self (uzustack repo)
-#   bin/dev-setup <path-to-project>     # mode B: set up external project
-#   bin/dev-teardown                    # remove (self only; external is manual rm for now)
-set -euo pipefail
-shopt -s nullglob
+# Creates .claude/skills/gstack → (symlink to repo root) so Claude Code
+# discovers skills from your working tree. Changes take effect immediately.
+#
+# Also copies .env from the main worktree if this is a Conductor workspace
+# or git worktree (so API keys carry over automatically).
+#
+# Usage: bin/dev-setup       # set up
+#        bin/dev-teardown    # clean up
+set -e
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-if (( $# > 0 )); then
-  TARGET_DIR="$1"
-  if [[ ! -d "$TARGET_DIR" ]]; then
-    echo "Error: target directory not found: $TARGET_DIR" >&2
-    echo "  bin/dev-setup expects an existing project directory as the first argument." >&2
-    exit 1
+# 1. Copy .env from main worktree (if we're a worktree and don't have one)
+if [ ! -f "$REPO_ROOT/.env" ]; then
+  MAIN_WORKTREE="$(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null | head -1 | sed 's/^worktree //')"
+  if [ -n "$MAIN_WORKTREE" ] && [ "$MAIN_WORKTREE" != "$REPO_ROOT" ] && [ -f "$MAIN_WORKTREE/.env" ]; then
+    cp "$MAIN_WORKTREE/.env" "$REPO_ROOT/.env"
+    echo "Copied .env from main worktree ($MAIN_WORKTREE)"
   fi
-  TARGET_DIR="$(cd "$TARGET_DIR" && pwd -P)"
-else
-  TARGET_DIR="$REPO_ROOT"
 fi
 
-if [[ ! -d "$REPO_ROOT/node_modules" ]]; then
+# 2. Install dependencies
+if [ ! -d "$REPO_ROOT/node_modules" ]; then
   echo "Installing dependencies..."
-  bun install --cwd "$REPO_ROOT"
+  (cd "$REPO_ROOT" && bun install)
 fi
 
-mkdir -p "$TARGET_DIR/.claude/skills"
+# 3. Create .claude/skills/ inside the repo
+mkdir -p "$REPO_ROOT/.claude/skills"
 
-# Keep in sync with EXCLUDE in setup and scripts/gen-skill-docs.ts.
-EXCLUDE=(_upstream scripts bin node_modules dist build)
-
-linked=()
-for skill_dir in "$REPO_ROOT"/*/; do
-  skill_name="${skill_dir%/}"
-  skill_name="${skill_name##*/}"
-  [[ " ${EXCLUDE[*]} " == *" $skill_name "* ]] && continue
-  [[ -f "$skill_dir/SKILL.md" ]] || continue
-
-  target="$TARGET_DIR/.claude/skills/$skill_name"
-  expected_link="${skill_dir%/}/SKILL.md"
-
-  if [[ -L "$target/SKILL.md" && "$(readlink "$target/SKILL.md")" == "$expected_link" ]]; then
-    linked+=("$skill_name")
-    continue
-  fi
-
-  if [[ -L "$target" ]]; then
-    rm "$target"
-  elif [[ -d "$target" ]]; then
-    if [[ -L "$target/SKILL.md" ]]; then
-      rm -rf "$target"
-    else
-      echo "Error: $target is a real directory with non-symlink SKILL.md." >&2
-      echo "Remove it manually before running dev-setup." >&2
-      exit 1
-    fi
-  fi
-
-  mkdir -p "$target"
-  ln -s "$expected_link" "$target/SKILL.md"
-  linked+=("$skill_name")
-done
-
-if (( ${#linked[@]} > 0 )); then
-  echo "Dev mode active. Linked skills: ${linked[*]}"
-else
-  echo "Dev mode active. (No skills found at repo top yet.)"
+# 4. Symlink .claude/skills/gstack → repo root
+# This makes setup think it's inside a real .claude/skills/ directory
+GSTACK_LINK="$REPO_ROOT/.claude/skills/gstack"
+if [ -L "$GSTACK_LINK" ]; then
+  echo "Updating existing symlink..."
+  rm "$GSTACK_LINK"
+elif [ -d "$GSTACK_LINK" ]; then
+  echo "Error: .claude/skills/gstack is a real directory, not a symlink." >&2
+  echo "Remove it manually if you want to use dev mode." >&2
+  exit 1
 fi
-echo "  $TARGET_DIR/.claude/skills/"
-if [[ "$TARGET_DIR" == "$REPO_ROOT" ]]; then
-  echo "To tear down: bin/dev-teardown"
-else
-  echo "To tear down (manual for now): rm -rf \"$TARGET_DIR/.claude/skills/<skill>\""
+ln -s "$REPO_ROOT" "$GSTACK_LINK"
+
+# 5. Create .agents/skills/gstack → repo root (for Codex/Gemini/Cursor)
+mkdir -p "$REPO_ROOT/.agents/skills"
+AGENTS_LINK="$REPO_ROOT/.agents/skills/gstack"
+if [ -L "$AGENTS_LINK" ]; then
+  rm "$AGENTS_LINK"
+elif [ -d "$AGENTS_LINK" ]; then
+  echo "Warning: .agents/skills/gstack is a real directory, skipping." >&2
 fi
+if [ ! -e "$AGENTS_LINK" ]; then
+  ln -s "$REPO_ROOT" "$AGENTS_LINK"
+fi
+
+# 6. Run setup via the symlink so it detects .claude/skills/ as its parent
+"$GSTACK_LINK/setup"
+
+echo ""
+echo "Dev mode active. Skills resolve from this working tree."
+echo "  .claude/skills/gstack → $REPO_ROOT"
+echo "  .agents/skills/gstack → $REPO_ROOT"
+echo "Edit any SKILL.md and test immediately — no copy/deploy needed."
+echo ""
+echo "To tear down: bin/dev-teardown"
