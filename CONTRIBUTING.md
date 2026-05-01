@@ -16,6 +16,39 @@ uzustack は **個人メンテナーによる OSS** です：
 
 ---
 
+## Phase 進捗（2026-05-02 時点：Phase 3 + Phase 3.5 totally DONE）
+
+uzustack は守破離の「守 = gstack を取込み、Type 1 として翻訳・試用を蓄積」を完成させ、Phase 4（連鎖）/ Phase 5（記憶）に進む段階に到達しました。
+
+**Phase 3「魂を吹き込む」 — runtime 完璧実装（cluster A-D 完了）**:
+
+- bin 約 50 個翻訳完遂（cluster B = step-35〜39）
+- SKILL.md.tmpl + setup 展開機構複製（cluster A = step-31〜34）
+- 既存 5 skill（careful / investigate / retro / context-save / context-restore）の .tmpl 化 + preamble 取り付け（cluster C = step-40〜41）
+- design 翻訳 + gen-skill-docs all-host + ETHOS.md 翻訳（cluster D = step-44〜47）
+- voice 翻案ガイドライン v1 確立（cluster B step-39 集約）
+
+**Phase 3.5「型を取り込み切る」 — Type 1 機械翻訳完遂（C1〜C7、step-49〜76）**:
+
+- 残り 27 step を完遂（PR #66〜#118 = 27 PR merged）：実翻訳 25 件 + Phase 6 予約スタブ 2 件（step-51 pair-agent / step-54 benchmark）
+- C1 = step-49 plan-ceo-review で voice 規約 v2 確立（経営者思考特性 / persona / Mode / Data flow 訳語）
+- C2〜C7 cluster で skill 翻訳完遂（PR #66〜#118）
+- step-76 で setup guard 整理 + Phase 3 + 3.5 totally DONE 判定 + voice 規約 v2 拡張集約
+
+**現在の uzustack 状態**:
+
+- runtime: bin 約 50 個 + テンプレート機構（SKILL.md.tmpl + 5 host 展開：claude / codex / kiro / factory / opencode）+ voice 翻案ガイドライン v1/v2 + ETHOS.md
+- skill: 30 件（既存翻訳 5 + Phase 3.5 実翻訳 25）
+- Phase 6 予約スタブ: 10 件（step-46 で 8 件 = browse / qa / qa-only / canary / setup-browser-cookies / open-uzustack-browser / connect-chrome / make-pdf、step-51 で pair-agent、step-54 で benchmark）
+- 合計：top-level skill directory 40 件
+
+**Phase 4 / 5 への接続**:
+
+- **Phase 4「絆を結ぶ」**: hook + 連鎖機構を runtime 上に実装。`freeze` / `unfreeze` skill pair 翻訳 + `investigate` の hook 復活 + obsidian-audit 系の連鎖実装
+- **Phase 5「記憶が編まれる」**: learnings 機構実装。`{{LEARNINGS_*}}` placeholder 展開 + `learn` skill 翻訳 + マシン間記憶同期 skill 連携
+
+---
+
 ## Quick Start（メンテナー / Contributor 向け）
 
 メンテナーは `~/.claude/skills/uzustack/` を **作らずに**、開発用 clone から直接 symlink を貼ります。これにより **1 clone で開発と利用を兼ねられます**。
@@ -332,6 +365,51 @@ Phase 3.5 C1（plan-ceo-review = persona 翻案重要 skill）で plan / strateg
 - **思考特性は意味訳 + 出典維持**：個人名（Bezos / Munger 等）は attribution として保持、訳語は意味重視
 - **STOP / OK / CRITICAL GAP 等の inline marker**：英語維持（CLI 慣習との整合、voice 規約 v1 項目 1 と同型）
 - **AskUserQuestion / RECOMMENDATION 等の tool / framework 名**：英語維持（fixed identifier）
+
+#### voice 規約 v2 拡張 — Phase 3.5 蓄積（cluster 3.5 C2〜C7 = step-50〜75 で確立、step-76 で集約）
+
+Phase 3.5 進行（plan / strategy / cli tuning / design / orchestration 系 skill 翻訳）を通じて確立した英語維持規律。voice 規約 v1 項目 4「fixed identifier 英語維持」を拡張する形で文書化する。
+
+##### 外部 LLM 向け prompt 全体の英語維持（step-75 autoplan で確立）
+
+外部 LLM（codex / openai / gemini 等）に投入する prompt 本体は **英語維持**。LLM 訓練語の効果を保つ。voice 規約 v1 項目 4 を「外部 SaaS / 別プロジェクト identifier 維持」から「外部 LLM への prompt 全体」に拡張した解釈。
+
+- **英語維持対象**：codex / openai-cli / gemini-cli 等への prompt 本体、system prompt、user prompt
+- **uzustack 化対象**：boundary path（`paths containing skills/uzustack`）等の path 識別子のみ
+- **判断軸**：外部 product への入力は外部 product の言語 contract に従う
+
+##### JSON field / enum / inline marker / dimension 名 / machine-readable marker の英語維持（step-72 / 74 / 75 で蓄積）
+
+LLM 出力 / tool call / shell parser の機械処理対象は **英語維持**。reader 想定の言語と機械処理 contract を分離する。
+
+- **machine-readable marker**：`CONFIRMED` / `DISAGREE` / `TASTE DECISION` / `PHASE [N] COMPLETE` / `STATUS` / `SOURCE` / `TIMESTAMP` / `COMMIT` / `RESTORE_PATH` 等
+- **JSON field**：`scope_appetite` / `risk_tolerance` / `detail_preference` / `autonomy` / `architecture_care` 等
+- **enum value**：`never-ask` / `always-ask` / `ask-only-for-one-way` / `SELECTIVE_EXPANSION` / `FULL_REVIEW` / `DX POLISH` 等
+- **dimension 名**：calibration gate threshold（`sample_size` / `skills_covered` / `question_ids_covered` / `days_span`）等
+
+##### 数値 specificity / embedded code structural integrity の完全保持（step-74 plan-tune で確立）
+
+訳出時に数値・構造を動かさない。upstream の判断材料を保持する。
+
+- **数値 specificity**：calibration gate threshold（`sample_size >= 20` / `skills_covered >= 3` / `question_ids_covered >= 8` / `days_span >= 7`）、band threshold（0.25 / 0.85 等）の数値はすべて完全保持
+- **embedded code structural integrity**：`fs.writeFileSync` / `fs.renameSync` / `JSON.parse` 等の出現回数も訳出後で同数を保つ。atomic write pattern 等の構造を維持
+
+##### subtree path (`_upstream/gstack/`) の外部 identifier 維持（step-74 で確認）
+
+uzustack repo 内の `_upstream/gstack/` は subtree directory 名 = 物理 path。voice 規約 v1 項目 4「外部 identifier 維持」の特殊例として、文字列内に `gstack` が出ても置換しない。
+
+- **対象**：`_upstream/gstack/<dir>/...` 形式の path 引用、ドキュメント / コメント内の subtree path
+- **理由**：物理 directory 名としての identifier、置換すると broken reference
+
+##### design 文脈の英語維持（step-72 plan-design-review で確立）
+
+design / UI / UX 領域の固有用語と persona attribution は **英語維持**。design 業界の慣用語と attribution を保持する。
+
+- **design 固有用語**：`Designer's eye` / `AI slop` / `design score` 等
+- **machine-readable marker**：`DESIGN_READY` / `DESIGN_NOT_AVAILABLE` 等の `DESIGN_*` シリーズ
+- **CLI shorthand**：`$D`（design CLI）/ `$B`（browse CLI）等
+- **design 概念名**：`Approved Mockups` 等
+- **persona 出典群**：Rams / Norman / Krug / Gebbia / Ive / Glass / Maeda / Zhuo / Nielsen / Redish / Jarrett 等の attribution（cognitive pattern table の出典列とは別の文脈で出る attribution として）
 
 #### 周辺ルール
 
