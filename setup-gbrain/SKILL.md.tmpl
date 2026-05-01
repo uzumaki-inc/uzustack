@@ -7,8 +7,10 @@ description: |
   この coding agent 用に gbrain をセットアップする：CLI を install、local PGLite または
   Supabase brain を初期化、MCP に登録、remote ごとの trust policy を取得。
   ゼロから「gbrain が動いていて、本 agent が呼べる」状態まで 1 コマンドで到達する。
-  「setup gbrain」「connect gbrain」「start gbrain」「install gbrain」
-  「configure gbrain for this machine」と要求されたときに使用する。
+  「setup gbrain」「gbrain をセットアップ」「connect gbrain」「gbrain を接続」
+  「start gbrain」「gbrain を起動」「install gbrain」「gbrain を初期化」
+  「configure gbrain for this machine」「本 machine 向けに gbrain を構成」
+  と要求されたときに使用する。
 triggers:
   - setup gbrain
   - install gbrain
