@@ -82,4 +82,12 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   TEST_FAILURE_TRIAGE: (_ctx, _args) => '',
   // Phase 4+ で deploy 設定 bootstrap（platform 検出 / production URL / health check）指示文を返す予定（Phase 4 / land-and-deploy・setup-deploy 連携）
   DEPLOY_BOOTSTRAP: (_ctx, _args) => '',
+  // Phase 4+ で uzustack designer 検出 + DESIGN_READY/DESIGN_NOT_AVAILABLE 判定指示文を返す予定（Phase 4 / design-consultation・design-html 連携、design CLI 検出）
+  DESIGN_SETUP: (_ctx, _args) => '',
+  // Phase 4+ でユーザーの過去 session から taste profile を読み出す指示文を返す予定（Phase 5 / design 系 skill 連携、approved choices の demonstrated preference）
+  TASTE_PROFILE: (_ctx, _args) => '',
+  // Phase 4+ で外部視点（外部 designer / Codex / Gemini）による design proposal レビュー指示文を返す予定（Phase 4 / design 系 skill 連携、SCOPE EXPANSION 系 review）
+  DESIGN_OUTSIDE_VOICES: (_ctx, _args) => '',
+  // Phase 4+ で design-shotgun loop（multi-variant 生成 / 比較 board / iterate）の起動指示文を返す予定（Phase 4 / design-shotgun・design-consultation 連携）
+  DESIGN_SHOTGUN_LOOP: (_ctx, _args) => '',
 };
