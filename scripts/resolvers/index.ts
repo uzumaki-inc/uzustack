@@ -92,4 +92,8 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   DESIGN_SHOTGUN_LOOP: (_ctx, _args) => '',
   // Phase 4+ で UX 設計原則（accessibility / hierarchy / contrast 等）を返す予定（Phase 4 / design-html・design-review 連携）
   UX_PRINCIPLES: (_ctx, _args) => '',
+  // Phase 4+ で design QA における hard rule（絶対 fail 条件 / accessibility 違反 / contrast 不足等）を返す予定（Phase 4 / design-review・plan-design-review 連携）
+  DESIGN_HARD_RULES: (_ctx, _args) => '',
+  // Phase 4+ で design audit methodology（visual hierarchy / spacing / consistency 等の判定 framework）を返す予定（Phase 4 / design-review・plan-design-review 連携）
+  DESIGN_METHODOLOGY: (_ctx, _args) => '',
 };

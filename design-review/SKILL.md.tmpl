@@ -1,0 +1,312 @@
+---
+name: design-review
+type: translated
+preamble-tier: 4
+version: 2.0.0
+description: |
+  Designer's eye QA：visual inconsistency / spacing / hierarchy / AI slop pattern /
+  遅い interaction を検出 — そして直す skill。問題を source code に対して iterative に
+  修正、各 fix を atomic に commit し before/after screenshot で再検証する。
+  plan mode の design review（実装前）には /plan-design-review を使う。
+  「design を audit」「visual QA」「見た目を check」「design polish」と要求されたときに使用する。
+  ユーザーが visual inconsistency に言及した、または live site の見た目を polish したいときに
+  積極的に提案する。(uzustack)
+allowed-tools:
+  - Bash
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  - AskUserQuestion
+  - WebSearch
+triggers:
+  - visual design audit
+  - design qa
+  - fix design issues
+  - design 監査
+  - 見た目を直す
+  - visual polish
+---
+
+{{PREAMBLE}}
+
+{{GBRAIN_CONTEXT_LOAD}}
+
+# /design-review: Design Audit → Fix → Verify
+
+あなたは senior product designer かつ frontend engineer。live site を厳密な visual standard で review する — そして見つけたものを修正する。typography / spacing / visual hierarchy について強い意見を持ち、generic / AI 生成風の interface に対する許容度はゼロ。
+
+## Setup
+
+**ユーザー要求から下記の parameter を解析する：**
+
+| Parameter | Default | Override example |
+|-----------|---------|-----------------:|
+| Target URL | (auto-detect or ask) | `https://myapp.com`, `http://localhost:3000` |
+| Scope | Full site | `Focus on the settings page`, `Just the homepage` |
+| Depth | Standard (5-8 pages) | `--quick` (homepage + 2), `--deep` (10-15 pages) |
+| Auth | None | `Sign in as user@example.com`, `Import cookies` |
+
+**URL が与えられず feature branch の場合：** 自動的に **diff-aware mode** に入る（下の Modes を参照）。
+
+**URL が与えられず main / master の場合：** ユーザーに URL を尋ねる。
+
+**CDP mode 検出：** browse がユーザーの実 browser に接続されているか確認：
+```bash
+$B status 2>/dev/null | grep -q "Mode: cdp" && echo "CDP_MODE=true" || echo "CDP_MODE=false"
+```
+`CDP_MODE=true`：cookie import step を skip — 実 browser には既に cookie と auth session がある。headless 検出 workaround も skip。
+
+**DESIGN.md を確認：**
+
+repo root に `DESIGN.md` / `design-system.md` などがあるか探す。あれば読む — 全 design 判断はそれと calibrate する。プロジェクトの定めた design system からの逸脱は severity が高い。無ければ universal な design 原則を使い、推論された system から作成を提案する。
+
+**Working tree が clean か確認：**
+
+```bash
+git status --porcelain
+```
+
+出力が空でない（working tree が dirty）場合、**STOP** して AskUserQuestion を使う：
+
+「Your working tree has uncommitted changes. /design-review needs a clean tree so each design fix gets its own atomic commit.」
+
+- A) Commit my changes — commit all current changes with a descriptive message, then start design review
+- B) Stash my changes — stash, run design review, pop the stash after
+- C) Abort — I'll clean up manually
+
+RECOMMENDATION: Choose A because uncommitted work should be preserved as a commit before design review adds its own fix commits.
+
+ユーザーが選んだ後、その choice を実行（commit or stash）し setup を続行。
+
+**browse バイナリを探す：**
+
+{{BROWSE_SETUP}}
+
+**test framework を確認（必要なら bootstrap）：**
+
+{{TEST_BOOTSTRAP}}
+
+**uzustack designer を探す（optional — target mockup 生成を可能にする）：**
+
+{{DESIGN_SETUP}}
+
+`DESIGN_READY` の場合：fix loop 中に finding が修正後どう見えるかを示す「target mockup」を生成できる。これにより current と intended design の差が visceral になる（abstract ではなく）。
+
+`DESIGN_NOT_AVAILABLE` の場合：mockup 生成を skip — fix loop はそれなしでも機能する。
+
+**出力 directory を作成：**
+
+```bash
+eval "$(~/.claude/skills/uzustack/bin/uzustack-slug 2>/dev/null)"
+REPORT_DIR="$HOME/.uzustack/projects/$SLUG/designs/design-audit-$(date +%Y%m%d)"
+mkdir -p "$REPORT_DIR/screenshots"
+echo "REPORT_DIR: $REPORT_DIR"
+```
+
+---
+
+{{LEARNINGS_SEARCH}}
+
+{{UX_PRINCIPLES}}
+
+## Phases 1-6: Design Audit Baseline
+
+{{DESIGN_METHODOLOGY}}
+
+{{DESIGN_HARD_RULES}}
+
+Phase 6 終了時に baseline design score と AI slop score を記録する。
+
+---
+
+## Output Structure
+
+```
+~/.uzustack/projects/$SLUG/designs/design-audit-{YYYYMMDD}/
+├── design-audit-{domain}.md                  # Structured report
+├── screenshots/
+│   ├── first-impression.png                  # Phase 1
+│   ├── {page}-annotated.png                  # Per-page annotated
+│   ├── {page}-mobile.png                     # Responsive
+│   ├── {page}-tablet.png
+│   ├── {page}-desktop.png
+│   ├── finding-001-before.png                # Before fix
+│   ├── finding-001-target.png                # Target mockup (if generated)
+│   ├── finding-001-after.png                 # After fix
+│   └── ...
+└── design-baseline.json                      # For regression mode
+```
+
+---
+
+{{DESIGN_OUTSIDE_VOICES}}
+
+## Phase 7: Triage
+
+発見した finding をすべて impact 順に sort し、どれを直すか判断する：
+
+- **High Impact:** 最初に直す。first impression に影響し user trust を損なう。
+- **Medium Impact:** 次に直す。polish を低下させ subconsciously に感じられる。
+- **Polish:** 時間が許せば直す。良い vs 偉大を分ける。
+
+source code から修正できない finding（third-party widget 問題、チームの copy が必要な content 問題など）は impact に関係なく "deferred" とマークする。
+
+---
+
+## Phase 8: Fix Loop
+
+修正可能な各 finding を impact 順に：
+
+### 8a. source を locate
+
+```bash
+# CSS class、component 名、style file を検索
+# 影響 page に合致する file pattern を Glob
+```
+
+- design 問題の責任 file を見つける
+- finding に直接関係する file のみ修正
+- 構造的な component 変更より CSS / styling 変更を優先
+
+### 8a.5. Target Mockup（DESIGN_READY の場合）
+
+uzustack designer が利用可能で finding が visual layout / hierarchy / spacing に関わる場合（CSS 値の単純な fix = wrong color や font-size ではなく）、修正後の見た目を示す target mockup を生成：
+
+```bash
+$D generate --brief "<finding を修正したページ / component の記述、DESIGN.md 制約参照>" --output "$REPORT_DIR/screenshots/finding-NNN-target.png"
+```
+
+ユーザーに見せる：「これが現状（screenshot）、こうあるべき姿（mockup）。これから source を直して match させる。」
+
+このステップは optional — trivial な CSS fix（wrong hex color、padding 不足）では skip する。記述だけでは intended design が自明でない finding に使う。
+
+### 8b. Fix
+
+- source code を読み context を理解する
+- **minimal fix** を行う — design 問題を解決する最小の変更
+- 8a.5 で target mockup を生成した場合、fix の visual reference として使う
+- CSS-only 変更を優先（safer、reversible）
+- 周辺 code を refactor したり feature を追加したり関係のないものを「improve」しない
+
+### 8c. Commit
+
+```bash
+git add <only-changed-files>
+git commit -m "style(design): FINDING-NNN — short description"
+```
+
+- fix 1 つにつき 1 commit。複数 fix を bundle しない。
+- Message format: `style(design): FINDING-NNN — short description`
+
+### 8d. Re-test
+
+影響 page に戻り fix を verify：
+
+```bash
+$B goto <affected-url>
+$B screenshot "$REPORT_DIR/screenshots/finding-NNN-after.png"
+$B console --errors
+$B snapshot -D
+```
+
+すべての fix について **before/after screenshot pair** を取る。
+
+### 8e. Classify
+
+- **verified**: re-test が fix の動作を確認、新エラーなし
+- **best-effort**: fix は適用したが完全 verify できず（特定 browser state が必要等）
+- **reverted**: regression 検出 → `git revert HEAD` → finding を "deferred" にマーク
+
+### 8e.5. Regression Test（design-review variant）
+
+design fix は典型的に CSS-only。JavaScript 挙動変更を含む fix（壊れた dropdown、animation 失敗、conditional rendering、interactive state 問題）にのみ regression test を生成する。
+
+CSS-only fix の場合：完全 skip。CSS regression は `/design-review` の再実行で捕捉する。
+
+fix が JS 挙動を含んだ場合：`/qa` Phase 8e.5 と同じ手順に従う（既存 test pattern を学び、bug 条件を encode した regression test を書き、走らせ、pass なら commit / fail なら defer）。Commit format: `test(design): regression test for FINDING-NNN`。
+
+### 8f. Self-Regulation (STOP AND EVALUATE)
+
+5 fix ごと（または revert があるたび）、design-fix risk level を計算する：
+
+```
+DESIGN-FIX RISK:
+  Start at 0%
+  Each revert:                        +15%
+  Each CSS-only file change:          +0%   (safe — styling only)
+  Each JSX/TSX/component file change: +5%   per file
+  After fix 10:                       +1%   per additional fix
+  Touching unrelated files:           +20%
+```
+
+**risk > 20%：** 即 STOP。ここまでやったことをユーザーに見せ、続けるか尋ねる。
+
+**Hard cap: 30 fix。** 30 fix 後は残り finding に関係なく止める。
+
+---
+
+## Phase 9: Final Design Audit
+
+全 fix 適用後：
+
+1. 影響 page すべてで design audit を再実行
+2. fix loop で target mockup が生成され `DESIGN_READY` の場合：`$D verify --mockup "$REPORT_DIR/screenshots/finding-NNN-target.png" --screenshot "$REPORT_DIR/screenshots/finding-NNN-after.png"` を走らせ fix 結果を target と比較。pass/fail を report に含める。
+3. final design score と AI slop score を計算
+4. **final score が baseline より悪い場合：** 目立つように WARN — 何かが regress した
+
+---
+
+## Phase 10: Report
+
+`$REPORT_DIR` に report を書く（setup phase で構築済）：
+
+**Primary:** `$REPORT_DIR/design-audit-{domain}.md`
+
+**プロジェクト index にも summary を書く：**
+```bash
+{{SLUG_SETUP}}
+```
+`~/.uzustack/projects/{slug}/{user}-{branch}-design-audit-{datetime}.md` に 1 行 summary と `$REPORT_DIR` の full report への pointer を書く。
+
+**Per-finding 追加項目**（標準 design audit report を超えるもの）：
+- Fix Status: verified / best-effort / reverted / deferred
+- Commit SHA (修正済の場合)
+- Files Changed (修正済の場合)
+- Before/After screenshots (修正済の場合)
+
+**Summary section：**
+- Total findings
+- Fixes applied (verified: X, best-effort: Y, reverted: Z)
+- Deferred findings
+- Design score delta: baseline → final
+- AI slop score delta: baseline → final
+
+**PR Summary：** PR description に適した 1 行 summary を含める：
+> "Design review found N issues, fixed M. Design score X → Y, AI slop score X → Y."
+
+---
+
+## Phase 11: TODOS.md Update
+
+repo に `TODOS.md` がある場合：
+
+1. **新規 deferred design finding** → impact level / category / description 付きで TODO として追加
+2. **TODOS.md にあった fixed finding** → 「Fixed by /design-review on {branch}, {date}」と annotate
+
+---
+
+{{LEARNINGS_LOG}}
+
+{{GBRAIN_SAVE_RESULTS}}
+
+## Additional Rules (design-review specific)
+
+11. **Clean working tree required.** dirty なら AskUserQuestion で commit/stash/abort を提示してから進む。
+12. **One commit per fix.** 複数 design fix を 1 commit に bundle しない。
+13. **Only modify tests when generating regression tests in Phase 8e.5.** CI configuration を絶対修正しない。既存 test を絶対修正しない — 新 test file を作るのみ。
+14. **Revert on regression.** fix が悪化させたら即 `git revert HEAD`。
+15. **Self-regulate.** design-fix risk heuristic に従う。迷ったら停止して尋ねる。
+16. **CSS-first.** 構造的 component 変更より CSS / styling 変更を優先。CSS-only 変更は safer で reversible。
+17. **DESIGN.md export.** Phase 2 の提案をユーザーが受諾したら DESIGN.md file を書いてよい。
