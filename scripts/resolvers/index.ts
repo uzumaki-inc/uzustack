@@ -64,4 +64,20 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   DESIGN_SKETCH: (_ctx, _args) => '',
   // Phase 4+ で developer experience（DX）監査の framework / dimensions 指示文を返す予定（Phase 4 / devex-review・plan-devex-review で使用）
   DX_FRAMEWORK: (_ctx, _args) => '',
+  // Phase 4+ で CHANGELOG 編集 / VERSION bump workflow 指示文を返す予定（Phase 4 / ship 専用、release-summary format 連携）
+  CHANGELOG_WORKFLOW: (_ctx, _args) => '',
+  // Phase 4+ で commit message の Co-Authored-By trailer 指示文を返す予定（Phase 4 / ship 専用、AI co-author attribution）
+  CO_AUTHOR_TRAILER: (_ctx, _args) => '',
+  // Phase 4+ で design review lite（PR 内 frontend 変更検出時）指示文を返す予定（Phase 4 / ship 専用、design 系 skill 連携）
+  DESIGN_REVIEW_LITE: (_ctx, _args) => '',
+  // Phase 4+ で plan 完了 audit（ship 文脈、plan 完遂検証）指示文を返す予定（Phase 4 / plan file 連鎖、ship skill 用）
+  PLAN_COMPLETION_AUDIT_SHIP: (_ctx, _args) => '',
+  // Phase 4+ で plan の verification 段階（実 task の合致検証）指示文を返す予定（Phase 4 / ship 専用、plan-driven verification）
+  PLAN_VERIFICATION_EXEC: (_ctx, _args) => '',
+  // Phase 4+ で test 環境 bootstrap（CI / E2E 起動準備）指示文を返す予定（Phase 4 / ship 専用、test runner 連携）
+  TEST_BOOTSTRAP: (_ctx, _args) => '',
+  // Phase 4+ で test coverage audit（ship 文脈、coverage gap 検出）指示文を返す予定（Phase 4 / ship 専用、coverage tool 連携）
+  TEST_COVERAGE_AUDIT_SHIP: (_ctx, _args) => '',
+  // Phase 4+ で test failure triage（ship workflow 中の test fail 分類）指示文を返す予定（Phase 4 / ship 専用、failure classification）
+  TEST_FAILURE_TRIAGE: (_ctx, _args) => '',
 };
