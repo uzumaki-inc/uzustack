@@ -1,0 +1,277 @@
+---
+name: uzustack-upgrade
+type: translated
+version: 1.1.0
+description: |
+  uzustack を最新版に upgrade する。global vs vendored install を判別し、
+  upgrade を実行して新機能を表示する。
+  「uzustack を upgrade」「uzustack を update」「最新版を取得」
+  と要求されたときに使用する。
+  Voice triggers (speech-to-text aliases): "uzustack を upgrade", "uzustack を update", "uzustack アップグレード".
+triggers:
+  - upgrade uzustack
+  - update uzustack version
+  - get latest uzustack
+allowed-tools:
+  - Bash
+  - Read
+  - Write
+  - AskUserQuestion
+---
+<!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
+<!-- Regenerate: bun run gen:skill-docs -->
+
+# /uzustack-upgrade
+
+uzustack を最新版に upgrade して、新機能を表示する。
+
+## Inline upgrade flow
+
+本 section は、すべての skill preamble が `UPGRADE_AVAILABLE` を検知したときに参照する。
+
+### Step 1: ユーザーに確認（または auto-upgrade）
+
+まず auto-upgrade が有効か確認する：
+```bash
+_AUTO=""
+[ "${UZUSTACK_AUTO_UPGRADE:-}" = "1" ] && _AUTO="true"
+[ -z "$_AUTO" ] && _AUTO=$(~/.claude/skills/uzustack/bin/uzustack-config get auto_upgrade 2>/dev/null || true)
+echo "AUTO_UPGRADE=$_AUTO"
+```
+
+**`AUTO_UPGRADE=true` または `AUTO_UPGRADE=1` の場合**：AskUserQuestion を skip。「Auto-upgrading uzustack v{old} → v{new}...」をログに出して Step 2 に直接進む。auto-upgrade 中に `./setup` が失敗した場合、backup（`.bak` ディレクトリ）から復元してユーザーに警告する：「Auto-upgrade failed — restored previous version. Run `/uzustack-upgrade` manually to retry.」
+
+**それ以外の場合**、AskUserQuestion を使う：
+- 質問：「uzustack **v{new}** が利用可能です（現在 v{old}）。今 upgrade しますか？」
+- 選択肢：["Yes, upgrade now", "Always keep me up to date", "Not now", "Never ask again"]
+
+**「Yes, upgrade now」の場合**：Step 2 に進む。
+
+**「Always keep me up to date」の場合**：
+```bash
+~/.claude/skills/uzustack/bin/uzustack-config set auto_upgrade true
+```
+ユーザーに伝える：「Auto-upgrade enabled. Future updates will install automatically.」その後 Step 2 に進む。
+
+**「Not now」の場合**：snooze state を escalating backoff（初回 = 24h、2 回目 = 48h、3 回目以降 = 1 週間）で書き出し、現在の skill を継続する。upgrade のことは二度と言わない。
+```bash
+_SNOOZE_FILE="$HOME/.uzustack/update-snoozed"
+_REMOTE_VER="{new}"
+_CUR_LEVEL=0
+if [ -f "$_SNOOZE_FILE" ]; then
+  _SNOOZED_VER=$(awk '{print $1}' "$_SNOOZE_FILE")
+  if [ "$_SNOOZED_VER" = "$_REMOTE_VER" ]; then
+    _CUR_LEVEL=$(awk '{print $2}' "$_SNOOZE_FILE")
+    case "$_CUR_LEVEL" in *[!0-9]*) _CUR_LEVEL=0 ;; esac
+  fi
+fi
+_NEW_LEVEL=$((_CUR_LEVEL + 1))
+[ "$_NEW_LEVEL" -gt 3 ] && _NEW_LEVEL=3
+echo "$_REMOTE_VER $_NEW_LEVEL $(date +%s)" > "$_SNOOZE_FILE"
+```
+注：`{new}` は `UPGRADE_AVAILABLE` output の remote 版 — update check 結果から代入する。
+
+ユーザーに snooze duration を伝える：「Next reminder in 24h」（または 48h / 1 週間、level 次第）。Tip：「`~/.uzustack/config.yaml` で `auto_upgrade: true` を設定すると自動 upgrade される。」
+
+**「Never ask again」の場合**：
+```bash
+~/.claude/skills/uzustack/bin/uzustack-config set update_check false
+```
+ユーザーに伝える：「Update checks disabled. Run `~/.claude/skills/uzustack/bin/uzustack-config set update_check true` to re-enable.」
+現在の skill を継続する。
+
+### Step 2: install type を判別
+
+```bash
+if [ -d "$HOME/.claude/skills/uzustack/.git" ]; then
+  INSTALL_TYPE="global-git"
+  INSTALL_DIR="$HOME/.claude/skills/uzustack"
+elif [ -d "$HOME/.uzustack/repos/uzustack/.git" ]; then
+  INSTALL_TYPE="global-git"
+  INSTALL_DIR="$HOME/.uzustack/repos/uzustack"
+elif [ -d ".claude/skills/uzustack/.git" ]; then
+  INSTALL_TYPE="local-git"
+  INSTALL_DIR=".claude/skills/uzustack"
+elif [ -d ".agents/skills/uzustack/.git" ]; then
+  INSTALL_TYPE="local-git"
+  INSTALL_DIR=".agents/skills/uzustack"
+elif [ -d ".claude/skills/uzustack" ]; then
+  INSTALL_TYPE="vendored"
+  INSTALL_DIR=".claude/skills/uzustack"
+elif [ -d "$HOME/.claude/skills/uzustack" ]; then
+  INSTALL_TYPE="vendored-global"
+  INSTALL_DIR="$HOME/.claude/skills/uzustack"
+else
+  echo "ERROR: uzustack not found"
+  exit 1
+fi
+echo "Install type: $INSTALL_TYPE at $INSTALL_DIR"
+```
+
+判別された install type と directory path は、以降の Step すべてで使用する。
+
+### Step 3: 旧 version を保存
+
+Step 2 output の install directory を使う：
+
+```bash
+OLD_VERSION=$(cat "$INSTALL_DIR/VERSION" 2>/dev/null || echo "unknown")
+```
+
+### Step 4: Upgrade
+
+Step 2 で判別した install type と directory を使う：
+
+**git installs**（global-git, local-git）：
+```bash
+cd "$INSTALL_DIR"
+STASH_OUTPUT=$(git stash 2>&1)
+git fetch origin
+git reset --hard origin/main
+./setup
+```
+`$STASH_OUTPUT` に "Saved working directory" が含まれる場合、ユーザーに警告する：「Note: local changes were stashed. Run `git stash pop` in the skill directory to restore them.」
+
+**vendored installs**（vendored, vendored-global）：
+```bash
+PARENT=$(dirname "$INSTALL_DIR")
+TMP_DIR=$(mktemp -d)
+git clone --depth 1 https://github.com/uzumaki-inc/uzustack.git "$TMP_DIR/uzustack"
+mv "$INSTALL_DIR" "$INSTALL_DIR.bak"
+mv "$TMP_DIR/uzustack" "$INSTALL_DIR"
+cd "$INSTALL_DIR" && ./setup
+rm -rf "$INSTALL_DIR.bak" "$TMP_DIR"
+```
+
+### Step 4.5: local vendored copy を扱う
+
+Step 2 の install directory を使う。local vendored copy があるか、team mode が有効かを確認する：
+
+```bash
+_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+LOCAL_UZUSTACK=""
+if [ -n "$_ROOT" ] && [ -d "$_ROOT/.claude/skills/uzustack" ]; then
+  _RESOLVED_LOCAL=$(cd "$_ROOT/.claude/skills/uzustack" && pwd -P)
+  _RESOLVED_PRIMARY=$(cd "$INSTALL_DIR" && pwd -P)
+  if [ "$_RESOLVED_LOCAL" != "$_RESOLVED_PRIMARY" ]; then
+    LOCAL_UZUSTACK="$_ROOT/.claude/skills/uzustack"
+  fi
+fi
+_TEAM_MODE=$(~/.claude/skills/uzustack/bin/uzustack-config get team_mode 2>/dev/null || echo "false")
+echo "LOCAL_UZUSTACK=$LOCAL_UZUSTACK"
+echo "TEAM_MODE=$_TEAM_MODE"
+```
+
+**`LOCAL_UZUSTACK` が non-empty かつ `TEAM_MODE` が `true` の場合**：vendored copy を削除する。team mode は global install を single source of truth とする。
+
+```bash
+cd "$_ROOT"
+git rm -r --cached .claude/skills/uzustack/ 2>/dev/null || true
+if ! grep -qF '.claude/skills/uzustack/' .gitignore 2>/dev/null; then
+  echo '.claude/skills/uzustack/' >> .gitignore
+fi
+rm -rf "$LOCAL_UZUSTACK"
+```
+ユーザーに伝える：「Removed vendored copy at `$LOCAL_UZUSTACK` (team mode active — global install is the source of truth). Commit the `.gitignore` change when ready.」
+
+**`LOCAL_UZUSTACK` が non-empty かつ `TEAM_MODE` が `true` でない場合**：upgrade 直後の primary install から copy して update する（README vendored install と同じ approach）：
+```bash
+mv "$LOCAL_UZUSTACK" "$LOCAL_UZUSTACK.bak"
+cp -Rf "$INSTALL_DIR" "$LOCAL_UZUSTACK"
+rm -rf "$LOCAL_UZUSTACK/.git"
+cd "$LOCAL_UZUSTACK" && ./setup
+rm -rf "$LOCAL_UZUSTACK.bak"
+```
+ユーザーに伝える：「Also updated vendored copy at `$LOCAL_UZUSTACK` — commit `.claude/skills/uzustack/` when you're ready.」
+
+`./setup` が失敗した場合、backup から復元してユーザーに警告する：
+```bash
+rm -rf "$LOCAL_UZUSTACK"
+mv "$LOCAL_UZUSTACK.bak" "$LOCAL_UZUSTACK"
+```
+ユーザーに伝える：「Sync failed — restored previous version at `$LOCAL_UZUSTACK`. Run `/uzustack-upgrade` manually to retry.」
+
+### Step 4.75: version migration を実行
+
+`./setup` 完了後、旧版と新版の間にある migration script を実行する。migration は `./setup` だけでは扱えない state fix（stale config / orphaned files / directory structure 変更）を担う。
+
+```bash
+MIGRATIONS_DIR="$INSTALL_DIR/uzustack-upgrade/migrations"
+if [ -d "$MIGRATIONS_DIR" ]; then
+  for migration in $(find "$MIGRATIONS_DIR" -maxdepth 1 -name 'v*.sh' -type f 2>/dev/null | sort -V); do
+    # ファイル名から version を抽出: v0.15.2.0.sh → 0.15.2.0
+    m_ver="$(basename "$migration" .sh | sed 's/^v//')"
+    # この migration version が旧 version より新しい場合に実行
+    # （同セグメント数の dotted version は単純な string compare で OK）
+    if [ "$OLD_VERSION" != "unknown" ] && [ "$(printf '%s\n%s' "$OLD_VERSION" "$m_ver" | sort -V | head -1)" = "$OLD_VERSION" ] && [ "$OLD_VERSION" != "$m_ver" ]; then
+      echo "Running migration $m_ver..."
+      bash "$migration" || echo "  Warning: migration $m_ver had errors (non-fatal)"
+    fi
+  done
+fi
+```
+
+migration は `uzustack-upgrade/migrations/` 配下の idempotent な bash script。各 file 名は `v{VERSION}.sh`、旧版から upgrade するときのみ実行される。新規 migration の追加方法は CONTRIBUTING.md を参照。
+
+### Step 5: marker を書く + cache を消す
+
+```bash
+mkdir -p ~/.uzustack
+echo "$OLD_VERSION" > ~/.uzustack/just-upgraded-from
+rm -f ~/.uzustack/last-update-check
+rm -f ~/.uzustack/update-snoozed
+```
+
+### Step 6: What's New を表示
+
+`$INSTALL_DIR/CHANGELOG.md` を読む。旧版と新版の間にあるすべての version entry を見つける。テーマ別に 5-7 bullets で要約する。詰め込まない — user-facing な変更にフォーカスする。internal refactor は重要なものでない限り skip。
+
+Format：
+```
+uzustack v{new} — upgraded from v{old}!
+
+What's new:
+- [bullet 1]
+- [bullet 2]
+- ...
+
+Happy shipping!
+```
+
+### Step 7: 継続
+
+What's New を表示した後、ユーザーが元々呼び出していた skill を継続する。upgrade は完了 — それ以上のアクション不要。
+
+---
+
+## Standalone usage
+
+`/uzustack-upgrade` を直接呼び出した場合（preamble 経由でない場合）：
+
+1. fresh な update check を強制（cache を bypass）：
+```bash
+~/.claude/skills/uzustack/bin/uzustack-update-check --force 2>/dev/null || \
+.claude/skills/uzustack/bin/uzustack-update-check --force 2>/dev/null || true
+```
+output から upgrade が利用可能か判定する。
+
+2. `UPGRADE_AVAILABLE <old> <new>` の場合：上記 Steps 2-6 を follow する。
+
+3. output なし（primary が最新）の場合：stale な local vendored copy を check する。
+
+上記 Step 2 の bash block を実行して primary install type と directory（`INSTALL_TYPE` と `INSTALL_DIR`）を判別する。次に上記 Step 4.5 の判別 bash block を実行して local vendored copy（`LOCAL_UZUSTACK`）と team mode 状態（`TEAM_MODE`）を check する。
+
+**`LOCAL_UZUSTACK` が empty の場合**（local vendored copy なし）：ユーザーに「You're already on the latest version (v{version}).」と伝える。
+
+**`LOCAL_UZUSTACK` が non-empty かつ `TEAM_MODE` が `true` の場合**：上記 Step 4.5 の team-mode 削除 bash block を使って vendored copy を削除する。ユーザーに伝える：「Global v{version} is up to date. Removed stale vendored copy (team mode active). Commit the `.gitignore` change when ready.」
+
+**`LOCAL_UZUSTACK` が non-empty かつ `TEAM_MODE` が `true` でない場合**、version を比較する：
+```bash
+PRIMARY_VER=$(cat "$INSTALL_DIR/VERSION" 2>/dev/null || echo "unknown")
+LOCAL_VER=$(cat "$LOCAL_UZUSTACK/VERSION" 2>/dev/null || echo "unknown")
+echo "PRIMARY=$PRIMARY_VER LOCAL=$LOCAL_VER"
+```
+
+**version が異なる場合**：上記 Step 4.5 の sync bash block を使って primary から local copy を update する。ユーザーに伝える：「Global v{PRIMARY_VER} is up to date. Updated local vendored copy from v{LOCAL_VER} → v{PRIMARY_VER}. Commit `.claude/skills/uzustack/` when you're ready.」
+
+**version が一致する場合**：ユーザーに「You're on the latest version (v{PRIMARY_VER}). Global and local vendored copy are both up to date.」と伝える。
