@@ -42,4 +42,6 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   REVIEW_DASHBOARD: (_ctx, _args) => '',
   // Phase 4+ で plan file への review report 追記指示文を返す予定（Phase 4 / plan file 連鎖）
   PLAN_FILE_REVIEW_REPORT: (_ctx, _args) => '',
+  // Phase 4+ で finding の信頼度評価 calibration 指示文を返す予定（Phase 4 / cso・review・ship 等の severity 評価系 skill 連携）
+  CONFIDENCE_CALIBRATION: (_ctx, _args) => '',
 };
