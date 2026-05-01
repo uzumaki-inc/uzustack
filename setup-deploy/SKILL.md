@@ -143,14 +143,14 @@ deploy workflow は検出したが platform 設定がない場合：
 
 AskUserQuestion で情報を集める：
 
-1. **How are deploys triggered?**
+1. **deploy はどう trigger するか？**
    - A) Automatically on push to main (Fly, Render, Vercel, Netlify, etc.)
    - B) Via GitHub Actions workflow
    - C) Via a deploy script or CLI command (describe it)
    - D) Manually (SSH, dashboard, etc.)
    - E) This project doesn't deploy (library, CLI, tool)
 
-2. **What's the production URL?**（自由記述 — アプリが動いている URL）
+2. **production URL は何か？**（自由記述 — アプリが動いている URL）
 
 3. **uzustack はどうやって deploy 成否を確認できるか？**
    - A) HTTP health check at a specific URL (e.g., /health, /api/status)
