@@ -80,4 +80,6 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   TEST_COVERAGE_AUDIT_SHIP: (_ctx, _args) => '',
   // Phase 4+ で test failure triage（ship workflow 中の test fail 分類）指示文を返す予定（Phase 4 / ship 専用、failure classification）
   TEST_FAILURE_TRIAGE: (_ctx, _args) => '',
+  // Phase 4+ で deploy 設定 bootstrap（platform 検出 / production URL / health check）指示文を返す予定（Phase 4 / land-and-deploy・setup-deploy 連携）
+  DEPLOY_BOOTSTRAP: (_ctx, _args) => '',
 };
