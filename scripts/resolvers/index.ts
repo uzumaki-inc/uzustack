@@ -76,6 +76,8 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   PLAN_VERIFICATION_EXEC: (_ctx, _args) => '',
   // Phase 4+ で test 環境 bootstrap（CI / E2E 起動準備）指示文を返す予定（Phase 4 / ship 専用、test runner 連携）
   TEST_BOOTSTRAP: (_ctx, _args) => '',
+  // Phase 4+ で test coverage audit（plan 文脈、plan 段階での coverage 計画 / gap 予測）指示文を返す予定（Phase 4 / plan-eng-review・plan-design-review 連携）
+  TEST_COVERAGE_AUDIT_PLAN: (_ctx, _args) => '',
   // Phase 4+ で test coverage audit（ship 文脈、coverage gap 検出）指示文を返す予定（Phase 4 / ship 専用、coverage tool 連携）
   TEST_COVERAGE_AUDIT_SHIP: (_ctx, _args) => '',
   // Phase 4+ で test failure triage（ship workflow 中の test fail 分類）指示文を返す予定（Phase 4 / ship 専用、failure classification）
