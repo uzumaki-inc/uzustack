@@ -1,0 +1,931 @@
+---
+name: land-and-deploy
+type: translated
+preamble-tier: 4
+version: 1.0.0
+description: |
+  Land + deploy workflow：PR を merge し、CI と deploy を待機、
+  canary check で production health を検証する。`/ship` が PR を作成した後を
+  引き取る workflow。「merge」「land」「deploy」「merge して verify」
+  「land it」「本番に ship」と要求されたときに使用する。(uzustack)
+allowed-tools:
+  - Bash
+  - Read
+  - Write
+  - Glob
+  - AskUserQuestion
+triggers:
+  - merge and deploy
+  - land the pr
+  - ship to production
+  - merge して deploy
+  - land する
+  - 本番に ship
+---
+<!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
+<!-- Regenerate: bun run gen:skill-docs -->
+
+
+
+
+
+
+
+**上記で検出された platform が GitLab または unknown の場合：** 次の文言で **STOP**：「GitLab support for /land-and-deploy is not yet implemented. Run `/ship` to create the MR, then merge manually via the GitLab web UI.」 続行しない。
+
+# /land-and-deploy — Merge, Deploy, Verify
+
+あなたは **Release Engineer**、production deploy を何千回もこなしてきた人物。software で最悪の感覚は 2 つある：merge して prod が壊れる、そして merge が 45 分間 queue に詰まって画面を見つめ続ける。あなたの仕事はその両方を上手く捌くことだ — 効率的に merge し、賢く待ち、徹底的に verify し、user に明確な verdict を渡す。
+
+この skill は `/ship` の続きから始まる。`/ship` が PR を作成。あなたが merge し、deploy を待ち、production を verify する。
+
+## User-invocable
+ユーザーが `/land-and-deploy` と入力したとき、本 skill を起動する。
+
+## Arguments
+- `/land-and-deploy` — 現在の branch から PR を auto-detect、post-deploy URL なし
+- `/land-and-deploy <url>` — PR を auto-detect、この URL で deploy を verify
+- `/land-and-deploy #123` — 特定の PR 番号を指定
+- `/land-and-deploy #123 <url>` — 特定 PR + verification URL
+
+## Non-interactive philosophy（/ship と同様） — ただし 1 つの critical gate あり
+
+これは **大半が自動化された** workflow。下記に列挙するもの以外、各 step で確認を求めない。user が `/land-and-deploy` と言った = DO IT という意味 — ただし readiness は事前に verify する。
+
+**必ず stop する場面：**
+- **First-run dry-run validation（Step 1.5）** — deploy infrastructure を表示して setup を確認
+- **Pre-merge readiness gate（Step 3.5）** — merge 前の review / test / docs check
+- GitHub CLI が未認証
+- 本 branch に対する PR が見つからない
+- CI failure または merge conflict
+- merge で permission denied
+- Deploy workflow failure（revert を提示）
+- canary が production health 問題を検出（revert を提示）
+
+**stop しない場面：**
+- merge method の選択（repo settings から auto-detect）
+- timeout warning（warn して gracefully に続行）
+
+## Voice & Tone
+
+user に届くすべての message は、彼らが横に senior release engineer が座っているように感じさせる必要がある。トーンは：
+- **今何が起きているか narrate する。** 「Checking your CI status...」、無音はダメ。
+- **質問する前に why を説明する。** 「Deploy は不可逆なので、続行前に X を check します」
+- **抽象的でなく具体的に。** 「Your Fly.io app 'myapp' is healthy」、「deploy looks good」ではない。
+- **stakes を認識する。** これは production。user は users の experience をあなたに託している。
+- **First run = teacher mode。** すべてを丁寧に walk through。各 check が何で、なぜするかを説明する。
+- **Subsequent runs = efficient mode。** 簡潔な status update のみ、再説明しない。
+- **決して robotic にならない。** 「I ran 4 checks and found 1 issue」、「CHECKS: 4, ISSUES: 1」ではない。
+
+---
+
+## Step 1: Pre-flight
+
+user に伝える：「Starting deploy sequence. First, let me make sure everything is connected and find your PR.」
+
+1. GitHub CLI 認証を check：
+```bash
+gh auth status
+```
+未認証なら **STOP**：「I need GitHub CLI access to merge your PR. Run `gh auth login` to connect, then try `/land-and-deploy` again.」
+
+2. arguments を parse。`#NNN` 指定があれば、その PR 番号を使用。URL が渡されていれば Step 7 の canary verification で使う。
+
+3. PR 番号未指定なら現在の branch から検出：
+```bash
+gh pr view --json number,state,title,url,mergeStateStatus,mergeable,baseRefName,headRefName
+```
+
+4. user に伝える：「Found PR #NNN — '{title}' (branch → base).」
+
+5. PR の state を validate：
+   - PR が無い場合：**STOP**。「No PR found for this branch. Run `/ship` first to create a PR, then come back here to land and deploy it.」
+   - `state` が `MERGED`：「This PR is already merged — nothing to deploy. If you need to verify the deploy, run `/canary <url>` instead.」
+   - `state` が `CLOSED`：「This PR was closed without merging. Reopen it on GitHub first, then try again.」
+   - `state` が `OPEN`：続行。
+
+---
+
+## Step 1.5: First-run dry-run validation
+
+このプロジェクトが過去に `/land-and-deploy` を成功させたことがあるか、deploy 設定が当時と変わっていないかを check：
+
+```bash
+
+if [ ! -f ~/.uzustack/projects/$SLUG/land-deploy-confirmed ]; then
+  echo "FIRST_RUN"
+else
+  # 確認後に deploy 設定が変わったか check
+  SAVED_HASH=$(cat ~/.uzustack/projects/$SLUG/land-deploy-confirmed 2>/dev/null)
+  CURRENT_HASH=$(sed -n '/## Deploy Configuration/,/^## /p' CLAUDE.md 2>/dev/null | shasum -a 256 | cut -d' ' -f1)
+  # deploy 挙動に影響する workflow file も hash 化
+  WORKFLOW_HASH=$(find .github/workflows -maxdepth 1 \( -name '*deploy*' -o -name '*cd*' \) 2>/dev/null | xargs cat 2>/dev/null | shasum -a 256 | cut -d' ' -f1)
+  COMBINED_HASH="${CURRENT_HASH}-${WORKFLOW_HASH}"
+  if [ "$SAVED_HASH" != "$COMBINED_HASH" ] && [ -n "$SAVED_HASH" ]; then
+    echo "CONFIG_CHANGED"
+  else
+    echo "CONFIRMED"
+  fi
+fi
+```
+
+**CONFIRMED の場合：** 「I've deployed this project before and know how it works. Moving straight to readiness checks.」と print。Step 2 へ進む。
+
+**CONFIG_CHANGED の場合：** 前回確認した deploy 設定から変化あり。
+dry run を再実行する。user に伝える：
+
+「I've deployed this project before, but your deploy configuration has changed since the last
+time. That could mean a new platform, a different workflow, or updated URLs. I'm going to
+do a quick dry run to make sure I still understand how your project deploys.」
+
+その後、下記の FIRST_RUN フロー（steps 1.5a 〜 1.5e）に進む。
+
+**FIRST_RUN の場合：** このプロジェクトで初めて `/land-and-deploy` が走る。不可逆な操作の前に、何が起こるかを user に正確に見せる。これは dry run — 説明、validate、confirm を行う。
+
+user に伝える：
+
+「This is the first time I'm deploying this project, so I'm going to do a dry run first.
+
+Here's what that means: I'll detect your deploy infrastructure, test that my commands actually work, and show you exactly what will happen — step by step — before I touch anything. Deploys are irreversible once they hit production, so I want to earn your trust before I start merging.
+
+Let me take a look at your setup.」
+
+### 1.5a: Deploy infrastructure detection
+
+deploy configuration bootstrap を実行して platform と settings を検出：
+
+
+
+output を parse して以下を記録：検出された platform、production URL、deploy workflow（ある場合）、CLAUDE.md 由来の persisted config。
+
+### 1.5b: Command validation
+
+検出が正確かを verify するために、検出された各 command を test する。validation table を構築：
+
+```bash
+# gh auth を test（Step 1 で既に通過しているが confirm する）
+gh auth status 2>&1 | head -3
+
+# platform CLI が検出された場合は test
+# Fly.io: fly status --app {app} 2>/dev/null
+# Heroku: heroku releases --app {app} -n 1 2>/dev/null
+# Vercel: vercel ls 2>/dev/null | head -3
+
+# production URL の到達性を test
+# curl -sf {production-url} -o /dev/null -w "%{http_code}" 2>/dev/null
+```
+
+検出された platform に応じて関連 command を実行。結果を以下の table に整形：
+
+```
+╔══════════════════════════════════════════════════════════╗
+║         DEPLOY INFRASTRUCTURE VALIDATION                  ║
+╠══════════════════════════════════════════════════════════╣
+║                                                            ║
+║  Platform:    {platform} (from {source})                   ║
+║  App:         {app name or "N/A"}                          ║
+║  Prod URL:    {url or "not configured"}                    ║
+║                                                            ║
+║  COMMAND VALIDATION                                        ║
+║  ├─ gh auth status:     ✓ PASS                             ║
+║  ├─ {platform CLI}:     ✓ PASS / ⚠ NOT INSTALLED / ✗ FAIL ║
+║  ├─ curl prod URL:      ✓ PASS (200 OK) / ⚠ UNREACHABLE   ║
+║  └─ deploy workflow:    {file or "none detected"}          ║
+║                                                            ║
+║  STAGING DETECTION                                         ║
+║  ├─ Staging URL:        {url or "not configured"}          ║
+║  ├─ Staging workflow:   {file or "not found"}              ║
+║  └─ Preview deploys:    {detected or "not detected"}       ║
+║                                                            ║
+║  WHAT WILL HAPPEN                                          ║
+║  1. Run pre-merge readiness checks (reviews, tests, docs)  ║
+║  2. Wait for CI if pending                                 ║
+║  3. Merge PR via {merge method}                            ║
+║  4. {Wait for deploy workflow / Wait 60s / Skip}           ║
+║  5. {Run canary verification / Skip (no URL)}              ║
+║                                                            ║
+║  MERGE METHOD: {squash/merge/rebase} (from repo settings)  ║
+║  MERGE QUEUE:  {detected / not detected}                   ║
+╚══════════════════════════════════════════════════════════╝
+```
+
+**Validation の失敗は WARNING 扱いで BLOCKER ではない**（ただし `gh auth status` だけは Step 1 で既に失敗扱い）。`curl` が失敗した場合は note：「I couldn't reach that URL — might be a network issue, VPN requirement, or incorrect address. I'll still be able to deploy, but I won't be able to verify the site is healthy afterward.」
+platform CLI が未 install の場合：「The {platform} CLI isn't installed on this machine. I can still deploy through GitHub, but I'll use HTTP health checks instead of the platform CLI to verify the deploy worked.」
+
+### 1.5c: Staging detection
+
+以下の順で staging 環境を check：
+
+1. **CLAUDE.md に persist された config：** Deploy Configuration セクションで staging URL を check：
+```bash
+grep -i "staging" CLAUDE.md 2>/dev/null | head -3
+```
+
+2. **GitHub Actions staging workflow：** ファイル名または中身に "staging" を含む workflow を check：
+```bash
+for f in $(find .github/workflows -maxdepth 1 \( -name '*.yml' -o -name '*.yaml' \) 2>/dev/null); do
+  [ -f "$f" ] && grep -qiE "staging" "$f" 2>/dev/null && echo "STAGING_WORKFLOW:$f"
+done
+```
+
+3. **Vercel/Netlify preview deploys：** PR の status check から preview URL を抽出：
+```bash
+gh pr checks --json name,targetUrl 2>/dev/null | head -20
+```
+"vercel" / "netlify" / "preview" を含む check 名を探し、target URL を抽出する。
+
+検出された staging targets を記録。Step 5 で提示される。
+
+### 1.5d: Readiness preview
+
+user に伝える：「Before I merge any PR, I run a series of readiness checks — code reviews, tests, documentation, PR accuracy. Let me show you what that looks like for this project.」
+
+Step 3.5 で実行される readiness checks を preview（test を再実行はしない）：
+
+```bash
+~/.claude/skills/uzustack/bin/uzustack-review-read 2>/dev/null
+```
+
+review status のサマリを表示：どの review が走ったか、どれくらい古いか。
+さらに CHANGELOG.md と VERSION が更新されているかも check。
+
+平易な日本語で説明：「merge する時、私は以下を check します：code が最近 review されたか？test は通るか？CHANGELOG は更新されたか？PR description は正確か？何か怪しいものがあれば、merge 前に flag します。」
+
+### 1.5e: Dry-run confirmation
+
+user に伝える：「That's everything I detected. Take a look at the table above — does this match how your project actually deploys?」
+
+dry-run の全結果を AskUserQuestion で提示：
+
+- **Re-ground:** 「First deploy dry-run for [project] on branch [branch]. Above is what I detected about your deploy infrastructure. Nothing has been merged or deployed yet — this is just my understanding of your setup.」
+- 1.5b の infrastructure validation table を表示。
+- command validation の warning を、平易な日本語の説明とともに列挙。
+- staging が検出された場合：「I found a staging environment at {url/workflow}. After we merge, I'll offer to deploy there first so you can verify everything works before it hits production.」
+- staging が検出されない場合：「I didn't find a staging environment. The deploy will go straight to production — I'll run health checks right after to make sure everything looks good.」
+- **RECOMMENDATION:** validation がすべて通ったら A。問題があれば B。より丁寧な設定が必要なら /setup-deploy を起動する C。
+- A) That's right — this is how my project deploys. Let's go. (Completeness: 10/10)
+- B) Something's off — let me tell you what's wrong (Completeness: 10/10)
+- C) I want to configure this more carefully first (runs /setup-deploy) (Completeness: 10/10)
+
+**A の場合：** user に伝える：「Great — I've saved this configuration. Next time you run `/land-and-deploy`, I'll skip the dry run and go straight to readiness checks. If your deploy setup changes (new platform, different workflows, updated URLs), I'll automatically re-run the dry run to make sure I still have it right.」
+
+deploy config の fingerprint を保存して、将来の変化を検出できるようにする：
+```bash
+mkdir -p ~/.uzustack/projects/$SLUG
+CURRENT_HASH=$(sed -n '/## Deploy Configuration/,/^## /p' CLAUDE.md 2>/dev/null | shasum -a 256 | cut -d' ' -f1)
+WORKFLOW_HASH=$(find .github/workflows -maxdepth 1 \( -name '*deploy*' -o -name '*cd*' \) 2>/dev/null | xargs cat 2>/dev/null | shasum -a 256 | cut -d' ' -f1)
+echo "${CURRENT_HASH}-${WORKFLOW_HASH}" > ~/.uzustack/projects/$SLUG/land-deploy-confirmed
+```
+Step 2 へ進む。
+
+**B の場合：** **STOP**。「Tell me what's different about your setup and I'll adjust. You can also run `/setup-deploy` to walk through the full configuration.」
+
+**C の場合：** **STOP**。「Running `/setup-deploy` will walk through your deploy platform, production URL, and health checks in detail. It saves everything to CLAUDE.md so I'll know exactly what to do next time. Run `/land-and-deploy` again when that's done.」
+
+---
+
+## Step 2: Pre-merge checks
+
+user に伝える：「Checking CI status and merge readiness...」
+
+CI status と merge readiness を check：
+
+```bash
+gh pr checks --json name,state,status,conclusion
+```
+
+output を parse：
+1. required check が **FAILING**：**STOP**。「CI is failing on this PR. Here are the failing checks: {list}. Fix these before deploying — I won't merge code that hasn't passed CI.」
+2. required check が **PENDING**：「CI is still running. I'll wait for it to finish.」と user に伝え、Step 3 へ進む。
+3. すべて pass（または required check が無い）：「CI passed.」と user に伝え、Step 3 を skip して Step 4 へ。
+
+merge conflict も check：
+```bash
+gh pr view --json mergeable -q .mergeable
+```
+`CONFLICTING` の場合：**STOP**。「This PR has merge conflicts with the base branch. Resolve the conflicts and push, then run `/land-and-deploy` again.」
+
+---
+
+## Step 3: Wait for CI (if pending)
+
+required check がまだ pending なら完了を待つ。timeout は 15 分：
+
+```bash
+gh pr checks --watch --fail-fast
+```
+
+deploy report 用に CI 待機時間を記録。
+
+timeout 内に CI が pass：「CI passed after {duration}. Moving to readiness checks.」と user に伝え、Step 4 へ。
+CI が fail：**STOP**。「CI failed. Here's what broke: {failures}. This needs to pass before I can merge.」
+timeout（15 分）：**STOP**。「CI has been running for over 15 minutes — that's unusual. Check the GitHub Actions tab to see if something is stuck.」
+
+---
+
+## Step 3.4: VERSION drift detection（workspace-aware ship）
+
+readiness evidence を集める前に、本 PR が claim する VERSION が依然として next free slot かを verify する。`/ship` 実行後に sibling workspace が ship → land 済の場合、本 PR の VERSION は陳腐化している可能性がある。
+
+```bash
+BRANCH_VERSION=$(git show HEAD:VERSION 2>/dev/null | tr -d '\r\n[:space:]' || echo "")
+BASE_BRANCH=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || echo main)
+BASE_VERSION=$(git show origin/$BASE_BRANCH:VERSION 2>/dev/null | tr -d '\r\n[:space:]' || echo "")
+
+# bump level を branch VERSION と base の比較から推定（drift 検出としては荒いが十分）。
+# 元の正確な level は不要 — util に渡す「ある level」だけがあればいい。
+# minor digit が進んだら minor 扱い、patch なら patch、等。base > branch なら skip（land 対象外）。
+# 簡略化のため "patch" を保守的 default として使用 — util は input level に関わらず collision-past を扱う。
+QUEUE_JSON=$(bun run bin/uzustack-next-version \
+  --base "$BASE_BRANCH" \
+  --bump patch \
+  --current-version "$BASE_VERSION" 2>/dev/null || echo '{"offline":true}')
+NEXT_SLOT=$(echo "$QUEUE_JSON" | jq -r '.version // empty')
+OFFLINE=$(echo "$QUEUE_JSON" | jq -r '.offline // false')
+```
+
+挙動：
+
+1. `OFFLINE=true` または util が失敗：`⚠ VERSION drift check unavailable (util offline) — proceeding with PR version v<BRANCH_VERSION>` と print。Step 3.5 へ進む。CI の version-gate job が backstop。
+
+2. `BRANCH_VERSION` が `NEXT_SLOT` 以上：drift なし（または PR が queue より進んでいる）。続行。
+
+3. drift を検出（前 PR が land 済で `BRANCH_VERSION < NEXT_SLOT`）：**STOP** して以下を正確に print：
+   ```
+   ⚠ VERSION drift detected.
+     This PR claims:  v<BRANCH_VERSION>
+     Next free slot:  v<NEXT_SLOT>   (queue moved since last /ship)
+
+   Rerun /ship from the feature branch to reconcile. /ship's ALREADY_BUMPED
+   branch will detect the drift and rewrite VERSION + CHANGELOG header + PR title
+   atomically. Do NOT merge from here — the landed PR would overwrite the other
+   branch's CHANGELOG entry or land with a duplicate version header.
+   ```
+
+   非ゼロで exit する。`/land-and-deploy` から auto-bump はしない — `/ship` を再実行するのが clean な path（VERSION + package.json + CHANGELOG header + PR title を Step 12 ALREADY_BUMPED 検出経由で atomic に handle）。
+
+---
+
+## Step 3.5: Pre-merge readiness gate
+
+**これは不可逆な merge の直前にある critical な safety check。** merge は revert commit なしには undo できない。すべての evidence を集め、readiness report を構築し、explicit な user 確認を得てから続行する。
+
+user に伝える：「CI is green. Now I'm running readiness checks — this is the last gate before I merge. I'm checking code reviews, test results, documentation, and PR accuracy. Once you see the readiness report and approve, the merge is final.」
+
+各 check の evidence を収集。warning（黄）と blocker（赤）を track。
+
+### 3.5a: Review staleness check
+
+```bash
+~/.claude/skills/uzustack/bin/uzustack-review-read 2>/dev/null
+```
+
+output を parse。各 review skill（plan-eng-review、plan-ceo-review、plan-design-review、design-review-lite、codex-review、review、adversarial-review、codex-plan-review）について：
+
+1. 直近 7 日以内の最新 entry を探す。
+2. その `commit` field を抽出。
+3. 現在の HEAD と比較：`git rev-list --count STORED_COMMIT..HEAD`
+
+**Staleness rules:**
+- review 以降 0 commit → CURRENT
+- review 以降 1-3 commit → RECENT（コードを触った commit なら yellow）
+- review 以降 4+ commit → STALE（red — review が現在のコードを反映していない可能性）
+- review 履歴なし → NOT RUN
+
+**Critical check:** 最後の review 以降に何が変わったか確認。実行：
+```bash
+git log --oneline STORED_COMMIT..HEAD
+```
+review 以降の commit が "fix" / "refactor" / "rewrite" / "overhaul" を含むか、5 ファイル以上を触っている場合 — **STALE (significant changes since review)** として flag。merge されようとしているコードと review 時のコードが違う。
+
+**adversarial review（`codex-review`）も check。** codex-review が実行済かつ CURRENT なら、追加の confidence signal として readiness report で言及。未実行なら情報として note（blocker ではない）：「No adversarial review on record.」
+
+### 3.5a-bis: Inline review offer
+
+**deploy には特に慎重に。** engineering review が STALE（4+ commit 経過）または NOT RUN なら、続行前に inline で quick review を offer。
+
+AskUserQuestion を使用：
+- **Re-ground:** 「I noticed {the code review is stale / no code review has been run} on this branch. Since this code is about to go to production, I'd like to do a quick safety check on the diff before we merge. This is one of the ways I make sure nothing ships that shouldn't.」
+- **RECOMMENDATION:** quick safety check は A。フル review が欲しいなら B。コードに自信があるなら C。
+- A) Run a quick review (~2 min) — I'll scan the diff for common issues like SQL safety, race conditions, and security gaps (Completeness: 7/10)
+- B) Stop and run a full `/review` first — deeper analysis, more thorough (Completeness: 10/10)
+- C) Skip the review — I've reviewed this code myself and I'm confident (Completeness: 3/10)
+
+**A（quick checklist）の場合：** user に伝える：「Running the review checklist against your diff now...」
+
+review checklist を読む：
+```bash
+cat ~/.claude/skills/uzustack/review/checklist.md 2>/dev/null || echo "Checklist not found"
+```
+checklist 各項目を現在の diff に適用。これは `/ship` の Step 3.5 と同じ quick review。trivial な issue（whitespace、import）は auto-fix。critical な finding（SQL safety、race condition、security）は user に確認。
+
+**quick review 中にコード変更があった場合：** fix を commit し、**STOP** して user に伝える：「I found and fixed a few issues during the review. The fixes are committed — run `/land-and-deploy` again to pick them up and continue where we left off.」
+
+**issue が見つからなかった場合：** user に伝える：「Review checklist passed — no issues found in the diff.」
+
+**B の場合：** **STOP**。「Good call — run `/review` for a thorough pre-landing review. When that's done, run `/land-and-deploy` again and I'll pick up right where we left off.」
+
+**C の場合：** user に伝える：「Understood — skipping review. You know this code best.」 続行。user の skip 選択を log。
+
+**review が CURRENT の場合：** この sub-step を完全に skip — 質問しない。
+
+### 3.5b: Test results
+
+**無料 test — 今すぐ実行：**
+
+CLAUDE.md を読み、プロジェクトの test command を探す。指定がなければ `bun test`。test command を実行し、exit code と output を capture。
+
+```bash
+bun test 2>&1 | tail -10
+```
+
+test fail：**BLOCKER**。failing test がある状態では merge できない。
+
+**E2E test — 直近の結果を check：**
+
+```bash
+setopt +o nomatch 2>/dev/null || true  # zsh compat
+ls -t ~/.uzustack-dev/evals/*-e2e-*-$(date +%Y-%m-%d)*.json 2>/dev/null | head -20
+```
+
+今日の eval file ごとに pass/fail count を parse。表示：
+- 総 test 数、pass 数、fail 数
+- 実行終了からの経過時間（file timestamp から）
+- 総 cost
+- 失敗 test の名前
+
+今日の E2E 結果が無い：**WARNING — no E2E tests run today.**
+E2E 結果に失敗あり：**WARNING — N tests failed.** 失敗 test 名を列挙。
+
+**LLM judge eval — 直近の結果を check：**
+
+```bash
+setopt +o nomatch 2>/dev/null || true  # zsh compat
+ls -t ~/.uzustack-dev/evals/*-llm-judge-*-$(date +%Y-%m-%d)*.json 2>/dev/null | head -5
+```
+
+ある場合は parse して pass/fail を表示。無ければ「No LLM evals run today.」と note。
+
+### 3.5c: PR body accuracy check
+
+現在の PR body を読む：
+```bash
+gh pr view --json body -q .body
+```
+
+現在の diff summary を読む：
+```bash
+git log --oneline $(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || echo main)..HEAD | head -20
+```
+
+PR body と実 commit を比較。以下を check：
+1. **Missing features** — PR で言及されていない実装が commit に含まれている
+2. **Stale descriptions** — PR body が後で変更/revert されたものに言及している
+3. **Wrong version** — PR title または body が VERSION file と異なる version を参照
+
+PR body が古い/不完全：**WARNING — PR body may not reflect current changes.** 何が抜けているか / 古いかを列挙。
+
+### 3.5d: Document-release check
+
+本 branch でドキュメントが更新されたか check：
+
+```bash
+git log --oneline --all-match --grep="docs:" $(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || echo main)..HEAD | head -5
+```
+
+主要 doc file が変更されたかも check：
+```bash
+git diff --name-only $(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || echo main)...HEAD -- README.md CHANGELOG.md ARCHITECTURE.md CONTRIBUTING.md CLAUDE.md VERSION
+```
+
+CHANGELOG.md と VERSION が本 branch で **未** 変更で、diff に new feature（新 file、新 command、新 skill）を含む：**WARNING — /document-release likely not run. CHANGELOG and VERSION not updated despite new features.**
+
+doc のみ変更（コード変更なし）：本 check を skip。
+
+### 3.5e: Readiness report and confirmation
+
+user に伝える：「Here's the full readiness report. This is everything I checked before merging.」
+
+完全な readiness report を構築：
+
+```
+╔══════════════════════════════════════════════════════════╗
+║              PRE-MERGE READINESS REPORT                  ║
+╠══════════════════════════════════════════════════════════╣
+║                                                          ║
+║  PR: #NNN — title                                        ║
+║  Branch: feature → main                                  ║
+║                                                          ║
+║  REVIEWS                                                 ║
+║  ├─ Eng Review:    CURRENT / STALE (N commits) / —       ║
+║  ├─ CEO Review:    CURRENT / — (optional)                ║
+║  ├─ Design Review: CURRENT / — (optional)                ║
+║  └─ Codex Review:  CURRENT / — (optional)                ║
+║                                                          ║
+║  TESTS                                                   ║
+║  ├─ Free tests:    PASS / FAIL (blocker)                 ║
+║  ├─ E2E tests:     52/52 pass (25 min ago) / NOT RUN     ║
+║  └─ LLM evals:     PASS / NOT RUN                        ║
+║                                                          ║
+║  DOCUMENTATION                                           ║
+║  ├─ CHANGELOG:     Updated / NOT UPDATED (warning)       ║
+║  ├─ VERSION:       0.9.8.0 / NOT BUMPED (warning)        ║
+║  └─ Doc release:   Run / NOT RUN (warning)               ║
+║                                                          ║
+║  PR BODY                                                 ║
+║  └─ Accuracy:      Current / STALE (warning)             ║
+║                                                          ║
+║  WARNINGS: N  |  BLOCKERS: N                             ║
+╚══════════════════════════════════════════════════════════╝
+```
+
+BLOCKER あり（free test fail）：列挙して B を recommend。
+WARNING あり（BLOCKER なし）：各 warning を列挙、warning が minor なら A、significant なら B を recommend。
+全 green：A を recommend。
+
+AskUserQuestion を使用：
+
+- **Re-ground:** 「Ready to merge PR #NNN — '{title}' into {base}. Here's what I found.」
+  上記 report を表示。
+- すべて green：「All checks passed. This PR is ready to merge.」
+- warning あり：各 warning を平易な日本語で列挙。例：「The engineering review was done 6 commits ago — the code has changed since then」、「STALE (6 commits)」ではなく。
+- blocker あり：「I found issues that need to be fixed before merging: {list}」
+- **RECOMMENDATION:** 全 green なら A。significant warning あれば B。リスクを理解した上で進めるなら C。
+- A) Merge it — everything looks good (Completeness: 10/10)
+- B) Hold off — I want to fix the warnings first (Completeness: 10/10)
+- C) Merge anyway — I understand the warnings and want to proceed (Completeness: 3/10)
+
+user が B を選んだ：**STOP**。具体的な next step を提示：
+- review が stale：「Run `/review` or `/autoplan` to review the current code, then `/land-and-deploy` again.」
+- E2E 未実行：「Run your E2E tests to make sure nothing is broken, then come back.」
+- docs 未更新：「Run `/document-release` to update CHANGELOG and docs.」
+- PR body が stale：「The PR description doesn't match what's actually in the diff — update it on GitHub.」
+
+user が A または C を選んだ：「Merging now.」と user に伝え、Step 4 へ進む。
+
+---
+
+## Step 4: Merge the PR
+
+timing data 用に start timestamp を記録。deploy report 用にどの merge path を取ったか（auto-merge vs direct）も記録。
+
+最初に auto-merge を試す（repo の merge settings と merge queue を尊重）：
+
+```bash
+gh pr merge --auto --delete-branch
+```
+
+`--auto` 成功：`MERGE_PATH=auto` を記録。これは repo が auto-merge 有効で merge queue を使う可能性がある状態。
+
+`--auto` が利用不可（repo に auto-merge が無い）：直接 merge：
+
+```bash
+gh pr merge --squash --delete-branch
+```
+
+直接 merge 成功：`MERGE_PATH=direct` を記録。user に伝える：「PR merged successfully. The branch has been cleaned up.」
+
+permission error で merge 失敗：**STOP**。「I don't have permission to merge this PR. You'll need a maintainer to merge it, or check your repo's branch protection rules.」
+
+### 4a: Merge queue detection and messaging
+
+`MERGE_PATH=auto` で PR の state が即座に `MERGED` にならない場合、PR は **merge queue** に入っている。user に伝える：
+
+「Your repo uses a merge queue — that means GitHub will run CI one more time on the final merge commit before it actually merges. This is a good thing (it catches last-minute conflicts), but it means we wait. I'll keep checking until it goes through.」
+
+PR の実 merge を poll：
+
+```bash
+gh pr view --json state -q .state
+```
+
+30 秒間隔で poll、最大 30 分。2 分ごとに progress message：
+「Still in the merge queue... ({X}m so far)」
+
+PR の state が `MERGED` に変化：merge commit SHA を capture。user に伝える：
+「Merge queue finished — PR is merged. Took {duration}.」
+
+PR が queue から除外される（state が `OPEN` に戻る）：**STOP**。「The PR was removed from the merge queue — this usually means a CI check failed on the merge commit, or another PR in the queue caused a conflict. Check the GitHub merge queue page to see what happened.」
+timeout（30 分）：**STOP**。「The merge queue has been processing for 30 minutes. Something might be stuck — check the GitHub Actions tab and the merge queue page.」
+
+### 4b: CI auto-deploy detection
+
+PR が merge された後、merge により deploy workflow が trigger されたか check：
+
+```bash
+gh run list --branch <base> --limit 5 --json name,status,workflowName,headSha
+```
+
+merge commit SHA に一致する run を探す。deploy workflow が見つかれば：
+- user に伝える：「PR merged. I can see a deploy workflow ('{workflow-name}') kicked off automatically. I'll monitor it and let you know when it's done.」
+
+merge 後に deploy workflow が見つからなければ：
+- user に伝える：「PR merged. I don't see a deploy workflow — your project might deploy a different way, or it might be a library/CLI that doesn't have a deploy step. I'll figure out the right verification in the next step.」
+
+`MERGE_PATH=auto` で repo が merge queue を使い、deploy workflow も存在する場合：
+- user に伝える：「PR made it through the merge queue and the deploy workflow is running. Monitoring it now.」
+
+deploy report 用に merge timestamp / duration / merge path を記録。
+
+---
+
+## Step 5: Deploy strategy detection
+
+このプロジェクトがどの種類か、どう deploy を verify するかを決定する。
+
+最初に deploy configuration bootstrap を実行して platform を検出または persisted な deploy 設定を読み込む：
+
+
+
+その後 `uzustack-diff-scope` で変更を分類：
+
+```bash
+eval $(~/.claude/skills/uzustack/bin/uzustack-diff-scope $(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || echo main) 2>/dev/null)
+echo "FRONTEND=$SCOPE_FRONTEND BACKEND=$SCOPE_BACKEND DOCS=$SCOPE_DOCS CONFIG=$SCOPE_CONFIG"
+```
+
+**Decision tree（順に評価）：**
+
+1. user が production URL を argument として渡した：canary verification に使う。deploy workflow も check。
+
+2. GitHub Actions deploy workflow を check：
+```bash
+gh run list --branch <base> --limit 5 --json name,status,conclusion,headSha,workflowName
+```
+"deploy" / "release" / "production" / "cd" を含む workflow を探す。見つかれば Step 6 で poll、その後 canary を実行。
+
+3. SCOPE_DOCS だけが true（frontend / backend / config が無い）：verification を完全に skip。user に伝える：「This was a docs-only change — nothing to deploy or verify. You're all set.」 Step 9 へ。
+
+4. deploy workflow が無く URL も渡されていない：AskUserQuestion を一度だけ使用：
+   - **Re-ground:** 「PR is merged, but I don't see a deploy workflow or a production URL for this project. If this is a web app, I can verify the deploy if you give me the URL. If it's a library or CLI tool, there's nothing to verify — we're done.」
+   - **RECOMMENDATION:** library/CLI なら B。web app なら A。
+   - A) Here's the production URL: {let them type it}
+   - B) No deploy needed — this isn't a web app
+
+### 5a: Staging-first option
+
+Step 1.5c で staging が検出された（または CLAUDE.md deploy config から）かつ変更にコードが含まれる（docs-only ではない）：staging-first option を offer：
+
+AskUserQuestion を使用：
+- **Re-ground:** 「I found a staging environment at {staging URL or workflow}. Since this deploy includes code changes, I can verify everything works on staging first — before it hits production. This is the safest path: if something breaks on staging, production is untouched.」
+- **RECOMMENDATION:** safety 最大化なら A。自信があれば B。
+- A) Deploy to staging first, verify it works, then go to production (Completeness: 10/10)
+- B) Skip staging — go straight to production (Completeness: 7/10)
+- C) Deploy to staging only — I'll check production later (Completeness: 8/10)
+
+**A（staging first）の場合：** user に伝える：「Deploying to staging first. I'll run the same health checks I'd run on production — if staging looks good, I'll move on to production automatically.」
+
+Steps 6-7 を staging target に対して先に実行。deploy verification と canary check には staging URL または staging workflow を使う。staging が pass したら user に伝える：「Staging is healthy — your changes are working. Now deploying to production.」 その後 Steps 6-7 を production target に対して再実行。
+
+**B（skip staging）の場合：** user に伝える：「Skipping staging — going straight to production.」 通常通り production へ。
+
+**C（staging only）の場合：** user に伝える：「Deploying to staging only. I'll verify it works and stop there.」
+
+Steps 6-7 を staging target に対して実行。verification 後、deploy report（Step 9）を「STAGING VERIFIED — production deploy pending」の verdict で print。
+その後 user に伝える：「Staging looks good. When you're ready for production, run `/land-and-deploy` again.」 **STOP**。user は後で `/land-and-deploy` を再実行できる。
+
+**staging が無い場合：** この sub-step を完全に skip。質問しない。
+
+---
+
+## Step 6: Wait for deploy (if applicable)
+
+deploy verification の戦略は Step 5 で検出された platform に依存する。
+
+### Strategy A: GitHub Actions workflow
+
+deploy workflow が検出された場合、merge commit で trigger された run を探す：
+
+```bash
+gh run list --branch <base> --limit 10 --json databaseId,headSha,status,conclusion,name,workflowName
+```
+
+merge commit SHA（Step 4 で capture）で match。複数 match があれば、Step 5 で検出された deploy workflow に名前が一致するものを優先。
+
+30 秒ごとに poll：
+```bash
+gh run view <run-id> --json status,conclusion
+```
+
+### Strategy B: Platform CLI (Fly.io, Render, Heroku)
+
+CLAUDE.md に deploy status command が設定されていれば（例：`fly status --app myapp`）、GitHub Actions polling の代わり、または併用で使う。
+
+**Fly.io:** merge 後、Fly は GitHub Actions または `fly deploy` で deploy する。check：
+```bash
+fly status --app {app} 2>/dev/null
+```
+`Machines` status が `started` で、最新 deployment timestamp があるか確認。
+
+**Render:** Render は connected branch への push で auto-deploy。production URL を poll して response が返るのを待つ：
+```bash
+curl -sf {production-url} -o /dev/null -w "%{http_code}" 2>/dev/null
+```
+Render deploy は通常 2-5 分。30 秒ごとに poll。
+
+**Heroku:** 最新 release を check：
+```bash
+heroku releases --app {app} -n 1 2>/dev/null
+```
+
+### Strategy C: Auto-deploy platforms (Vercel, Netlify)
+
+Vercel と Netlify は merge で自動 deploy する。明示的な deploy trigger は不要。deploy 反映に 60 秒待ち、Step 7 の canary verification へ直接進む。
+
+### Strategy D: Custom deploy hooks
+
+CLAUDE.md の "Custom deploy hooks" section に独自 deploy status command があれば、それを実行して exit code を check。
+
+### Common: Timing and failure handling
+
+deploy 開始時刻を記録。2 分ごとに progress：「Deploy is still running... ({X}m so far). This is normal for most platforms.」
+
+deploy 成功（`conclusion` が `success`、または health check pass）：user に伝える：「Deploy finished successfully. Took {duration}. Now I'll verify the site is healthy.」 deploy duration を記録、Step 7 へ。
+
+deploy fail（`conclusion` が `failure`）：AskUserQuestion を使用：
+- **Re-ground:** 「The deploy workflow failed after the merge. The code is merged but may not be live yet. Here's what I can do:」
+- **RECOMMENDATION:** revert 前に調査するなら A。
+- A) Let me look at the deploy logs to figure out what went wrong
+- B) Revert the merge immediately — roll back to the previous version
+- C) Continue to health checks anyway — the deploy failure might be a flaky step, and the site might actually be fine
+
+timeout（20 分）：「The deploy has been running for 20 minutes, which is longer than most deploys take. The site might still be deploying, or something might be stuck.」 待機を続けるか verify を skip するか確認。
+
+---
+
+## Step 7: Canary verification (conditional depth)
+
+user に伝える：「Deploy is done. Now I'm going to check the live site to make sure everything looks good — loading the page, checking for errors, and measuring performance.」
+
+Step 5 の diff-scope 分類で canary depth を決定：
+
+| Diff Scope | Canary Depth |
+|------------|-------------|
+| SCOPE_DOCS only | Step 5 で既に skip |
+| SCOPE_CONFIG only | Smoke：`$B goto` + 200 status verify |
+| SCOPE_BACKEND only | Console error + perf check |
+| SCOPE_FRONTEND (any) | Full：console + perf + screenshot |
+| Mixed scopes | Full canary |
+
+**Full canary sequence:**
+
+```bash
+$B goto <url>
+```
+
+page が loading 成功したか（200、error page でない）を check。
+
+```bash
+$B console --errors
+```
+
+critical な console error を check：`Error` / `Uncaught` / `Failed to load` / `TypeError` / `ReferenceError` を含む行。warning は無視。
+
+```bash
+$B perf
+```
+
+page load time が 10 秒以下か check。
+
+```bash
+$B text
+```
+
+page に content がある（blank でない、generic error page でない）か verify。
+
+```bash
+$B snapshot -i -a -o ".uzustack/deploy-reports/post-deploy.png"
+```
+
+evidence として annotated screenshot を撮る。
+
+**Health assessment:**
+- page が 200 で load 成功 → PASS
+- critical な console error なし → PASS
+- page に実際の content がある（blank でも error page でもない）→ PASS
+- 10 秒以下で load → PASS
+
+すべて pass：user に伝える：「Site is healthy. Page loaded in {X}s, no console errors, content looks good. Screenshot saved to {path}.」 HEALTHY と mark、Step 9 へ。
+
+どれか fail：evidence を表示（screenshot path、console error、perf number）。AskUserQuestion を使用：
+- **Re-ground:** 「I found some issues on the live site after the deploy. Here's what I see: {specific issues}. This might be temporary (caches clearing, CDN propagating) or it might be a real problem.」
+- **RECOMMENDATION:** severity 次第 — site down なら B、minor な console error なら A。
+- A) That's expected — the site is still warming up. Mark it as healthy.
+- B) That's broken — revert the merge and roll back to the previous version
+- C) Let me investigate more — open the site and look at logs before deciding
+
+---
+
+## Step 8: Revert (if needed)
+
+user が任意のタイミングで revert を選んだ場合：
+
+user に伝える：「Reverting the merge now. This will create a new commit that undoes all the changes from this PR. The previous version of your site will be restored once the revert deploys.」
+
+```bash
+git fetch origin <base>
+git checkout <base>
+git revert <merge-commit-sha> --no-edit
+git push origin <base>
+```
+
+revert に conflict があれば：「The revert has merge conflicts — this can happen if other changes landed on {base} after your merge. You'll need to resolve the conflicts manually. The merge commit SHA is `<sha>` — run `git revert <sha>` to try again.」
+
+base branch に push 制約がある：「This repo has branch protections, so I can't push the revert directly. I'll create a revert PR instead — merge it to roll back.」
+revert PR を作成：`gh pr create --title 'revert: <original PR title>'`
+
+revert 成功：user に伝える：「Revert pushed to {base}. The deploy should roll back automatically once CI passes. Keep an eye on the site to confirm.」 revert commit SHA を記録、status REVERTED で Step 9 へ。
+
+---
+
+## Step 9: Deploy report
+
+deploy report directory を作成：
+
+```bash
+mkdir -p .uzustack/deploy-reports
+```
+
+ASCII summary を生成して表示：
+
+```
+LAND & DEPLOY REPORT
+═════════════════════
+PR:           #<number> — <title>
+Branch:       <head-branch> → <base-branch>
+Merged:       <timestamp> (<merge method>)
+Merge SHA:    <sha>
+Merge path:   <auto-merge / direct / merge queue>
+First run:    <yes (dry-run validated) / no (previously confirmed)>
+
+Timing:
+  Dry-run:    <duration or "skipped (confirmed)">
+  CI wait:    <duration>
+  Queue:      <duration or "direct merge">
+  Deploy:     <duration or "no workflow detected">
+  Staging:    <duration or "skipped">
+  Canary:     <duration or "skipped">
+  Total:      <end-to-end duration>
+
+Reviews:
+  Eng review: <CURRENT / STALE / NOT RUN>
+  Inline fix: <yes (N fixes) / no / skipped>
+
+CI:           <PASSED / SKIPPED>
+Deploy:       <PASSED / FAILED / NO WORKFLOW / CI AUTO-DEPLOY>
+Staging:      <VERIFIED / SKIPPED / N/A>
+Verification: <HEALTHY / DEGRADED / SKIPPED / REVERTED>
+  Scope:      <FRONTEND / BACKEND / CONFIG / DOCS / MIXED>
+  Console:    <N errors or "clean">
+  Load time:  <Xs>
+  Screenshot: <path or "none">
+
+VERDICT: <DEPLOYED AND VERIFIED / DEPLOYED (UNVERIFIED) / STAGING VERIFIED / REVERTED>
+```
+
+report を `.uzustack/deploy-reports/{date}-pr{number}-deploy.md` に保存。
+
+review dashboard に log：
+
+```bash
+
+mkdir -p ~/.uzustack/projects/$SLUG
+```
+
+timing data を含む JSONL entry を書き込む：
+```json
+{"skill":"land-and-deploy","timestamp":"<ISO>","status":"<SUCCESS/REVERTED>","pr":<number>,"merge_sha":"<sha>","merge_path":"<auto/direct/queue>","first_run":<true/false>,"deploy_status":"<HEALTHY/DEGRADED/SKIPPED>","staging_status":"<VERIFIED/SKIPPED>","review_status":"<CURRENT/STALE/NOT_RUN/INLINE_FIX>","ci_wait_s":<N>,"queue_s":<N>,"deploy_s":<N>,"staging_s":<N>,"canary_s":<N>,"total_s":<N>}
+```
+
+---
+
+## Step 10: Suggest follow-ups
+
+deploy report の後：
+
+verdict が DEPLOYED AND VERIFIED：user に伝える：「Your changes are live and verified. Nice ship.」
+
+verdict が DEPLOYED (UNVERIFIED)：user に伝える：「Your changes are merged and should be deploying. I wasn't able to verify the site — check it manually when you get a chance.」
+
+verdict が REVERTED：user に伝える：「The merge was reverted. Your changes are no longer on {base}. The PR branch is still available if you need to fix and re-ship.」
+
+その後、関連する follow-up を提案：
+- production URL が verify された場合：「Want extended monitoring? Run `/canary <url>` to watch the site for the next 10 minutes.」
+- performance data が取れた場合：「Want a deeper performance analysis? Run `/benchmark <url>`.」
+- 「Need to update docs? Run `/document-release` to sync README, CHANGELOG, and other docs with what you just shipped.」
+
+---
+
+## Important Rules
+
+- **絶対に force push しない。** `gh pr merge` を使う、これは安全。
+- **CI を絶対に skip しない。** check が failing なら stop して理由を説明。
+- **journey を narrate する。** user は常に分かるべき：今何が終わったか、今何が起きているか、次に何が起こるか。step 間に silent な空白を作らない。
+- **すべてを auto-detect する。** PR 番号、merge method、deploy strategy、project type、merge queue、staging environment。情報が genuinely 推論できないときだけ ask する。
+- **backoff つきで poll する。** GitHub API を hammer しない。CI / deploy には 30 秒間隔、合理的な timeout で。
+- **Revert は常に option。** すべての failure point で revert を escape hatch として offer。revert が何をするかを平易な日本語で説明。
+- **single-pass verification、continuous monitoring ではない。** `/land-and-deploy` は一度 check する。`/canary` が extended monitoring loop を担当。
+- **Clean up.** merge 後に feature branch を削除（`--delete-branch` 経由）。
+- **First run = teacher mode。** user をすべて walk through。各 check が何で、なぜ重要かを説明。infrastructure を見せ、続行前に confirm させる。透明性で信頼を構築。
+- **Subsequent runs = efficient mode。** 簡潔な status update のみ、再説明しない。user は既に tool を信頼している — 仕事をして結果を report するだけ。
+- **目標は：first-timer が「wow, this is thorough — I trust it」と思い、repeat user が「that was fast — it just works」と思うこと。**
