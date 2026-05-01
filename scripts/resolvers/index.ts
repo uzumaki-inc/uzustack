@@ -96,4 +96,6 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   DESIGN_HARD_RULES: (_ctx, _args) => '',
   // Phase 4+ で design audit methodology（visual hierarchy / spacing / consistency 等の判定 framework）を返す予定（Phase 4 / design-review・plan-design-review 連携）
   DESIGN_METHODOLOGY: (_ctx, _args) => '',
+  // Phase 4+ で skill が依存する bin の解決済 directory path を返す予定（Phase 4 / design-shotgun 等の bin/uzustack-* 呼び出し連携）
+  BIN_DIR: (_ctx, _args) => '',
 };
