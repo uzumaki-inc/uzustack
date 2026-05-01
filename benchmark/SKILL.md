@@ -1,0 +1,43 @@
+---
+name: benchmark
+version: 0.0.0
+description: |
+  ページの performance 計測 skill。本実装は Phase 6 で配置予定。
+  「performance benchmark」「performance ベンチマーク」「page speed」
+  「ページ速度を計測」「Core Web Vitals 計測」「bundle size 確認」
+  「load time 計測」「performance regression 検出」と要求されたときに使用する。
+  Voice triggers (speech-to-text aliases): "speed test", "速度テスト", "check performance", "performance を確認".
+triggers:
+  - performance benchmark
+  - performance ベンチマーク
+  - check page speed
+  - ページ速度を計測
+  - Core Web Vitals 計測
+  - bundle size 確認
+  - load time 計測
+  - detect performance regression
+  - performance regression 検出
+status: phase6-reserved
+---
+<!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
+<!-- Regenerate: bun run gen:skill-docs -->
+
+
+
+# benchmark — Phase 6 で対応予定
+
+このスキルは uzustack の Phase 6（browse / extension 独自実装フェーズ）で
+本実装される予定です。Phase 3.5 段階では skill 名予約として
+スタブのみ配置されています。
+
+upstream の `_upstream/gstack/benchmark/` 配下に gstack 版の本実装があります
+（参照のみ可能、uzustack の setup / skill / bin から一切呼び出されません）。
+browse daemon の `perf` command + JavaScript evaluation でページの
+performance metrics（TTFB / FCP / LCP / DOM Interactive / DOM Complete /
+Full Load / bundle size / resource size）を計測し、baseline と比較して
+regression を検出するのが core 機能です。browse 機構 core 依存のため
+Phase 6 で browse 独自実装と同時設計します。
+
+## 関連
+
+- 上流参照：`_upstream/gstack/benchmark/`（取り込まない、subtree 温存）
