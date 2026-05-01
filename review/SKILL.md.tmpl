@@ -1,0 +1,288 @@
+---
+name: review
+type: translated
+preamble-tier: 4
+version: 1.0.0
+description: |
+  Pre-landing PR review。base branch との diff を SQL safety / LLM trust boundary
+  違反 / conditional side effect その他の構造的 issue で分析する。"review this PR"、
+  "code review"、"pre-landing review"、"check my diff" と要求されたときに使用する。
+  ユーザーが merge / land 直前のときに能動的に提案する。(uzustack)
+allowed-tools:
+  - Bash
+  - Read
+  - Edit
+  - Write
+  - Grep
+  - Glob
+  - Agent
+  - AskUserQuestion
+  - WebSearch
+triggers:
+  - review this pr
+  - code review
+  - check my diff
+  - pre-landing review
+  - PR レビュー
+  - コードレビュー
+  - 事前 landing レビュー
+---
+
+{{PREAMBLE}}
+
+{{BASE_BRANCH_DETECT}}
+
+# Pre-Landing PR Review
+
+あなたは `/review` workflow を実行している。現 branch の diff を base branch に対して、test では catch されない構造的 issue について分析する。
+
+---
+
+## Step 1: branch を check
+
+1. `git branch --show-current` を実行して現 branch を取得。
+2. base branch にいる場合、出力：**「Nothing to review — you're on the base branch or have no changes against it.」** で停止。
+3. `git fetch origin <base> --quiet && git diff origin/<base> --stat` で diff を check。diff が無ければ同 message を出力して停止。
+
+---
+
+{{SCOPE_DRIFT}}
+
+{{PLAN_COMPLETION_AUDIT_REVIEW}}
+
+## Step 2: checklist を読む
+
+`.claude/skills/review/checklist.md` を読む。
+
+**ファイルが読めない場合は STOP して error を報告する。** checklist 無しで進めない。
+
+---
+
+## Step 2.5: Greptile review コメントを check
+
+`.claude/skills/review/greptile-triage.md` を読み、fetch / filter / classify / **escalation 検出** step に従う。
+
+**PR が無い、`gh` が失敗、API が error を返す、Greptile コメントゼロ：** 本 step を silent に skip。Greptile integration は additive — 無くても review は動く。
+
+**Greptile コメントが見つかった場合：** classifications（VALID & ACTIONABLE、VALID BUT ALREADY FIXED、FALSE POSITIVE、SUPPRESSED）を保存 — Step 5 で必要。
+
+---
+
+## Step 3: diff を取得
+
+stale なローカル状態による偽陽性を避けるため、最新 base branch を fetch：
+
+```bash
+git fetch origin <base> --quiet
+```
+
+`git diff origin/<base>` で full diff を取得。最新 base branch に対する commit 済 + 未 commit の両方を含む。
+
+## Step 3.4: Workspace-aware queue status（advisory）
+
+PR の claim した VERSION が queue 中の free slot を指しているか check。advisory のみ — review は決して block しない、landing-order risk を reviewer に伝えるだけ。
+
+```bash
+BRANCH_VERSION=$(git show HEAD:VERSION 2>/dev/null | tr -d '\r\n[:space:]' || echo "")
+BASE_BRANCH=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || echo main)
+BASE_VERSION=$(git show origin/$BASE_BRANCH:VERSION 2>/dev/null | tr -d '\r\n[:space:]' || echo "")
+QUEUE_JSON=$(bun run bin/uzustack-next-version \
+  --base "$BASE_BRANCH" \
+  --bump patch \
+  --current-version "$BASE_VERSION" 2>/dev/null || echo '{"offline":true}')
+NEXT_SLOT=$(echo "$QUEUE_JSON" | jq -r '.version // empty')
+CLAIMED_COUNT=$(echo "$QUEUE_JSON" | jq -r '.claimed | length // 0')
+OFFLINE=$(echo "$QUEUE_JSON" | jq -r '.offline // false')
+```
+
+- `OFFLINE=true` の場合：本 section を skip（report する signal なし）。
+- それ以外、review 出力に 1 行含める：`Version claimed: v<BRANCH_VERSION>. Queue: <CLAIMED_COUNT> PR(s) ahead. <VERDICT>` ここで VERDICT は `Slot free`（`BRANCH_VERSION >= NEXT_SLOT` の場合）または `⚠ queue moved — rerun /ship to reconcile v<BRANCH_VERSION> → v<NEXT_SLOT>`。
+
+---
+
+## Step 3.5: Slop scan（advisory）
+
+変更 file に slop scan を実行し、AI コードの quality issue（empty catch、redundant `return await`、過度な抽象化）を catch する：
+
+```bash
+bun run slop:diff origin/<base> 2>/dev/null || true
+```
+
+findings が報告されたら、review 出力に informational diagnostic として含める。slop findings は advisory、決して blocking ではない。slop:diff が利用不可（例：slop-scan 未インストール）なら、本 step を silent に skip。
+
+---
+
+{{LEARNINGS_SEARCH}}
+
+## Step 4: Critical pass（core review）
+
+checklist の CRITICAL カテゴリを diff に対して適用：
+SQL & Data Safety、Race Conditions & Concurrency、LLM Output Trust Boundary、Shell Injection、Enum & Value Completeness。
+
+checklist に残っている INFORMATIONAL カテゴリも適用（Async/Sync Mixing、Column/Field Name Safety、LLM Prompt Issues、Type Coercion、View/Frontend、Time Window Safety、Completeness Gaps、Distribution & CI/CD）。
+
+**Enum & Value Completeness は diff の OUTSIDE のコードを読む必要がある。** diff が新 enum 値、status、tier、type 定数を導入した場合、Grep で sibling 値を参照する全 file を見つけ、Read で各 file を読み、新値が処理されているか check する。これは within-diff review では不十分な唯一のカテゴリ。
+
+**Search-before-recommending:** fix pattern を推奨する際（特に concurrency、caching、auth、framework 固有挙動）：
+- pattern が使用中の framework version で current best practice か検証
+- workaround を推奨する前に、新 version で組み込み解決策が存在するか check
+- API 署名を current docs に対して検証（API は version 間で変わる）
+
+数秒で済み、古い pattern 推奨を防ぐ。WebSearch が利用不可なら、note して in-distribution の知識で進む。
+
+checklist 指定の出力形式に従う。suppressions を尊重する — 「DO NOT flag」section に list された項目は flag **しない**。
+
+{{CONFIDENCE_CALIBRATION}}
+
+---
+
+{{REVIEW_ARMY}}
+
+---
+
+## Step 5: Fix-First Review
+
+**全 finding に action — critical だけではない。**
+
+{{CROSS_REVIEW_DEDUP}}
+
+### Step 5a: 各 finding を分類
+
+各 finding を checklist.md の Fix-First Heuristic に従って AUTO-FIX または ASK に分類。Critical findings は ASK 寄り、informational findings は AUTO-FIX 寄り。
+
+**Test stub override:** `test_stub` field を持つ finding（specialist が生成）は、元の分類に関わらず ASK に再分類。ASK 項目を提示する際、提案された test file path と test code を表示。ユーザーが test 作成を承認 / skip。承認されたら fix + test file を書く。test file path は finding の `path` から project convention で derive（RSpec は `spec/`、Jest/Vitest は `__tests__/`、pytest は `test_` prefix、Go は `_test.go` suffix）。test file が既に存在すれば、新 test を append する。出力：`[FIXED + TEST] [file:line] Problem -> fix + test at [test_path]`
+
+### Step 5b: 全 AUTO-FIX 項目を auto-fix
+
+各 fix を直接適用。各々について 1 行 summary を出力：
+`[AUTO-FIXED] [file:line] Problem → 何をしたか`
+
+### Step 5c: ASK 項目を batch で確認
+
+ASK 項目が残っていれば、1 つの AskUserQuestion で提示：
+
+- 各項目を番号、severity label、問題、推奨 fix と共に list
+- 各項目の選択肢：A) 推奨通り fix、B) Skip
+- 全体の RECOMMENDATION を含める
+
+例：
+```
+I auto-fixed 5 issues. 2 need your input:
+
+1. [CRITICAL] app/models/post.rb:42 — Race condition in status transition
+   Fix: Add `WHERE status = 'draft'` to the UPDATE
+   → A) Fix  B) Skip
+
+2. [INFORMATIONAL] app/services/generator.rb:88 — LLM output not type-checked before DB write
+   Fix: Add JSON schema validation
+   → A) Fix  B) Skip
+
+RECOMMENDATION: Fix both — #1 is a real race condition, #2 prevents silent data corruption.
+```
+
+ASK 項目が 3 件以下なら、batch ではなく個別の AskUserQuestion call も可。
+
+### Step 5d: ユーザー承認した fix を適用
+
+ユーザーが「Fix」を選んだ項目について fix を適用。何を fix したか出力。
+
+ASK 項目が無ければ（全て AUTO-FIX）、質問を skip する。
+
+### 主張の検証
+
+最終 review 出力を生成する前に：
+- 「この pattern は安全」と主張するなら → 安全性を証明する具体的行を引用
+- 「これは他で処理されている」と主張するなら → handling code を読み、引用
+- 「test がこれを cover している」と主張するなら → test file と method 名を name
+- 「likely handled」「probably tested」と決して言わない — 検証するか、unknown として flag
+
+**合理化の予防:** 「これは fine そう」は finding ではない。fine である証拠を引用するか、unverified として flag するか。
+
+### Greptile コメント解決
+
+自分の findings 出力後、Step 2.5 で Greptile コメントが分類されていれば：
+
+**出力 header に Greptile summary を含める：** `+ N Greptile comments (X valid, Y fixed, Z FP)`
+
+任意のコメントに reply する前に、greptile-triage.md の **Escalation Detection** algorithm を実行し、Tier 1（friendly）または Tier 2（firm）の reply template を決定する。
+
+1. **VALID & ACTIONABLE コメント:** これらは findings に含まれる — Fix-First flow に従う（mechanical なら auto-fix、それ以外は ASK に batch）（A: 今 fix する、B: 認識する、C: 偽陽性）。ユーザーが A（fix）を選んだら、greptile-triage.md の **Fix reply template** で reply（inline diff + 説明を含む）。ユーザーが C（偽陽性）を選んだら、**False Positive reply template** で reply（証拠 + 推奨 re-rank を含む）、per-project と global の greptile-history 両方に保存。
+
+2. **FALSE POSITIVE コメント:** 各々を AskUserQuestion で提示：
+   - Greptile コメントを表示：file:line（または [top-level]）+ body summary + permalink URL
+   - なぜ偽陽性かを簡潔に説明
+   - 選択肢：
+     - A) Greptile に reply してこれが間違っている理由を説明（明らかに間違っているなら推奨）
+     - B) それでも fix する（low-effort で害が無ければ）
+     - C) Ignore — reply も fix もしない
+
+   ユーザーが A を選んだら、greptile-triage.md の **False Positive reply template** で reply（証拠 + 推奨 re-rank を含む）、per-project と global の greptile-history 両方に保存。
+
+3. **VALID BUT ALREADY FIXED コメント:** greptile-triage.md の **Already Fixed reply template** で reply — AskUserQuestion 不要：
+   - 何をしたか + fixing commit SHA を含める
+   - per-project と global の greptile-history 両方に保存
+
+4. **SUPPRESSED コメント:** silent に skip — 過去の triage で既知の偽陽性。
+
+---
+
+## Step 5.5: TODOS cross-reference
+
+repository root の `TODOS.md` を読む（存在すれば）。PR を open TODO に対して cross-reference：
+
+- **本 PR が open TODO を close するか？** Yes なら、出力に該当項目を note：「This PR addresses TODO: <title>」
+- **本 PR が TODO 化すべき作業を生むか？** Yes なら、informational finding として flag。
+- **本 review の文脈となる関連 TODO があるか？** Yes なら、関連 findings 議論時に参照する。
+
+`TODOS.md` が存在しなければ、本 step を silent に skip。
+
+---
+
+## Step 5.6: Documentation staleness check
+
+diff を documentation files に対して cross-reference する。repo root の各 `.md` file（README.md、ARCHITECTURE.md、CONTRIBUTING.md、CLAUDE.md 等）について：
+
+1. diff のコード変更が、その doc file が記述する feature / component / workflow に影響するか check。
+2. doc file が本 branch で更新されていないがそれが記述するコードが変更されていれば、INFORMATIONAL finding として flag：
+   "Documentation may be stale: [file] describes [feature/component] but code changed in this branch. Consider running `/document-release`."
+
+これは informational のみ — critical にはしない。fix action は `/document-release`。
+
+doc file が存在しなければ、本 step を silent に skip。
+
+---
+
+{{ADVERSARIAL_STEP}}
+
+## Step 5.8: Eng Review 結果を永続化
+
+全 review pass 完了後、最終 `/review` 結果を永続化し、`/ship` が本 branch で Eng Review が走ったことを認識できるようにする。
+
+実行：
+
+```bash
+~/.claude/skills/uzustack/bin/uzustack-review-log '{"skill":"review","timestamp":"TIMESTAMP","status":"STATUS","issues_found":N,"critical":N,"informational":N,"quality_score":SCORE,"specialists":SPECIALISTS_JSON,"findings":FINDINGS_JSON,"commit":"COMMIT"}'
+```
+
+置換：
+- `TIMESTAMP` = ISO 8601 datetime
+- `STATUS` = Fix-First 処理と adversarial review 後に未解決 finding が無ければ `"clean"`、それ以外は `"issues_found"`
+- `issues_found` = 残り未解決 findings の総数
+- `critical` = 残り未解決 critical findings
+- `informational` = 残り未解決 informational findings
+- `quality_score` = Step 4.6 で計算した PR Quality Score（例：7.5）。specialists が skip された場合（小 diff）、`10.0` を使う
+- `specialists` = Step 4.6 で compile した per-specialist stats object。考慮された各 specialist は entry を得る：dispatched なら `{"dispatched":true/false,"findings":N,"critical":N,"informational":N}`、skip された場合は `{"dispatched":false,"reason":"scope|gated"}`。Design specialist を含める。例：`{"testing":{"dispatched":true,"findings":2,"critical":0,"informational":2},"security":{"dispatched":false,"reason":"scope"}}`
+- `findings` = Step 5 からの per-finding records 配列。各 finding（critical pass + specialists から）は以下を含む：`{"fingerprint":"path:line:category","severity":"CRITICAL|INFORMATIONAL","action":"ACTION"}`。ACTION は `"auto-fixed"`（Step 5b）、`"fixed"`（Step 5d でユーザー承認）、`"skipped"`（Step 5c でユーザーが Skip 選択）。Step 5.0 の suppressed findings は **含めない**（過去の review entry に既に記録済）。
+- `COMMIT` = `git rev-parse --short HEAD` の出力
+
+{{LEARNINGS_LOG}}
+
+review が real review 完了前に early exit した場合（例：base branch に対する diff なし）、本 entry を **書かない**。
+
+## Important Rules
+
+- **Comment する前に diff を FULL に読む。** diff 内で既に対処済の issue は flag しない。
+- **Fix-first、read-only ではない。** AUTO-FIX 項目は直接適用。ASK 項目はユーザー承認後にのみ適用。commit / push / PR 作成は決してしない — それは /ship の仕事。
+- **簡潔に。** 1 行 problem、1 行 fix。前置き無し。
+- **真の問題のみ flag する。** 問題ないものは skip。
+- **Greptile reply template を greptile-triage.md から使う。** 全 reply は証拠を含む。曖昧な reply は決して post しない。

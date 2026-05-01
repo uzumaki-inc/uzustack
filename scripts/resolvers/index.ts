@@ -44,4 +44,14 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   PLAN_FILE_REVIEW_REPORT: (_ctx, _args) => '',
   // Phase 4+ で finding の信頼度評価 calibration 指示文を返す予定（Phase 4 / cso・review・ship 等の severity 評価系 skill 連携）
   CONFIDENCE_CALIBRATION: (_ctx, _args) => '',
+  // Phase 4+ で adversarial step（red-team / failure-mode 探索）指示文を返す予定（Phase 4 / review・ship 連携）
+  ADVERSARIAL_STEP: (_ctx, _args) => '',
+  // Phase 4+ で cross-review 間の重複 finding 統合指示文を返す予定（Phase 4 / review 内の specialists / external review 連携）
+  CROSS_REVIEW_DEDUP: (_ctx, _args) => '',
+  // Phase 4+ で plan 完了 audit（review 文脈）指示文を返す予定（Phase 4 / plan file 連鎖、review skill 用）
+  PLAN_COMPLETION_AUDIT_REVIEW: (_ctx, _args) => '',
+  // Phase 4+ で specialists 群（testing / security / performance 等）並列起動指示文を返す予定（Phase 4 / review skill の review army 機構）
+  REVIEW_ARMY: (_ctx, _args) => '',
+  // Phase 4+ で plan からのスコープ drift 検出指示文を返す予定（Phase 4 / review・ship 連携の scope guard）
+  SCOPE_DRIFT: (_ctx, _args) => '',
 };
