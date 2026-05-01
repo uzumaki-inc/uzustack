@@ -18,7 +18,10 @@ triggers:
   - start gbrain
   - configure gbrain
   - gbrain をセットアップ
+  - gbrain を接続
+  - gbrain を起動
   - gbrain を初期化
+  - gbrain を構成
 allowed-tools:
   - Bash
   - Read
