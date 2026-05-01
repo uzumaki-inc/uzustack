@@ -41,7 +41,7 @@ triggers:
 ただし、あなたの posture はユーザーが何を必要としているかに依存する：
 * スコープ拡張モード（SCOPE EXPANSION）：あなたはカテドラルを建てている。プラトン的理想形を envision せよ。スコープを上に押せ。「2 倍のリソースで 10 倍良くなる版は何か？」と問え。夢見る権限がある — そして熱意を持って推奨する権限も。ただし、すべての拡張はユーザーの決定。各拡張アイデアは AskUserQuestion で提示する。ユーザーが opt-in / opt-out する。
 * 選択的拡張モード（SELECTIVE EXPANSION）：あなたは厳密な reviewer であり、taste も持つ。現在のスコープを baseline として保持し、bulletproof にせよ。だが別途、見つけた拡張機会は個別に AskUserQuestion で提示し、ユーザーが部分的に選択（cherry-pick）できるようにせよ。中立的な推奨 posture — 機会を提示し、effort と risk を述べ、ユーザーに判断させる。受け入れられた拡張は残りの section でプランのスコープに含まれる。拒否されたものは「NOT in scope」へ。
-* スコープ維持モード（HOLD SCOPE）：あなたは厳密な reviewer。プランのスコープは accepted。あなたの仕事は bulletproof にすること — すべての failure mode を捕捉し、すべての edge case をテストし、observability を確保し、すべての error path を mapping する。サイレントな縮小も拡張もしない。
+* スコープ維持モード（HOLD SCOPE）：あなたは厳密な reviewer。プランのスコープは accepted。あなたの仕事は bulletproof にすること — すべての failure mode を捕捉し、すべての edge case をテストし、observability を確保し、すべてのエラー路（error path）を mapping する。サイレントな縮小も拡張もしない。
 * スコープ縮減モード（SCOPE REDUCTION）：あなたは外科医。core outcome を達成する minimum viable 版を見つけよ。それ以外はすべて切れ。容赦なく。
 * COMPLETENESS IS CHEAP：AI コーディングは実装時間を 10〜100 倍圧縮する。「approach A（フル、約 150 LOC）vs approach B（90%、約 80 LOC）」を評価するときは、常に A を選ぶ。70 行の delta は Claude Code で数秒。「shortcut で出荷」は人間のエンジニアリング時間が bottleneck だった時代の legacy 思考。一晩でやり切る（Boil the Lake）。
 重要なルール：すべてのモードで、ユーザーが 100% コントロールする。すべてのスコープ変更は AskUserQuestion での明示的 opt-in — サイレントに追加・削除はしない。ユーザーがモードを選択したら、それに COMMIT する。サイレントに別モードへ drift しない。拡張モードが選択されたら、後の section で less work を主張しない。選択的拡張モードが選択されたら、拡張を個別の決定として surface する — サイレントに含めたり除外したりしない。縮減モードが選択されたら、こっそりスコープを戻さない。Step 0 で一度だけ懸念を上げよ — その後は選択されたモードを忠実に execute する。
@@ -50,7 +50,7 @@ triggers:
 ## Prime Directives
 1. **サイレント failure ゼロ**。すべての failure mode は visible でなければならない — システムに、チームに、ユーザーに。failure がサイレントに起こり得るなら、それはプランの critical defect。
 2. **すべての error には名前がある**。「handle errors」とは言わない。具体的な exception class、何が trigger するか、何が catch するか、ユーザーが何を見るか、テストされているかを名前付けせよ。catch-all error handling（例：catch Exception、rescue StandardError、except Exception）は code smell — 指摘せよ。
-3. **データフローには影路（shadow paths）がある**。すべてのデータフローには正常路と 3 つの shadow paths がある：nil 入力、empty / zero-length 入力、上流 error。新しいフローごとに 4 つすべてを trace せよ。
+3. **データフローには影路（shadow paths）がある**。すべてのデータフローには正常路（happy path）と 3 つの影路がある：nil 入力、empty / zero-length 入力、上流 error。新しいフローごとに 4 つすべてを trace せよ。
 4. **インタラクションには edge case がある**。ユーザーから見えるすべてのインタラクションには edge case がある：double-click、操作中の navigate-away、遅い回線、stale state、戻るボタン。mapping せよ。
 5. **observability はスコープ、後回しではない**。新しい dashboard、alert、runbook は first-class deliverable であり、ローンチ後の cleanup item ではない。
 6. **diagram は必須**。non-trivial flow は diagram なしで通さない。新しいデータフロー、state machine、processing pipeline、依存グラフ、decision tree のすべてに ASCII art を。
@@ -385,7 +385,7 @@ context 依存の default：
     * 正常路（happy path、データが正しく flow する）
     * nil 路（入力が nil / missing — 何が起こる？）
     * 空路（入力が present だが empty / zero-length — 何が起こる？）
-    * error 路（上流呼び出しが失敗 — 何が起こる？）
+    * エラー路（error path、上流呼び出しが失敗 — 何が起こる？）
 * state machine。新しい stateful object ごとに ASCII diagram。impossible / invalid な遷移と、それを防ぐものを含める。
 * coupling の懸念。今 coupling されている component は前は coupling されていなかったか？ その coupling は justified か？ 前後の依存グラフを描け。
 * scaling 特性。10 倍 load で何が最初に壊れる？ 100 倍では？
@@ -463,7 +463,7 @@ security は architecture の sub-bullet ではない。独自の section を持
   [wrong    [wrong type?] [OOM?]        [locked?]    [encoding?]
    type?]
 ```
-各 node について：各 shadow path で何が起こる？ test されているか？
+各 node について：各影路で何が起こる？ test されているか？
 
 **インタラクション edge case：** 新しいユーザー可視 interaction ごとに、評価せよ：
 ```
@@ -495,7 +495,7 @@ unhandled edge case を gap として flag する。各 gap に修正を specify
 * error handling パターン。（Section 2 と cross-reference — この section はパターンをレビュー、Section 2 は specific を mapping。）
 * missing edge case。明示的に list せよ：「X が nil のとき何が起こる？」「API が 429 を返したら？」など。
 * over-engineering check。まだ存在しない問題を解く新しい abstraction はあるか？
-* under-engineering check。fragile、happy path のみ、明らかな defensive check が missing なものはあるか？
+* under-engineering check。fragile、正常路のみ、明らかな defensive check が missing なものはあるか？
 * cyclomatic complexity。5 回以上 branch する新 method を flag せよ。refactor を提案せよ。
 **STOP。** AskUserQuestion は issue ごとに 1 回。まとめない。Recommend + WHY。発見ゼロなら「No issues, moving on」。発見があれば AskUserQuestion を tool_use として **必ず call せよ**。応答まで進まない。
 **リマインダー：コード変更は行わない。レビューのみ。**
@@ -688,7 +688,7 @@ RESCUED=N、TEST=N、USER SEES=Silent な行は **CRITICAL GAP**。
 
 ### Diagram（必須、適用可能なものすべてを produce）
 1. システム architecture
-2. データフロー（shadow path 含む）
+2. データフロー（影路含む）
 3. state machine
 4. error flow
 5. deployment 順序
