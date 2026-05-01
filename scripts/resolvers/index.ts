@@ -90,4 +90,6 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   DESIGN_OUTSIDE_VOICES: (_ctx, _args) => '',
   // Phase 4+ で design-shotgun loop（multi-variant 生成 / 比較 board / iterate）の起動指示文を返す予定（Phase 4 / design-shotgun・design-consultation 連携）
   DESIGN_SHOTGUN_LOOP: (_ctx, _args) => '',
+  // Phase 4+ で UX 設計原則（accessibility / hierarchy / contrast 等）を返す予定（Phase 4 / design-html・design-review 連携）
+  UX_PRINCIPLES: (_ctx, _args) => '',
 };
