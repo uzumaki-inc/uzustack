@@ -16,9 +16,9 @@ uzustack は **個人メンテナーによる OSS** です：
 
 ---
 
-## Phase 進捗（2026-05-02 時点：Phase 3 + Phase 3.5 totally DONE）
+## Phase 進捗（2026-05-02 時点）
 
-uzustack は守破離の「守 = gstack を取込み、Type 1 として翻訳・試用を蓄積」を完成させ、Phase 4（連鎖）/ Phase 5（記憶）に進む段階に到達しました。
+Phase 3 + Phase 3.5 で「Phase 3 で対応すべき型」の取り込みを完了し、Phase 4（連鎖）/ Phase 5（記憶）に進む段階に到達。守破離の **守の完成** は Phase 6（取り込めなかった 10 件スタブの Type 1/3 判定）で達成。
 
 **Phase 3「魂を吹き込む」 — runtime 完璧実装（cluster A-D 完了）**:
 
@@ -28,12 +28,12 @@ uzustack は守破離の「守 = gstack を取込み、Type 1 として翻訳・
 - design 翻訳 + gen-skill-docs all-host + ETHOS.md 翻訳（cluster D = step-44〜47）
 - voice 翻案ガイドライン v1 確立（cluster B step-39 集約）
 
-**Phase 3.5「型を取り込み切る」 — Type 1 機械翻訳完遂（C1〜C7、step-49〜76）**:
+**Phase 3.5「Phase 3 で対応すべき型を取り込み切る」 — Type 1 機械翻訳完遂（C1〜C7、step-49〜76）**:
 
 - 残り 27 step を完遂（PR #66〜#118 = 27 PR merged）：実翻訳 25 件 + Phase 6 予約スタブ 2 件（step-51 pair-agent / step-54 benchmark）
 - C1 = step-49 plan-ceo-review で voice 規約 v2 確立（経営者思考特性 / persona / Mode / Data flow 訳語）
 - C2〜C7 cluster で skill 翻訳完遂（PR #66〜#118）
-- step-76 で setup guard 整理 + Phase 3 + 3.5 totally DONE 判定 + voice 規約 v2 拡張集約
+- step-76 で setup guard 整理 + Phase 3 + 3.5 の型取り込み完了判定 + voice 規約 v2 拡張集約
 
 **現在の uzustack 状態**:
 
@@ -42,10 +42,11 @@ uzustack は守破離の「守 = gstack を取込み、Type 1 として翻訳・
 - Phase 6 予約スタブ: 10 件（step-46 で 8 件 = browse / qa / qa-only / canary / setup-browser-cookies / open-uzustack-browser / connect-chrome / make-pdf、step-51 で pair-agent、step-54 で benchmark）
 - 合計：top-level skill directory 40 件
 
-**Phase 4 / 5 への接続**:
+**Phase 4 / 5 / 6 への接続**:
 
 - **Phase 4「絆を結ぶ」**: hook + 連鎖機構を runtime 上に実装。`freeze` / `unfreeze` skill pair 翻訳 + `investigate` の hook 復活 + obsidian-audit 系の連鎖実装
 - **Phase 5「記憶が編まれる」**: learnings 機構実装。`{{LEARNINGS_*}}` placeholder 展開 + `learn` skill 翻訳 + マシン間記憶同期 skill 連携
+- **Phase 6「守の完成」**: subTree pull 集約 directory `_imports/` 構築 + Phase 6 予約スタブ 10 件の Type 1/3 判定（subTree pull で取り込めれば Type 1、取り込めなければ Type 3 で守対象外）。両方の判定が完了した瞬間が **守の完成**
 
 ---
 
