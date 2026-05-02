@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # uzustack setup — register skills with Claude Code / Codex / Kiro / Factory / OpenCode
 #
-# Phase 3 step-33B: gstack/setup（1011 行）の構造を完璧複製したもの。
-# 文字列置換は CONTRIBUTING.md「翻訳の置換ルール表 v1」に従う。
-# uzustack 未翻訳の bin / skill / file への参照は元 gstack の `[ -x ... ]` /
-# `[ -f ... ]` / `[ -d ... ]` ガードで自然に no-op になる。それで足りない
-# `bun run XXX` 呼び出しと browse / Playwright 関連の処理は、setup 冒頭で
-# 1 度だけ定義する境界（_has_bun_script / HAS_BROWSE）で guard する。
-# 「これは入れる、これは外す」の都度判断は導入しない（Phase 3 規律：
-# 判断を 1 度集中、以降ゼロで機械的に手を動かし続ける）。
-# bin 翻訳が step-35〜39 で進むと、該当処理が自動的に有効化される。
-# step-42 で全体動作確認する。
+# Phase 3 step-33B で gstack/setup の構造を完璧複製、Phase 3 cluster A-D + Phase 3.5
+# step-49〜75（Type 1 機械翻訳完遂）を経て Phase 3.5 step-76 で guard 整理を実施。
+# 残る境界は HAS_BROWSE のみ：browse/ は Phase 6 で uzustack 独自実装する方針
+# （cluster D B = subtree 温存）のため、`browse/src/` 存在で「本物の翻訳が来た」
+# を判定する境界マーカー。
+# step-46 cluster D-C で配置した Phase 6 予約スタブ 8 件
+# （browse / qa / qa-only / canary / setup-browser-cookies / open-uzustack-browser /
+#  connect-chrome / make-pdf）は skill catalog の一部として top-level に配置されるが、
+# setup の build 経路には載せない（HAS_BROWSE は false のまま）。
+# 文字列置換は CONTRIBUTING.md「翻訳の置換ルール表 v1/v2」に従う。
 
 set -e
 umask 077  # Restrict new files to owner-only (0o600 files, 0o700 dirs)
@@ -42,19 +42,13 @@ case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*|Windows_NT) IS_WINDOWS=1 ;;
 esac
 
-# ─── Boundary guards (uzustack 固有、Phase 3 規律で 1 度だけ定義) ──────
-# `bun run <script>` を呼ぶ前にこの helper で package.json への登録を確認する。
-# これにより未翻訳の bun script（build / gen:skill-docs --host XXX 等）は静かに
-# skip され、script 追加と同時に自動的に有効化される。
-_has_bun_script() {
-  local script_name="$1"
-  [ -f "$SOURCE_UZUSTACK_DIR/package.json" ] && grep -q "\"$script_name\"" "$SOURCE_UZUSTACK_DIR/package.json"
-}
-
-# browse / Playwright / codesign / coreutils 関連は、uzustack に browse/ ディレクトリ
-# が無い間は 1 段ブロックで guard する。browse 翻訳と同時に自動的に有効化される。
+# ─── Boundary guard: HAS_BROWSE（Phase 6 までの境界マーカー）──────
+# browse / Playwright / codesign / coreutils 関連は、uzustack 独自 browse 実装が
+# Phase 6 で来るまで skip する。判定基準は `browse/src/` 存在 = 本物の翻訳。
+# step-46 cluster D-C で配置した Phase 6 予約スタブ（browse/SKILL.md.tmpl のみ）
+# は誤発火を防ぐため src 存在で判定する。
 HAS_BROWSE=0
-if [ -d "$SOURCE_UZUSTACK_DIR/browse" ]; then
+if [ -d "$SOURCE_UZUSTACK_DIR/browse/src" ]; then
   HAS_BROWSE=1
 fi
 
@@ -261,7 +255,7 @@ if [ "$HAS_BROWSE" -eq 1 ]; then
     NEEDS_BUILD=1
   fi
 
-  if [ "$NEEDS_BUILD" -eq 1 ] && _has_bun_script build; then
+  if [ "$NEEDS_BUILD" -eq 1 ]; then
     log "Building browse binary..."
     (
       cd "$SOURCE_UZUSTACK_DIR"
@@ -308,7 +302,7 @@ if [ "$HAS_BROWSE" -eq 1 ]; then
     fi
   fi
 
-  if [ ! -x "$BROWSE_BIN" ] && _has_bun_script build; then
+  if [ ! -x "$BROWSE_BIN" ]; then
     echo "uzustack setup failed: browse binary missing at $BROWSE_BIN" >&2
     exit 1
   fi
@@ -322,7 +316,7 @@ fi
 AGENTS_DIR="$SOURCE_UZUSTACK_DIR/.agents/skills"
 NEEDS_AGENTS_GEN=1
 
-if [ "$NEEDS_AGENTS_GEN" -eq 1 ] && [ "${NEEDS_BUILD:-0}" -eq 0 ] && _has_bun_script "gen:skill-docs"; then
+if [ "$NEEDS_AGENTS_GEN" -eq 1 ] && [ "${NEEDS_BUILD:-0}" -eq 0 ]; then
   log "Generating .agents/ skill docs..."
   (
     cd "$SOURCE_UZUSTACK_DIR"
@@ -332,7 +326,7 @@ if [ "$NEEDS_AGENTS_GEN" -eq 1 ] && [ "${NEEDS_BUILD:-0}" -eq 0 ] && _has_bun_sc
 fi
 
 # 1c. Generate .factory/ Factory Droid skill docs
-if [ "$INSTALL_FACTORY" -eq 1 ] && [ "${NEEDS_BUILD:-0}" -eq 0 ] && _has_bun_script "gen:skill-docs"; then
+if [ "$INSTALL_FACTORY" -eq 1 ] && [ "${NEEDS_BUILD:-0}" -eq 0 ]; then
   log "Generating .factory/ skill docs..."
   (
     cd "$SOURCE_UZUSTACK_DIR"
@@ -342,7 +336,7 @@ if [ "$INSTALL_FACTORY" -eq 1 ] && [ "${NEEDS_BUILD:-0}" -eq 0 ] && _has_bun_scr
 fi
 
 # 1d. Generate .opencode/ OpenCode skill docs
-if [ "$INSTALL_OPENCODE" -eq 1 ] && [ "${NEEDS_BUILD:-0}" -eq 0 ] && _has_bun_script "gen:skill-docs"; then
+if [ "$INSTALL_OPENCODE" -eq 1 ] && [ "${NEEDS_BUILD:-0}" -eq 0 ]; then
   log "Generating .opencode/ skill docs..."
   (
     cd "$SOURCE_UZUSTACK_DIR"
@@ -532,7 +526,7 @@ link_codex_skill_dirs() {
   local agents_dir="$uzustack_dir/.agents/skills"
   local linked=()
 
-  if [ ! -d "$agents_dir" ] && _has_bun_script "gen:skill-docs"; then
+  if [ ! -d "$agents_dir" ]; then
     echo "  Generating .agents/ skill docs..."
     ( cd "$uzustack_dir" && bun run gen:skill-docs --host codex )
   fi
@@ -737,7 +731,7 @@ link_factory_skill_dirs() {
   local factory_dir="$uzustack_dir/.factory/skills"
   local linked=()
 
-  if [ ! -d "$factory_dir" ] && _has_bun_script "gen:skill-docs"; then
+  if [ ! -d "$factory_dir" ]; then
     echo "  Generating .factory/ skill docs..."
     ( cd "$uzustack_dir" && bun run gen:skill-docs --host factory )
   fi
@@ -769,7 +763,7 @@ link_opencode_skill_dirs() {
   local opencode_dir="$uzustack_dir/.opencode/skills"
   local linked=()
 
-  if [ ! -d "$opencode_dir" ] && _has_bun_script "gen:skill-docs"; then
+  if [ ! -d "$opencode_dir" ]; then
     echo "  Generating .opencode/ skill docs..."
     ( cd "$uzustack_dir" && bun run gen:skill-docs --host opencode )
   fi
@@ -813,9 +807,7 @@ if [ "$INSTALL_CLAUDE" -eq 1 ]; then
     fi
     # Patch name: fields BEFORE creating symlinks so link_claude_skill_dirs
     # reads the correct (patched) name: values for symlink naming
-    if [ -x "$SOURCE_UZUSTACK_DIR/bin/uzustack-patch-names" ]; then
-      "$SOURCE_UZUSTACK_DIR/bin/uzustack-patch-names" "$SOURCE_UZUSTACK_DIR" "$SKILL_PREFIX"
-    fi
+    "$SOURCE_UZUSTACK_DIR/bin/uzustack-patch-names" "$SOURCE_UZUSTACK_DIR" "$SKILL_PREFIX"
     link_claude_skill_dirs "$SOURCE_UZUSTACK_DIR" "$INSTALL_SKILLS_DIR"
     # Self-healing: re-run uzustack-relink to ensure name: fields and directory
     # names are consistent with the config. This catches cases where an interrupted
@@ -829,10 +821,8 @@ if [ "$INSTALL_CLAUDE" -eq 1 ]; then
     if [ "$SKILL_PREFIX" -eq 1 ]; then
       _OGB_LINK="$INSTALL_SKILLS_DIR/uzustack-connect-chrome"
     fi
-    if [ -d "$SOURCE_UZUSTACK_DIR/open-uzustack-browser" ]; then
-      if [ -L "$_OGB_LINK" ] || [ ! -e "$_OGB_LINK" ]; then
-        ln -snf "uzustack/open-uzustack-browser" "$_OGB_LINK"
-      fi
+    if [ -L "$_OGB_LINK" ] || [ ! -e "$_OGB_LINK" ]; then
+      ln -snf "uzustack/open-uzustack-browser" "$_OGB_LINK"
     fi
     if [ "$LOCAL_INSTALL" -eq 1 ]; then
       log "uzustack ready (project-local)."
@@ -856,9 +846,7 @@ if [ "$INSTALL_CLAUDE" -eq 1 ]; then
     else
       cleanup_prefixed_claude_symlinks "$SOURCE_UZUSTACK_DIR" "$INSTALL_SKILLS_DIR"
     fi
-    if [ -x "$SOURCE_UZUSTACK_DIR/bin/uzustack-patch-names" ]; then
-      "$SOURCE_UZUSTACK_DIR/bin/uzustack-patch-names" "$SOURCE_UZUSTACK_DIR" "$SKILL_PREFIX"
-    fi
+    "$SOURCE_UZUSTACK_DIR/bin/uzustack-patch-names" "$SOURCE_UZUSTACK_DIR" "$SKILL_PREFIX"
     link_claude_skill_dirs "$SOURCE_UZUSTACK_DIR" "$INSTALL_SKILLS_DIR"
     UZUSTACK_RELINK="$SOURCE_UZUSTACK_DIR/bin/uzustack-relink"
     if [ -x "$UZUSTACK_RELINK" ]; then
@@ -868,10 +856,8 @@ if [ "$INSTALL_CLAUDE" -eq 1 ]; then
     if [ "$SKILL_PREFIX" -eq 1 ]; then
       _OGB_LINK="$INSTALL_SKILLS_DIR/uzustack-connect-chrome"
     fi
-    if [ -d "$SOURCE_UZUSTACK_DIR/open-uzustack-browser" ]; then
-      if [ -L "$_OGB_LINK" ] || [ ! -e "$_OGB_LINK" ]; then
-        ln -snf "uzustack/open-uzustack-browser" "$_OGB_LINK"
-      fi
+    if [ -L "$_OGB_LINK" ] || [ ! -e "$_OGB_LINK" ]; then
+      ln -snf "uzustack/open-uzustack-browser" "$_OGB_LINK"
     fi
     log "uzustack ready (claude)."
     [ "$HAS_BROWSE" -eq 1 ] && log "  browse: $BROWSE_BIN"
@@ -909,14 +895,17 @@ if [ "$INSTALL_KIRO" -eq 1 ]; then
   KIRO_UZUSTACK="$KIRO_SKILLS/uzustack"
   # Remove old whole-dir symlink from previous installs
   [ -L "$KIRO_UZUSTACK" ] && rm -f "$KIRO_UZUSTACK"
-  mkdir -p "$KIRO_UZUSTACK" "$KIRO_UZUSTACK/browse" "$KIRO_UZUSTACK/uzustack-upgrade" "$KIRO_UZUSTACK/review"
-  if [ -d "$SOURCE_UZUSTACK_DIR/bin" ]; then
-    ln -snf "$SOURCE_UZUSTACK_DIR/bin" "$KIRO_UZUSTACK/bin"
-  fi
+  mkdir -p "$KIRO_UZUSTACK" "$KIRO_UZUSTACK/uzustack-upgrade" "$KIRO_UZUSTACK/review"
+  ln -snf "$SOURCE_UZUSTACK_DIR/bin" "$KIRO_UZUSTACK/bin"
+  # browse/dist / browse/bin は Phase 6 まで永続的に false（HAS_BROWSE 境界と同期、
+  # cluster D B 方針で browse/ subtree 温存、Phase 6 独自実装で自動有効化）。
+  # mkdir は内側に移動して HAS_BROWSE=0 時に空 browse/ 残置を防ぐ。
   if [ -d "$SOURCE_UZUSTACK_DIR/browse/dist" ]; then
+    mkdir -p "$KIRO_UZUSTACK/browse"
     ln -snf "$SOURCE_UZUSTACK_DIR/browse/dist" "$KIRO_UZUSTACK/browse/dist"
   fi
   if [ -d "$SOURCE_UZUSTACK_DIR/browse/bin" ]; then
+    mkdir -p "$KIRO_UZUSTACK/browse"
     ln -snf "$SOURCE_UZUSTACK_DIR/browse/bin" "$KIRO_UZUSTACK/browse/bin"
   fi
   # ETHOS.md — referenced by "Search Before Building" in all skill preambles
@@ -935,12 +924,10 @@ if [ "$INSTALL_KIRO" -eq 1 ]; then
   done
 
   # Rewrite root SKILL.md paths for Kiro
-  if [ -f "$SOURCE_UZUSTACK_DIR/SKILL.md" ]; then
-    sed -e "s|~/.claude/skills/uzustack|~/.kiro/skills/uzustack|g" \
-        -e "s|\.claude/skills/uzustack|.kiro/skills/uzustack|g" \
-        -e "s|\.claude/skills|.kiro/skills|g" \
-        "$SOURCE_UZUSTACK_DIR/SKILL.md" > "$KIRO_UZUSTACK/SKILL.md"
-  fi
+  sed -e "s|~/.claude/skills/uzustack|~/.kiro/skills/uzustack|g" \
+      -e "s|\.claude/skills/uzustack|.kiro/skills/uzustack|g" \
+      -e "s|\.claude/skills|.kiro/skills|g" \
+      "$SOURCE_UZUSTACK_DIR/SKILL.md" > "$KIRO_UZUSTACK/SKILL.md"
 
   if [ ! -d "$AGENTS_DIR" ]; then
     echo "  warning: no .agents/skills/ directory found — run 'bun run build' first" >&2
