@@ -259,6 +259,8 @@ uzustack は [`garrytan/gstack`](https://github.com/garrytan/gstack)（MIT Licen
 ## Related Documentation
 
 - [CONTRIBUTING.md](CONTRIBUTING.md) ― 開発者・コントリビューター向けガイド
+- [ARCHITECTURE.md](ARCHITECTURE.md) ― 3 場所 layout / skill typology / Phase progression / runtime / state 層の設計詳細
+- [CHANGELOG.md](CHANGELOG.md) ― release notes（Keep a Changelog 形式）
 - [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md) ― Phase 1〜3.5 の進捗履歴と主要 PR # 内訳
 - [docs/uzustack/translation-voice-guide.md](docs/uzustack/translation-voice-guide.md) ― 翻訳 voice ガイド + 訳語表（メンテナー向け）
 - [docs/uzustack/translation-rebase-fixes.md](docs/uzustack/translation-rebase-fixes.md) ― rebase 時に保持すべき uzustack 独自 fix
