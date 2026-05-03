@@ -152,19 +152,17 @@ voice 規約 v1（bin 翻訳時に確立、PR #40〜#48）+ v2 拡張（plan / s
 
 ## Phase progression（Phase 進捗）
 
-uzustack は **守破離** の段階で進化する：
+uzustack は **守破離** の段階で進化する：守（gstack 取り込みと型の確立、現在進行中）→ 破（個別 skill の Type 2 → Type 3 進化）→ 離（gstack 由来が独立期）。
+
+現在の Phase 進捗：
 
 | 段階 | Phase | 状態 |
 |---|---|---|
 | **守** | 0c〜3.5（完了 2026-05-02） | gstack を subtree で取り込み、型を確立。runtime + Type 1 翻訳 30 skill + Phase 6 予約スタブ 10 件が揃った |
 | **守** | 3.6（進行中） | 土台を構造化。`_upstream-sync/` directory 設計 + root file 4 件先行取込み |
-| **守** | 4 | hook + 連鎖機構（`freeze` / `unfreeze` skill pair 翻訳 + `investigate` の hook 復活 + obsidian-audit 系の連鎖実装）|
-| **守** | 5 | 記憶機構（`{{LEARNINGS_*}}` placeholder 展開 + `learn` skill 翻訳 + クロスマシン記憶同期）|
-| **守** | 6（守の完成） | subtree pull 集約 directory 構築 + Phase 6 予約スタブ 10 件の Type 1/3 判定 |
-| **破** | Phase 6 完了後 | 個別 skill が Type 2 → Type 3 の進化を繰り返す |
-| **離** | （未来） | gstack 由来（Type 1）が全て Type 3 化 or 削除された独立期 |
+| **守** | 4 | hook + 連鎖機構（`freeze` / `unfreeze` skill pair 翻訳 + `investigate` の hook 復活）|
 
-各 Phase の主要 PR # と完遂事項の詳細は [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md) を参照。
+各 Phase の主要 PR # と完遂事項の詳細は [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md)、守破離の概念詳細は [README.md](README.md#守破離uzustack-の進化段階) を参照。
 
 ---
 
@@ -172,7 +170,7 @@ uzustack は **守破離** の段階で進化する：
 
 `_upstream/gstack/` に gstack を subtree として保持。
 
-### 自動化（推奨、月 1 で動く）
+### 自動化（月 1 で動く）但し upstream-sync 設計を得て実施
 
 毎月 1 日 09:00 JST に GitHub Actions が自動で subtree pull → PR 作成（`.github/workflows/gstack-subtree-pull.yml`）。
 
