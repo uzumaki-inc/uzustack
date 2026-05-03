@@ -71,11 +71,9 @@ skill 実行の中間成果物（checkpoint / timeline / 学習履歴）は `~/.
 
 ## 守破離 / Phase 進捗
 
-uzustack は **守破離** の段階で進化する：守（gstack 取り込みと型の確立、現在進行中、Phase 0c〜6）→ 破（個別 skill の Type 2 → Type 3 進化）→ 離（gstack 由来が独立期）。
-
 現在は **Phase 3.6（進行中）**。型の取り込みは Phase 3.5 で完了（2026-05-02）、守の完成は Phase 6 で達成予定。
 
-進捗詳細と各 Phase の主要 PR # は [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md) と [ARCHITECTURE.md](ARCHITECTURE.md) の Phase progression section を参照。
+守破離の概念詳細は [README.md](README.md#守破離uzustack-の進化段階)、各 Phase の主要 PR # は [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md) と [ARCHITECTURE.md](ARCHITECTURE.md) の Phase progression section を参照。
 
 ## Related docs
 

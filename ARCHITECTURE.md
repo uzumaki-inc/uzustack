@@ -152,8 +152,6 @@ voice 規約 v1（bin 翻訳時に確立、PR #40〜#48）+ v2 拡張（plan / s
 
 ## Phase progression（Phase 進捗）
 
-uzustack は **守破離** の段階で進化する：守（gstack 取り込みと型の確立、現在進行中）→ 破（個別 skill の Type 2 → Type 3 進化）→ 離（gstack 由来が独立期）。
-
 現在の Phase 進捗：
 
 | 段階 | Phase | 状態 |
