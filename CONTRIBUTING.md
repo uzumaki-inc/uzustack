@@ -85,6 +85,8 @@ bin/dev-setup ~/path/to/your-project
 
 symlink を貼ったプロジェクトで Claude Code を起動し、`/investigate` 等のスキルが呼び出せることを確認してください。
 
+> 💡 **AI session 向け context**：Claude Code session で uzustack repo を開く場合、[CLAUDE.md](CLAUDE.md) が **AI 向け project context 専用** ファイルとして自動読込されます。**commands と個別運用手順は本 CONTRIBUTING.md に一本化** しています。
+
 ---
 
 ## Architecture（メンテナー / Contributor の場合）
