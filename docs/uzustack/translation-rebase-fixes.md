@@ -39,3 +39,43 @@ uzustack は `~/.uzustack/` で完結する世界線を持つ設計だが、 上
 | `setup` line 403 loop に `_upstream` EXCLUDE 追加 | gstack subtree pull の上書き対象を skill loop から除外。 line 404 の SKILL.md 存在 check で実質 skip されるが、 `_upstream/` 配下に SKILL.md が混入する将来の subtree 形態変化に対する safeguard | `setup` の `link_claude_skill_dirs()` |
 
 **rebase 時の保持**：上流 gstack の `setup` を翻訳取り込む時、 line 403 loop に `_upstream` EXCLUDE が抜けると同じ bug を再発する。 `bin/dev-setup` の `redirect_gstack_path()` 関数も上流に存在しないため、 上流差分を翻訳に取り込む時に該当しない。
+
+---
+
+## `_upstream/gstack/` 内で setup を走らせない（PR #131 step-86 / issue #132）
+
+**禁止事項**：`cd _upstream/gstack && ./setup` 等、 `_upstream/` 配下を CWD として gstack 本家 setup を実行してはならない。
+
+**理由**：
+
+- gstack 本家 setup は host 別の install 結果（`.claude/skills/`、 `.codex/skills/`、 `.factory/skills/` 等 11 host dir）を CWD 配下に作成する
+- これらは `_upstream/gstack/.gitignore` で全部 ignored = git track 外、 subtree pull の上書き対象でもない
+- しかし Claude Code の skill discovery 仕様（[Automatic discovery from nested directories](https://code.claude.com/docs/en/skills)）= **CWD 配下の `.claude/skills/` を再帰探索**するため、 `<repo>/_upstream/gstack/.claude/skills/` も discoverable
+- 結果：uzustack 翻訳済 skill（root level）と subtree 英語版（_upstream 配下）が **同じ skill name で重複表示**される（`/cont` 補完で `/context-save` が日本語 + 英語の 2 件 等）
+
+**運用ルール**：
+
+- gstack 本家 setup を試したい場合は **uzustack repo の外**で実行する（例：別 clone `~/src/gstack-test/` 等）
+- agentic session が誤って `_upstream/gstack/` 内で setup を起動した場合は、 即時に手動 cleanup（下記）を実行する
+
+**再発時の手動 cleanup**：
+
+```bash
+cd /path/to/uzustack
+rm -rf \
+  _upstream/gstack/.claude \
+  _upstream/gstack/.codex \
+  _upstream/gstack/.factory \
+  _upstream/gstack/.hermes \
+  _upstream/gstack/.gbrain \
+  _upstream/gstack/.kiro \
+  _upstream/gstack/.opencode \
+  _upstream/gstack/.openclaw \
+  _upstream/gstack/.slate \
+  _upstream/gstack/.cursor \
+  _upstream/gstack/.agents
+```
+
+これらは git track 外なので削除しても repo 状態は変わらず、 commit も発生しない（手動 1 度の cleanup として完結）。
+
+**memory 規律との整合**：`setup_no_artifact_cleanup.md`「環境固有の遺物処理は setup 自動化より手動 1 回」 に従い、 `bin/dev-setup` には組み込まず手動対処とする。
