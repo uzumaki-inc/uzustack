@@ -197,6 +197,10 @@ git subtree pull --prefix _upstream/gstack https://github.com/garrytan/gstack.gi
 
 `feature/sync-gstack-<日付>-<skill>` ブランチで再翻訳。詳細手順は [CONTRIBUTING.md](CONTRIBUTING.md#gstack-更新追従) を参照。
 
+### `_upstream/gstack/` 内で setup を走らせない
+
+`cd _upstream/gstack && ./setup` 等、 `_upstream/` 配下を CWD として gstack 本家 setup を実行してはならない。 Claude Code の skill discovery（CWD 配下の `.claude/skills/` を再帰探索する monorepo 仕様）により subtree 英語版が翻訳版と重複表示される。 host install dir（`.claude/skills/` 等 11 系統）は `_upstream/gstack/.gitignore` で git track 外、 subtree pull の上書き対象でもないため、 一度作られると物理 rm 必要。 詳細は [docs/uzustack/translation-rebase-fixes.md](docs/uzustack/translation-rebase-fixes.md) 参照（issue #132 / step-86）。
+
 `_upstream/gstack/` 配下の編集は禁止（subtree pull の上書き対象）。uzustack 独自編集は repo top の `<skill>/` 配下または root level で行う。
 
 ---

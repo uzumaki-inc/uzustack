@@ -183,6 +183,12 @@ gh pr create
 
 自動 PR の中に翻訳済み skill（`type: translated`）の上流変更が含まれていたら、[翻訳ガイド](#翻訳ガイドgstack-の英語スキルを翻訳する場合) の「rebase の手順」を参照して再翻訳します。uzustack 独自部分（`type: native`）は gstack 更新と無関係。
 
+### `_upstream/gstack/` 内で setup を走らせない
+
+**禁止**：`cd _upstream/gstack && ./setup` 等、 `_upstream/` 配下を CWD として gstack 本家 setup を実行してはならない。 host install 結果（`.claude/skills/` 等 11 dir）が `_upstream/gstack/` 内に作られると、 Claude Code の skill discovery（CWD 配下の `.claude/skills/` を再帰探索する monorepo 仕様）により **uzustack 翻訳版と subtree 英語版が同じ skill name で重複表示**される。
+
+詳細と再発時の手動 cleanup 手順は [docs/uzustack/translation-rebase-fixes.md](docs/uzustack/translation-rebase-fixes.md#_upstreamgstack-内で-setup-を走らせないpr-131-step-86--issue-132) を参照（issue #132 / step-86）。
+
 ---
 
 ## Type 2 → Type 3 への昇華プロセス
