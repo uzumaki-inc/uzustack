@@ -25,3 +25,17 @@
 4. **user-facing メッセージ**：WARN、status、説明文等は日本語化（uzustack 全体の言語感に揃える）
 
 これにより Phase 4 で同じ修正集積をやり直さずに済む。
+
+---
+
+## `bin/dev-setup` の hardcode bin redirect（PR #129 / #131）
+
+uzustack は `~/.uzustack/` で完結する世界線を持つ設計だが、 上流 gstack の bin の一部は `~/.gstack/<path>` を hardcode で書き、 env override が効かない。 これを `bin/dev-setup` で物理 symlink redirect する：
+
+| fix | 理由 | 場所 |
+|---|---|---|
+| `redirect_gstack_path()` 関数で 4 path（slug-cache / analytics / projects / installation-id）を `~/.uzustack/` に redirect | 上流 hardcode bin（`gstack-slug` / `gstack-codex-probe` / `gstack-repo-mode` / `gstack-telemetry-log line 134`）が `~/.gstack/` に書く path を物理 redirect。 既存内容は `cp -rn` / `cp -n` で `~/.uzustack/` 側に保全 merge | `bin/dev-setup` 末尾 |
+| `bin/dev-teardown` で 4 path symlink を for loop で対称解除 | dev-setup と対称、 内容は `~/.uzustack/` 側に温存 | `bin/dev-teardown` 末尾 |
+| `setup` line 403 loop に `_upstream` EXCLUDE 追加 | gstack subtree pull の上書き対象を skill loop から除外。 line 404 の SKILL.md 存在 check で実質 skip されるが、 `_upstream/` 配下に SKILL.md が混入する将来の subtree 形態変化に対する safeguard | `setup` の `link_claude_skill_dirs()` |
+
+**rebase 時の保持**：上流 gstack の `setup` を翻訳取り込む時、 line 403 loop に `_upstream` EXCLUDE が抜けると同じ bug を再発する。 `bin/dev-setup` の `redirect_gstack_path()` 関数も上流に存在しないため、 上流差分を翻訳に取り込む時に該当しない。

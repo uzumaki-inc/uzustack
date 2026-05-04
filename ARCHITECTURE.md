@@ -148,6 +148,20 @@ voice 規約 v1（bin 翻訳時に確立、PR #40〜#48）+ v2 拡張（plan / s
 
 **SLUG 解決**：`bin/uzustack-slug` が git remote URL を sanitize して slug 化（例：`https://github.com/uzumaki-inc/uzustack` → `uzumaki-inc-uzustack`）。
 
+### `~/.gstack/` との世界線分離
+
+uzustack は `~/.uzustack/` で完結する世界線を持つ設計。 上流 gstack の `gstack-*` bin が `~/.gstack/` に書く path は、 二系統で `~/.uzustack/` に redirect する：
+
+- **env override 経路**（25+ bin）：`${GSTACK_HOME:-$HOME/.gstack}` or `${GSTACK_STATE_DIR:-$HOME/.gstack}` で env 指定可能。 翻訳済 skill 経由では呼ばれないため対応不要だが、 上流互換のため env も指定可能（uzustack-config 系は `UZUSTACK_HOME` 独立 env を使用）
+- **symlink 物理 redirect 経路**（4 path、 真の hardcode）：`bin/dev-setup` の `redirect_gstack_path()` で物理 symlink redirect
+  - `~/.gstack/slug-cache/` → `~/.uzustack/slug-cache/`（PR #129）
+  - `~/.gstack/analytics/` → `~/.uzustack/analytics/`（PR #131）
+  - `~/.gstack/projects/` → `~/.uzustack/projects/`（PR #131）
+  - `~/.gstack/installation-id` → `~/.uzustack/installation-id`（PR #131）
+- 各 redirect は既存内容を `cp -rn` で `~/.uzustack/` 側に保全 merge してから symlink 化、 idempotent
+
+`bin/dev-teardown` で 4 path 対称解除（symlink のみ削除、 内容は `~/.uzustack/` 側に温存）。
+
 ---
 
 ## Phase progression（Phase 進捗）
