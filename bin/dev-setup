@@ -84,18 +84,48 @@ else
   echo "To tear down (manual for now): rm -rf \"$TARGET_DIR/.claude/skills/<skill>\""
 fi
 
-# 上流 gstack-slug は CACHE_DIR を hardcode するため、symlink で物理書込先を
-# uzustack 側に redirect する。既存 dir 内容は cp -n で保全 merge。
-GSTACK_CACHE="$HOME/.gstack/slug-cache"
-UZUSTACK_CACHE="$HOME/.uzustack/slug-cache"
-mkdir -p "$UZUSTACK_CACHE"
-if [[ ! -L "$GSTACK_CACHE" ]]; then
-  if [[ -d "$GSTACK_CACHE" ]]; then
-    cp -n "$GSTACK_CACHE"/* "$UZUSTACK_CACHE/" 2>/dev/null || true
-    rm -rf "$GSTACK_CACHE"
-  elif [[ -e "$GSTACK_CACHE" ]]; then
-    rm -f "$GSTACK_CACHE"
+# 上流 gstack-* bin は CACHE_DIR / STATE_DIR を hardcode するため、symlink で
+# 物理書込先を uzustack 側に redirect する。既存内容は cp -n で保全 merge。
+# PR #129 で slug-cache を pilot として確立、issue #130 で残 hardcode path に拡張。
+#
+# 真の hardcode bin（env override 不可）の対象 path：
+#   - ~/.gstack/slug-cache/      → gstack-slug
+#   - ~/.gstack/analytics/       → gstack-codex-probe (mkdir hardcode)
+#   - ~/.gstack/projects/        → gstack-repo-mode (CACHE_DIR hardcode)
+#   - ~/.gstack/installation-id  → gstack-telemetry-log line 134 hardcode
+#
+# memory setup_no_artifact_cleanup.md：環境固有の遺物処理は setup に組まない。
+# 既存 ~/.gstack/last-update-check / sessions/ / .completeness-intro-seen 等の
+# pollution は手動 cleanup（PR description 参照）。
+
+redirect_gstack_path() {
+  local gstack_path="$1"
+  local uzustack_path="$2"
+  local kind="$3"  # "dir" or "file"
+
+  if [[ "$kind" = "dir" ]]; then
+    mkdir -p "$uzustack_path"
   fi
-  mkdir -p "$(dirname "$GSTACK_CACHE")" 2>/dev/null || true
-  ln -snf "$UZUSTACK_CACHE" "$GSTACK_CACHE"
-fi
+
+  if [[ -L "$gstack_path" ]]; then
+    return 0  # already redirected
+  fi
+
+  if [[ -d "$gstack_path" ]] && [[ "$kind" = "dir" ]]; then
+    cp -rn "$gstack_path"/* "$uzustack_path/" 2>/dev/null || true
+    rm -rf "$gstack_path"
+  elif [[ -f "$gstack_path" ]] && [[ "$kind" = "file" ]]; then
+    cp -n "$gstack_path" "$uzustack_path" 2>/dev/null || true
+    rm -f "$gstack_path"
+  elif [[ -e "$gstack_path" ]]; then
+    rm -f "$gstack_path"
+  fi
+
+  mkdir -p "$(dirname "$gstack_path")" 2>/dev/null || true
+  ln -snf "$uzustack_path" "$gstack_path"
+}
+
+redirect_gstack_path "$HOME/.gstack/slug-cache"     "$HOME/.uzustack/slug-cache"     "dir"
+redirect_gstack_path "$HOME/.gstack/analytics"      "$HOME/.uzustack/analytics"      "dir"
+redirect_gstack_path "$HOME/.gstack/projects"       "$HOME/.uzustack/projects"       "dir"
+redirect_gstack_path "$HOME/.gstack/installation-id" "$HOME/.uzustack/installation-id" "file"
