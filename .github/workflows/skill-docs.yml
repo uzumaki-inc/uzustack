@@ -41,3 +41,5 @@ jobs:
             echo "::error::Generated files are stale or gen:skill-docs wrote outside skills/. Run: bun run gen:skill-docs"
             exit 1
           }
+      - name: Voice validation (voice 規約 v1, step-83 サブタスク 3)
+        run: bun run skill:validate
