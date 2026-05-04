@@ -119,6 +119,7 @@ symlink を貼ったプロジェクトで Claude Code を起動し、`/investiga
 
 - **skill 本体の場所**：`~/src/uzustack/`（開発用 clone、end user での `~/.claude/skills/uzustack/` に相当）。各 skill は repo top に直接配置（`<skill>/SKILL.md`）、Type 1/3 の区別は SKILL.md frontmatter の `type:` フィールドで表現
 - **symlink を貼る作業**：`bin/dev-setup` が自動化（gstack の `setup` から `link_claude_skill_dirs` ロジックを継承）。Claude Code が `.claude/skills/<skill>/SKILL.md` をフラットに探索する仕様に合わせるための展開
+- **`~/.gstack/` 世界線分離**：`bin/dev-setup` 末尾で `~/.gstack/{slug-cache,analytics,projects,installation-id}` を `~/.uzustack/` に symlink redirect（上流 hardcode bin の物理書込先を uzustack 側に固定、 詳細は [ARCHITECTURE.md](ARCHITECTURE.md#state-preservation-layer状態保存層) と [docs/uzustack/translation-rebase-fixes.md](docs/uzustack/translation-rebase-fixes.md) 参照）
 - **メリット**：開発した skill が即座にプロジェクトで使える。バージョンずれゼロ・pull 重複なし
 
 end user 視点の Architecture は [README.md](README.md#architecture) を参照してください。
