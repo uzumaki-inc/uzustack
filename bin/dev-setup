@@ -83,3 +83,19 @@ if [[ "$TARGET_DIR" == "$REPO_ROOT" ]]; then
 else
   echo "To tear down (manual for now): rm -rf \"$TARGET_DIR/.claude/skills/<skill>\""
 fi
+
+# 上流 gstack-slug は CACHE_DIR を hardcode するため、symlink で物理書込先を
+# uzustack 側に redirect する。既存 dir 内容は cp -n で保全 merge。
+GSTACK_CACHE="$HOME/.gstack/slug-cache"
+UZUSTACK_CACHE="$HOME/.uzustack/slug-cache"
+mkdir -p "$UZUSTACK_CACHE"
+if [[ ! -L "$GSTACK_CACHE" ]]; then
+  if [[ -d "$GSTACK_CACHE" ]]; then
+    cp -n "$GSTACK_CACHE"/* "$UZUSTACK_CACHE/" 2>/dev/null || true
+    rm -rf "$GSTACK_CACHE"
+  elif [[ -e "$GSTACK_CACHE" ]]; then
+    rm -f "$GSTACK_CACHE"
+  fi
+  mkdir -p "$(dirname "$GSTACK_CACHE")" 2>/dev/null || true
+  ln -snf "$UZUSTACK_CACHE" "$GSTACK_CACHE"
+fi
