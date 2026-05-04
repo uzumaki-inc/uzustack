@@ -405,6 +405,10 @@ link_claude_skill_dirs() {
       dir_name="$(basename "$skill_dir")"
       # Skip node_modules
       [ "$dir_name" = "node_modules" ] && continue
+      # Skip _upstream subtree (gstack subtree pull の上書き対象、 uzustack skill として link しない)
+      # 構造的 safeguard：line 404 の SKILL.md 存在 check で実質 skip されるが、
+      # _upstream/ 配下に SKILL.md が混入する将来の subtree 形態変化に備えて明示的に除外する。
+      [ "$dir_name" = "_upstream" ] && continue
       # Use frontmatter name: if present (e.g., run-tests/ with name: test → symlink as "test")
       skill_name=$(grep -m1 '^name:' "$skill_dir/SKILL.md" 2>/dev/null | sed 's/^name:[[:space:]]*//' | tr -d '[:space:]')
       [ -z "$skill_name" ] && skill_name="$dir_name"
