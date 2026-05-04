@@ -8,7 +8,8 @@
   "scripts": {
     "build": "bun run build:design",
     "build:design": "bun build --compile design/src/cli.ts --outfile design/dist/design && (rm -f .*.bun-build || true)",
-    "gen:skill-docs": "bun run scripts/gen-skill-docs.ts"
+    "gen:skill-docs": "bun run scripts/gen-skill-docs.ts",
+    "skill:validate": "bun run scripts/skill-validate.ts"
   },
   "engines": {
     "bun": ">=1.0.0"
