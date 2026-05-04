@@ -42,6 +42,10 @@ done
 rmdir "$CLAUDE_SKILLS" 2>/dev/null || true
 rmdir "$TARGET_DIR/.claude" 2>/dev/null || true
 
+# dev-setup で作成した slug-cache redirect symlink を解除（symlink 時のみ、内容は uzustack 側に温存）
+GSTACK_CACHE="$HOME/.gstack/slug-cache"
+[[ -L "$GSTACK_CACHE" ]] && rm -f "$GSTACK_CACHE"
+
 if (( ${#removed[@]} > 0 )); then
   echo "Removed from $CLAUDE_SKILLS:"
   echo "  ${removed[*]}"
