@@ -164,17 +164,54 @@ uzustack は `~/.uzustack/` で完結する世界線を持つ設計。 上流 gs
 
 ---
 
+## (1) browser 機構 と (2) ワークフロー skill の依存関係
+
+gstack の `_upstream/gstack/ARCHITECTURE.md:5-7` は次のように articulate する：
+
+> "gstack gives Claude Code a persistent browser and a set of opinionated workflow skills. **The browser is the hard part — everything else is Markdown.**"
+
+uzustack はこの 2 構成要素を **部分的依存** として引き受ける：
+
+- **(1) 永続的 browser 機構** — Playwright + Chromium + Chrome extension + browser-manager。 gstack 著者自身が「the hard part」 と認める領域
+- **(2) ワークフロー skill 群** — Markdown / docs 層で記述される skill 本体
+
+依存関係の全数 grep 結果（gstack 全 43 skill 対象）：
+
+| 分類 | 件数 | 例 |
+|---|---|---|
+| (1) 必須依存 | 12〜13 (28%) | browse / qa / qa-only / canary / benchmark / make-pdf / design-review / design-consultation / land-and-deploy / open-gstack-browser / pair-agent / connect-chrome / setup-browser-cookies |
+| (1) optional 依存 | 3 (7%) | design-html / design-shotgun / autoplan |
+| (1) 非依存 | 28 (65%) | ship / review / investigate / cso / codex / claude / context-* / learn / office-hours / plan-* / retro / health 等 |
+
+**uzustack 守完走判定の base = 31 skill (browser 非依存 + optional 依存)**。 (1) 必須依存 13 skill (12 機能 + connect-chrome alias) は Phase 6 で実装予定として正式に位置付け、 SKILL.md.tmpl 先頭に warning block を統一配置する。 詳細 list と evidence は [docs/uzustack/phase6-pending-skills.md](docs/uzustack/phase6-pending-skills.md)、 共通 warning block の source of truth は [docs/uzustack/phase6-warning-block.md](docs/uzustack/phase6-warning-block.md) を参照。
+
+---
+
 ## Phase progression（Phase 進捗）
 
 現在の Phase 進捗：
 
 | 段階 | Phase | 状態 |
 |---|---|---|
-| **守** | 0c〜3.5（完了 2026-05-02） | gstack を subtree で取り込み、型を確立。runtime + Type 1 翻訳 30 skill + Phase 6 予約スタブ 10 件が揃った |
-| **守** | 3.6（進行中） | 土台を構造化。`_upstream-sync/` directory 設計 + root file 4 件先行取込み |
+| **守** | 0c〜3.5（完了 2026-05-02） | gstack を subtree で取り込み、型を確立。runtime + Type 1 翻訳 30 skill + Phase 6 予約スタブ 13 件が揃った |
+| **守** | 3.6（進行中） | 土台を構造化。`_upstream-sync/` directory 設計 + root file 4 件先行取込み + browse 機構必須 13 skill の Phase 6 待ち articulate 統一 |
 | **守** | 4 | hook + 連鎖機構（`freeze` / `unfreeze` skill pair 翻訳 + `investigate` の hook 復活）|
+| **破** | 6（着手予定） | browse 機構実装（Playwright + Chromium + browser-manager + extension）。 13 skill の動作実装で守完走判定 31 skill から 43 skill 範囲に拡張 |
 
 各 Phase の主要 PR # と完遂事項の詳細は [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md)、守破離の概念詳細は [README.md](README.md#守破離uzustack-の進化段階) を参照。
+
+---
+
+## 守破離における Phase 6 の位置付け
+
+守期間中の uzustack は「完璧複製 + voice 翻案」 の規律 pair で動いてきた。 gstack 著者自身が「browser is the hard part」 (`_upstream/gstack/ARCHITECTURE.md:5-7`) と認める browse 機構は、 完璧複製規律の限界点に位置する。
+
+Phase 6 で uzustack が取り得る選択肢は 2 つ。 いずれも守の延長ではなく **破の前段** と位置付ける：
+
+- **選択肢 1: Type 3 化に向けての準備** — voice 翻案規律は維持しつつ、 機構複製の規律を「upstream 完璧コピー」 から「機能等価 + uzustack 設計判断」 に転換する。 13 skill を uzustack 独自設計で動作実装に踏み込む path
+- **選択肢 2: uzustack に取り入れない決断** — 13 skill の動作実装を一旦断念し、 browse 機構領域を uzustack のスコープ外として明示する path。 翻訳された SKILL.md は維持するが、 動作実装には踏み込まない
+
+これは「translation overkill / shim path 提案を builder 学習軸で reject」 規律の自然な帰結 — 守期間に翻訳・運用で得た「動作する 27 skill」 の dogfood 経験を踏まえ、 browse 機構が builder 学習の variant として価値があるかを Phase 6 着手時に判断する。 どちらを選ぶかは Phase 6 着手時の意思決定。
 
 ---
 

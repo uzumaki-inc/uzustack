@@ -231,3 +231,32 @@ voice 規約 v1（7 項目）+ 外部 identifier 拡張は **ファイル名そ�
 ### 集約タイミング規律
 
 翻訳バッチ進行中は規範が PR description / commit message に分散して動いている。**バッチ完了で規範が固まった直後（次バッチ着手前）に本ガイドへ集約**する。Phase 完了判定まで待つとバッチ内参照性が上がらず、PR description を漁る運用になる。本節は bin 翻訳バッチ完了時（PR #48）で集約した。
+
+---
+
+## Phase 6 待ち skill の voice 翻案射程
+
+uzustack の **browse 機構必須 13 skill** (browse / qa / qa-only / canary / benchmark / make-pdf / design-review / design-consultation / land-and-deploy / open-uzustack-browser / pair-agent / connect-chrome / setup-browser-cookies) は Phase 6 で実装予定。 翻訳作業時の voice 翻案射程を明示する：
+
+### 射程内（uzustack voice で翻訳）
+
+- SKILL.md.tmpl 本文（method 説明 / phase 構造 / important rules / report 形式）
+- frontmatter description / triggers / voice-triggers
+- 共通 warning block (詳細: [phase6-warning-block.md](phase6-warning-block.md)) — uzustack voice で記述
+
+### 射程外（Phase 6 まで翻案保留、 英語のまま動作させる）
+
+- browse 機構の英語 error / output メッセージ — Playwright / Chromium binary が出力する文字列、 翻案するとデバッグ困難になる
+- Chrome extension の sidebar UI 文字列 — Phase 6 実装時に翻案するか別 issue として判断
+- browser-manager 内部の log / debug 出力 — runtime 層に属するため voice 翻案外
+- Playwright の locator API / selector 名 — 外部 protocol identifier として維持
+
+### 判断基準
+
+「文字列が end user の **目に入る** か」 で判定する。 SKILL.md instruction や warning block は end user が読む = 翻案射程内。 内部 binary の error 出力 / log は debug 用 = 翻案射程外。
+
+**事例**: design-review / design-consultation / land-and-deploy は SKILL.md 本文を Phase 3.5 で翻訳完了したが、 内部で呼ぶ browse 機構の error / output は Phase 6 まで英語維持 — これを意図的な「partial 翻案」 として articulate する。
+
+### CONTRIBUTING.md との関係
+
+CONTRIBUTING.md「Phase 6 待ち skill 翻訳時の warning 配置必須」 section で「frontmatter status + warning block 配置」 規律を articulate。 本節は voice 翻案の **射程** を articulate する補完。 配置規律 (どこに) ↔ 翻案射程規律 (何を) の 2 軸で運用する。
