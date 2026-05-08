@@ -1,6 +1,6 @@
-# Phase 6 で実装予定の skill 一覧
+# Phase 6 で実装検討の skill 一覧
 
-uzustack は Phase 3.5 までに gstack の workflow skill を Markdown / docs 層で翻訳完了したが、 **browse 機構 (永続的 browser daemon)** を必要とする 12 skill は Phase 6 で実装予定の状態にある。 本 doc はその 12 skill を**正典 list** として articulate する。
+uzustack は Phase 3.5 までに gstack の workflow skill を Markdown / docs 層で翻訳完了したが、 **browse 機構 (永続的 browser daemon)** を必要とする 12 skill は Phase 6 で実装検討の状態にある。 本 doc はその 12 skill を**正典 list** として articulate する。
 
 ## 背景
 
@@ -15,7 +15,7 @@ uzustack の守期間 (Phase 0c〜3.5) では (2) の Markdown / docs 層を翻�
 ## 守完走判定の再定義
 
 - **動作する skill**: 31 skill (browser 非依存 28 + optional 依存 3)
-- **Phase 6 で実装予定 skill**: 12 skill (本 doc 対象)
+- **Phase 6 で実装検討 skill**: 12 skill (本 doc 対象)
 - **守完走 base = 31 skill** (gstack 全 43 skill ではない)
 
 ## Phase 6 待ち 12 skill list

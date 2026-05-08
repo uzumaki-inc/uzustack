@@ -7,7 +7,7 @@ uzustack の browse 機構必須 12 skill (詳細は [phase6-pending-skills.md](
 以下を SKILL.md.tmpl にそのまま貼り付ける。 voice 規約 v1 に従い uzustack voice (経営者文脈 + 日本語) で書く。
 
 ```markdown
-> **Phase 6 で実装予定 — 現在動作しません**
+> **Phase 6 で実装検討 — 現在動作しません**
 >
 > この skill は browse 機構 (永続的 browser daemon) を必要とし、 uzustack の Phase 6 で
 > 実装予定です。 現時点では翻訳された SKILL.md / SKILL.md.tmpl のみ存在し、 動作する bin は
@@ -28,7 +28,7 @@ SKILL.md.tmpl 内で:
 status: phase6-reserved   ← 追加必須
 ---
 
-> **Phase 6 で実装予定 — 現在動作しません**     ← warning block
+> **Phase 6 で実装検討 — 現在動作しません**     ← warning block
 > ...
 > 詳細: [...]
 
@@ -73,7 +73,7 @@ warning block 自体は uzustack voice (= 経営者文脈 + 日本語) で書く
 
 ```bash
 for s in browse open-uzustack-browser pair-agent connect-chrome qa qa-only canary benchmark make-pdf design-review design-consultation setup-browser-cookies land-and-deploy; do
-  if grep -q "Phase 6 で実装予定 — 現在動作しません" "$s/SKILL.md.tmpl" 2>/dev/null; then
+  if grep -q "Phase 6 で実装検討 — 現在動作しません" "$s/SKILL.md.tmpl" 2>/dev/null; then
     echo "  OK: $s"
   else
     echo "  MISSING: $s"

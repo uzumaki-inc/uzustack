@@ -24,7 +24,7 @@ uzustack は Phase 0c → 1 → 2 → 3 → 3.5 を経て、**Phase 3 + Phase 3.
 **現在の uzustack 状態**：
 
 - runtime: bin 約 50 個 + テンプレート機構（SKILL.md.tmpl + 5 host 展開：claude / codex / kiro / factory / opencode）+ voice 翻案ガイドライン v1/v2 + ETHOS.md
-- skill: 27 件（動作する実翻訳）+ browse 機構必須 13 件（Phase 6 で実装予定）= top-level 40 directory
+- skill: 27 件（動作する実翻訳）+ browse 機構必須 13 件（Phase 6 で実装検討）= top-level 40 directory
 - (1) browser 機構と (2) ワークフロー skill の依存関係: 詳細は [docs/uzustack/phase6-pending-skills.md](docs/uzustack/phase6-pending-skills.md) と [ARCHITECTURE.md](ARCHITECTURE.md#1-browser-機構-と-2-ワークフロー-skill-の依存関係) 参照
 
 **Phase 3.6（進行中、 メンテナー個人領域）**：tac_vault（メンテナー個人 Obsidian vault）の Approach B Full Migration を 2026-05-05 に実施。 step note の frontmatter schema 完備 + TaskNotes 系 plugin の view configuration を整備し、 Phase 4 着手前の「メンテナー運用基盤」 を確立。 詳細はメンテナー個人領域に閉じる（uzustack repo のコード変更ゼロ）。

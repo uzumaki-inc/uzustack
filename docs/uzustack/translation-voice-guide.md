@@ -236,7 +236,7 @@ voice 規約 v1（7 項目）+ 外部 identifier 拡張は **ファイル名そ�
 
 ## Phase 6 待ち skill の voice 翻案射程
 
-uzustack の **browse 機構必須 13 skill** (browse / qa / qa-only / canary / benchmark / make-pdf / design-review / design-consultation / land-and-deploy / open-uzustack-browser / pair-agent / connect-chrome / setup-browser-cookies) は Phase 6 で実装予定。 翻訳作業時の voice 翻案射程を明示する：
+uzustack の **browse 機構必須 13 skill** (browse / qa / qa-only / canary / benchmark / make-pdf / design-review / design-consultation / land-and-deploy / open-uzustack-browser / pair-agent / connect-chrome / setup-browser-cookies) は Phase 6 で実装検討の対象。 翻訳作業時の voice 翻案射程を明示する：
 
 ### 射程内（uzustack voice で翻訳）
 

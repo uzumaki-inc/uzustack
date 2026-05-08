@@ -183,7 +183,7 @@ uzustack はこの 2 構成要素を **部分的依存** として引き受け�
 | (1) optional 依存 | 3 (7%) | design-html / design-shotgun / autoplan |
 | (1) 非依存 | 28 (65%) | ship / review / investigate / cso / codex / claude / context-* / learn / office-hours / plan-* / retro / health 等 |
 
-**uzustack 守完走判定の base = 31 skill (browser 非依存 + optional 依存)**。 (1) 必須依存 13 skill (12 機能 + connect-chrome alias) は Phase 6 で実装予定として正式に位置付け、 SKILL.md.tmpl 先頭に warning block を統一配置する。 詳細 list と evidence は [docs/uzustack/phase6-pending-skills.md](docs/uzustack/phase6-pending-skills.md)、 共通 warning block の source of truth は [docs/uzustack/phase6-warning-block.md](docs/uzustack/phase6-warning-block.md) を参照。
+**uzustack 守完走判定の base = 31 skill (browser 非依存 + optional 依存)**。 (1) 必須依存 13 skill (12 機能 + connect-chrome alias) は Phase 6 で実装検討として正式に位置付け、 SKILL.md.tmpl 先頭に warning block を統一配置する。 詳細 list と evidence は [docs/uzustack/phase6-pending-skills.md](docs/uzustack/phase6-pending-skills.md)、 共通 warning block の source of truth は [docs/uzustack/phase6-warning-block.md](docs/uzustack/phase6-warning-block.md) を参照。
 
 ---
 
@@ -206,12 +206,13 @@ uzustack はこの 2 構成要素を **部分的依存** として引き受け�
 
 守期間中の uzustack は「完璧複製 + voice 翻案」 の規律 pair で動いてきた。 gstack 著者自身が「browser is the hard part」 (`_upstream/gstack/ARCHITECTURE.md:5-7`) と認める browse 機構は、 完璧複製規律の限界点に位置する。
 
-Phase 6 で uzustack が取り得る選択肢は 2 つ。 いずれも守の延長ではなく **破の前段** と位置付ける：
+Phase 6 で uzustack が取り得る選択肢は 3 つ。 選択肢 0 は守の延長 (= 完璧複製規律の維持)、 選択肢 1 / 2 は守の延長ではなく **破の前段** と位置付ける：
 
+- **選択肢 0: Type 1 維持で取り込み** — 機構複製の規律の「upstream 完璧コピー」 を維持したまま、 browse 機構を `_upstream/gstack/browse/` 経由で取り込む path。 voice 翻案を browse 機構について諦める前提 (= browse 機構の英語 error / output / Chromium binary 出力 は upstream voice そのまま passthrough)
 - **選択肢 1: Type 3 化に向けての準備** — voice 翻案規律は維持しつつ、 機構複製の規律を「upstream 完璧コピー」 から「機能等価 + uzustack 設計判断」 に転換する。 13 skill を uzustack 独自設計で動作実装に踏み込む path
 - **選択肢 2: uzustack に取り入れない決断** — 13 skill の動作実装を一旦断念し、 browse 機構領域を uzustack のスコープ外として明示する path。 翻訳された SKILL.md は維持するが、 動作実装には踏み込まない
 
-これは「translation overkill / shim path 提案を builder 学習軸で reject」 規律の自然な帰結 — 守期間に翻訳・運用で得た「動作する 27 skill」 の dogfood 経験を踏まえ、 browse 機構が builder 学習の variant として価値があるかを Phase 6 着手時に判断する。 どちらを選ぶかは Phase 6 着手時の意思決定。
+これは「translation overkill / shim path 提案を builder 学習軸で reject」 規律の自然な帰結 — 守期間に翻訳・運用で得た「動作する 27 skill」 の dogfood 経験を踏まえ、 browse 機構が builder 学習の variant として価値があるかを Phase 6 着手時に判断する。 どれを選ぶかは Phase 6 着手時の意思決定。
 
 ---
 

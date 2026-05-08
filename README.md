@@ -188,9 +188,9 @@ Phase 3.5 完遂時点（2026-05-02）で実翻訳完了 + browser 機構を必�
 | `ship` | Ship workflow（test 実行 + diff review + VERSION bump + PR 作成） |
 | `uzustack-upgrade` | uzustack を最新版に upgrade |
 
-### browse 機構必須スキル（Phase 6 で実装予定、 13 件）
+### browse 機構必須スキル（Phase 6 で実装検討、 13 件）
 
-これらのスキルは uzustack の **browse 機構 (永続的 browser daemon)** を必要とし、 Phase 6 で実装予定です。 翻訳された SKILL.md は配置済みですが、 動作する bin が未配置のため現時点では動作しません。 browse 機構が必要な場合は upstream gstack を直接利用してください。 詳細は [docs/uzustack/phase6-pending-skills.md](docs/uzustack/phase6-pending-skills.md) を参照。
+これらのスキルは uzustack の **browse 機構 (永続的 browser daemon)** を必要とし、 Phase 6 で実装検討の対象です（着手時に Type 1 維持 / Type 3 化準備 / 取り入れない決断 の 3 選択肢を判断）。 翻訳された SKILL.md は配置済みですが、 動作する bin が未配置のため現時点では動作しません。 browse 機構が必要な場合は upstream gstack を直接利用してください。 詳細は [docs/uzustack/phase6-pending-skills.md](docs/uzustack/phase6-pending-skills.md) を参照。
 
 | skill | 概要 |
 |---|---|
