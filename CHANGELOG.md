@@ -10,8 +10,8 @@ uzustack の release notes。フォーマットは [Keep a Changelog](https://ke
 
 ### Changed — user-facing
 
-- **守完走判定を再定義** — 旧「Phase 6 予約スタブ 10 件の Type 1/3 判定」 から「browse 機構必須 13 skill の動作実装」 に articulate を統一。 (1) browser 機構 と (2) ワークフロー skill の依存関係を ARCHITECTURE.md / README.md / CONTRIBUTING.md / docs/uzustack/ で正式 articulate
-- **browse 機構必須 13 skill** (browse / qa / qa-only / canary / benchmark / make-pdf / design-review / design-consultation / land-and-deploy / open-uzustack-browser / pair-agent / connect-chrome / setup-browser-cookies) の SKILL.md.tmpl 先頭に Phase 6 待ち warning block を統一配置 — frontmatter `status: phase6-reserved` も全 13 skill で統一
+- **守完走判定を再定義** — 旧「Phase 6 予約スタブ 10 件の Type 1/3 判定」 から「browse 機構必須 14 skill の動作実装」 に articulate を統一。 (1) browser 機構 と (2) ワークフロー skill の依存関係を ARCHITECTURE.md / README.md / CONTRIBUTING.md / docs/uzustack/ で正式 articulate
+- **browse 機構必須 14 skill** (browse / qa / qa-only / canary / benchmark / make-pdf / design-review / design-consultation / devex-review / land-and-deploy / open-uzustack-browser / pair-agent / connect-chrome / setup-browser-cookies) の SKILL.md.tmpl 先頭に Phase 6 待ち warning block を統一配置 — frontmatter `status: phase6-reserved` も全 14 skill で統一
 - **README.md の skill 一覧** — 旧「翻訳済 30 件 + 予約スタブ 10 件」 から「動作する 26 件 + browse 機構必須 14 件」 に分類変更。 design-review / design-consultation / devex-review / land-and-deploy が browse 機構必須（= 現状動作しない）と判明したため再分類
 
 ### Fixed — fact-check 後の reclassify
@@ -23,7 +23,7 @@ uzustack の release notes。フォーマットは [Keep a Changelog](https://ke
 
 ### Added — for contributors
 
-- **docs/uzustack/phase6-pending-skills.md** — Phase 6 待ち 13 skill list + grep evidence
+- **docs/uzustack/phase6-pending-skills.md** — Phase 6 待ち 14 entry list + grep evidence + fact-check 履歴
 - **docs/uzustack/phase6-warning-block.md** — 共通 warning block の source of truth + 配置規律
 - **docs/uzustack/translation-voice-guide.md** — 「Phase 6 待ち skill の voice 翻案射程」 section 追加（射程内 / 射程外 / 判断基準）
 - **CONTRIBUTING.md** — 「Phase 6 待ち skill 翻訳時の warning 配置必須」 規律追加

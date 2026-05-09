@@ -333,7 +333,7 @@ Phase 3.5 完遂時点で翻訳済み skill は 40 件 (動作する 26 + browse
 
 ### Phase 6 待ち skill 翻訳時の warning 配置必須
 
-browse 機構必須 13 skill (browse / qa / qa-only / canary / benchmark / make-pdf / design-review / design-consultation / land-and-deploy / open-uzustack-browser / pair-agent / connect-chrome / setup-browser-cookies) を翻訳・rebase する際は、 SKILL.md.tmpl 先頭 (frontmatter 直後) に **Phase 6 待ち warning block** を必ず配置する。 共通 template の source of truth は [docs/uzustack/phase6-warning-block.md](docs/uzustack/phase6-warning-block.md)。
+browse 機構必須 14 skill (browse / qa / qa-only / canary / benchmark / make-pdf / design-review / design-consultation / devex-review / land-and-deploy / open-uzustack-browser / pair-agent / connect-chrome / setup-browser-cookies) を翻訳・rebase する際は、 SKILL.md.tmpl 先頭 (frontmatter 直後) に **Phase 6 待ち warning block** を必ず配置する。 共通 template の source of truth は [docs/uzustack/phase6-warning-block.md](docs/uzustack/phase6-warning-block.md)。
 
 frontmatter にも `status: phase6-reserved` を付与する (= 翻訳済 + Phase 6 待ち を articulate)。 placeholder engine (`scripts/gen-skill-docs.ts`) は現状空 stub なので、 共通 template の自動注入は不可 — 各 SKILL.md.tmpl に直書きで配置する。
 
