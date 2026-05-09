@@ -20,7 +20,7 @@ uzustack の step / 機能着手時は以下のフローを **デフォルト** 
 - 新しい step / 機能: 私が外向け issue 本文を draft → 工藤さん承認 → 起票 → **【ここで stop、 工藤さん合図待ち】** → feature/<name> 切る → 実装 → PR
 - **起票時の sidebar 設定**: `gh issue create --assignee @me --milestone "Phase N"`。 Phase 単位で milestone を 1 個作成、 以降の起票は milestone 名を指定するだけで auto 紐付け。 **label / project / type は使わない**（必要最低限主義）
 - **issue 起票後は一旦 stop**: 起票完了報告で 1 度終わり、 工藤さんが issue 内容を確認・調整するタイミングを取れるようにする。 feature ブランチ作成や実装に自動的に進まない
-- issue 本文には 個人 vault のパス・固有語彙を持ち込まない
+- issue 本文には個人 vault のパス・固有語彙を持ち込まない
 - 「main で直接作業して」 と工藤さんが明示した時のみ、 feature ブランチを省略
 
 ---

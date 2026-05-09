@@ -38,7 +38,7 @@ uzustack 関連の **概念ノート / 設計ノート / アーキテクチャ�
 
 ### 注意
 
-個人 vault は工藤さんの個人 Obsidian vault（git 管理外）にあり、 メンテナー以外は読めない。 OSS contributor 向けの情報は README/CONTRIBUTING に集約する原則。
+個人 vault は工藤さんの Obsidian vault（git 管理外）にあり、 メンテナー以外は読めない。 OSS contributor 向けの情報は README/CONTRIBUTING に集約する原則。
 
 ---
 
@@ -58,7 +58,7 @@ uzustack草案.md は **概念マップ専用** ノート。 Phase 進捗 row（
 - **詳細** = step note body
 - **判断保留** = 未決 step（mikketsu schema、 `type: uzustack-mikketsu`）
 - **規範 (user-scope)** = `~/.claude/CLAUDE.md`
-- **規範 (uzustack-scope)** = `<uzustack repo>/.claude/rules/{topic}.md`
+- **規範 (uzustack-scope)** = `{PROJECT_REPO}/.claude/rules/{topic}.md`
 - **規範 (OSS contributor 向け)** = CONTRIBUTING.md
 
 step 完遂のような master plan 級 milestone でも、 草案の section 内 inline 加筆ではなく step note の wiki link 経由で参照される設計が正解。
@@ -111,7 +111,7 @@ Claude の見ている世界（raw markdown / ファイル名 / frontmatter）�
 
 ## uzustack と 個人 vault は cross-edit してよい
 
-uzustack のセッションから 個人 vault のファイルを absolute path で Read / Edit してよい。 逆方向（個人 vault のセッションから uzustack を触る）も同じく OK。 どちらのディレクトリで claude code を起動するかは、 その時の作業中心がどちらかで自然に決めるだけで、 機械的なルールにしない。
+uzustack のセッションから個人 vault のファイルを absolute path で Read / Edit してよい。 逆方向（個人 vault のセッションから uzustack を触る）も同じく OK。 どちらのディレクトリで claude code を起動するかは、 その時の作業中心がどちらかで自然に決めるだけで、 機械的なルールにしない。
 
 **Why:** 工藤さんの実運用では、 起動 directory と編集対象 directory は必ずしも一致せず、 両方向の cross-edit が日常的になっている。 「Type 2 = 個人 vault でセッション再起動」 のような固いルールは現実と合わない（実例: context-restore 直後に「個人 vault で再起動を」 と促してしまった事故）。
 
@@ -132,7 +132,7 @@ uzustack のセッションから 個人 vault のファイルを absolute path 
    ```
    grep -rn "00 Inbox\|02 Notes/<旧 folder 名>" {HOME}/.claude/projects/{CLAUDE_CODE_PROJECT}/memory/
    ```
-   （segregate 後は `~/.claude/CLAUDE.md` + `<uzustack repo>/.claude/rules/` を grep 対象に追加）
+   （segregate 後は `~/.claude/CLAUDE.md` + `{PROJECT_REPO}/.claude/rules/` を grep 対象に追加）
 2. **集約ノート / step ノート grep**: 絶対 path 形式で書いてあれば修正、 wiki-link 形式（`[[ファイル名]]`）は Obsidian が vault 内検索で resolution するので **修正不要**
 3. **検知タイミング**:
    - セッション開始時: master plan を Read する前に grep で path 確認

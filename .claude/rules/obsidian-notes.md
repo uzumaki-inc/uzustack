@@ -45,10 +45,10 @@ frontmatter の date 系 field（`date-created` / `date-modified` / `category_ju
 
 embed link が消える bug の正体: `![[<note>]]` は Obsidian の embed syntax（`!` prefix で link 先の内容を inline 展開）。 これにより `# 重要` section に他ノートの内容が展開表示される。 `!` prefix が消える / link 全体が消えると、 embed が解除されて preview から内容が消失。
 
-**Why:** 上記 Edit race の延長と推定される。 同じセッションで別 個人 vault file を Edit すると、 Obsidian の backlink update / preview re-render の副作用で `uzustack草案.md` 周辺の rendering / save も走り、 結果として embed link が壊れる pattern。 個人 vault が **git 管理外** なので、 消失検知も復元も手動依存。
+**Why:** 上記 Edit race の延長と推定される。 同じセッションで別の個人 vault file を Edit すると、 Obsidian の backlink update / preview re-render の副作用で `uzustack草案.md` 周辺の rendering / save も走り、 結果として embed link が壊れる pattern。 個人 vault が **git 管理外** なので、 消失検知も復元も手動依存。
 
 **How to apply:**
-- セッション中に **複数 個人 vault file を Edit した後**、 `uzustack草案.md` の `# 重要` section の中身を **念のため確認** する習慣（特に step DONE 化の複数 個人 vault file 編集場面）
+- セッション中に **複数の個人 vault file を Edit した後**、 `uzustack草案.md` の `# 重要` section の中身を **念のため確認** する習慣（特に step DONE 化の複数の個人 vault file 編集場面）
 - 消失していたら工藤さんに報告 + 復元を即実行（Edit race 規律「依頼や確認を挟まずに即実行、 race は許容」 の延長）
 - 復元時は **embed 形式 `![[...]]` を必ず使う**（普通の link `[[...]]` だと内容が展開されない）
 - 復元位置は **末尾追加が保守的**（既存 link を動かさない）
