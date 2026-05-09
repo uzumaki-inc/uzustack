@@ -154,7 +154,7 @@ OSS 公開対象は **Type 1 と Type 3** のみ。Type 2 は各ユーザーが�
 > 📝 **`type:` の意義**：Claude Code は `.claude/skills/<skill>/SKILL.md` をフラットに探索する仕様のため、Type 1 と Type 3 を別フォルダに分けても、配布時には同じディレクトリに混在します。区別はメタデータ（frontmatter）で表現します。
 
 
-### 動作する翻訳済スキル（Type 1、27 件）
+### 動作する翻訳済スキル（Type 1、26 件）
 
 Phase 3.5 完遂時点（2026-05-02）で実翻訳完了 + browser 機構を必要とせず単独で動作するスキル：
 
@@ -170,7 +170,6 @@ Phase 3.5 完遂時点（2026-05-02）で実翻訳完了 + browser 機構を必�
 | `cso` | Chief Security Officer mode（infra-first security audit） |
 | `design-html` | Design 仕上げ — production 品質の Pretext-native HTML/CSS 生成 |
 | `design-shotgun` | 複数 AI design variant を生成、比較 board で iterate |
-| `devex-review` | developer experience 監査（live browse による DX scorecard） |
 | `document-release` | 出荷後 documentation update（README / ARCHITECTURE / CHANGELOG 同期） |
 | `health` | code 品質 dashboard（type checker / linter / test runner / dead code 統合） |
 | `investigate` | 根本原因調査による体系的デバッグ（4 phase：調査・分析・仮説・実装） |
@@ -188,7 +187,7 @@ Phase 3.5 完遂時点（2026-05-02）で実翻訳完了 + browser 機構を必�
 | `ship` | Ship workflow（test 実行 + diff review + VERSION bump + PR 作成） |
 | `uzustack-upgrade` | uzustack を最新版に upgrade |
 
-### browse 機構必須スキル（Phase 6 で実装検討、 13 件）
+### browse 機構必須スキル（Phase 6 で実装検討、 14 件）
 
 これらのスキルは uzustack の **browse 機構 (永続的 browser daemon)** を必要とし、 Phase 6 で実装検討の対象です（着手時に Type 1 維持 / Type 3 化準備 / 取り入れない決断 の 3 選択肢を判断）。 翻訳された SKILL.md は配置済みですが、 動作する bin が未配置のため現時点では動作しません。 browse 機構が必要な場合は upstream gstack を直接利用してください。 詳細は [docs/uzustack/phase6-pending-skills.md](docs/uzustack/phase6-pending-skills.md) を参照。
 
@@ -200,6 +199,7 @@ Phase 3.5 完遂時点（2026-05-02）で実翻訳完了 + browser 機構を必�
 | `connect-chrome` | Chromium 接続 alias（`/open-uzustack-browser` の別名） |
 | `design-consultation` | Design consultation — design system 提案、 DESIGN.md 作成 (visual research に browse 必要) |
 | `design-review` | Designer's eye QA — visual inconsistency / spacing / hierarchy 検出と修正 (screenshot に browse 必要) |
+| `devex-review` | developer experience 監査（live browse による DX scorecard、 docs を navigate + screenshot） |
 | `land-and-deploy` | PR merge + CI / deploy 待機 + canary check の workflow (canary check に browse 必要) |
 | `make-pdf` | markdown を出版品質の PDF に変換 (HTML→PDF rendering に browse 必要) |
 | `open-uzustack-browser` | AI 制御の Chromium with sidebar extension を起動 |
@@ -218,11 +218,11 @@ uzustack は **uzustack プロジェクト全体** として、守破離の段�
 
 | 段階 | 状態 |
 |---|---|
-| **守**（Phase 6 完了で達成予定） | gstack を subtree で取り込み、Type 1 として翻訳・試用を蓄積。Phase 3 + Phase 3.5 で型の取り込みは完了。**守の完成** は Phase 6（browse 機構必須 13 件スキルの実装）で達成 |
+| **守**（Phase 6 完了で達成予定） | gstack を subtree で取り込み、Type 1 として翻訳・試用を蓄積。Phase 3 + Phase 3.5 で型の取り込みは完了。**守の完成** は Phase 6（browse 機構必須 14 件スキルの実装）で達成 |
 | **破**（Phase 6 完了後） | 個別スキルが Type 2 → Type 3 の進化を繰り返す |
 | **離** | gstack 由来（Type 1）が全て Type 3 化 or 削除された独立期 |
 
-**Phase 3 + Phase 3.5 で型の取り込み完了（2026-05-02）**: runtime（bin 約 50 個 + テンプレート機構 + voice 翻案ガイドライン v1/v2 + ETHOS.md）と動作する Type 1 実翻訳 27 skill + browse 機構必須 13 skill (翻訳済 stub) = 翻訳完了 40 skill が揃った。Phase 4（連鎖機構）/ Phase 5（記憶機構）に進む段階に到達、**守の完成は Phase 6 で達成**（browse 機構実装 + 13 skill の動作実装）。Phase 1〜3.5 の詳細は [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md) を参照。
+**Phase 3 + Phase 3.5 で型の取り込み完了（2026-05-02）**: runtime（bin 約 50 個 + テンプレート機構 + voice 翻案ガイドライン v1/v2 + ETHOS.md）と動作する Type 1 実翻訳 26 skill + browse 機構必須 14 skill (翻訳済 stub) = 翻訳完了 40 skill が揃った。Phase 4（連鎖機構）/ Phase 5（記憶機構）に進む段階に到達、**守の完成は Phase 6 で達成**（browse 機構実装 + 14 skill の動作実装）。Phase 1〜3.5 の詳細は [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md) を参照。
 
 ---
 

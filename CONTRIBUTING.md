@@ -19,12 +19,12 @@ PR / Issue / 翻訳改善・新スキル提案・バグ修正、いずれの Con
 
 ## Phase 進捗（2026-05-02 時点）
 
-uzustack は Phase 0c → 1 → 2 → 3 → 3.5 を経て、**Phase 3 + Phase 3.5 で「型の取り込み」が完了**（PR #120 merged 2026-05-02）。runtime（bin 約 50 個 + テンプレート機構 + voice 翻案ガイドライン v1/v2 + ETHOS.md）と動作する Type 1 実翻訳 27 skill + browse 機構必須 13 skill (翻訳済 stub) = 翻訳完了 40 skill が揃った状態です。守破離の **守の完成** は Phase 6（browse 機構実装 + 13 件スキルの動作実装）で達成予定。
+uzustack は Phase 0c → 1 → 2 → 3 → 3.5 を経て、**Phase 3 + Phase 3.5 で「型の取り込み」が完了**（PR #120 merged 2026-05-02）。runtime（bin 約 50 個 + テンプレート機構 + voice 翻案ガイドライン v1/v2 + ETHOS.md）と動作する Type 1 実翻訳 26 skill + browse 機構必須 14 skill (翻訳済 stub) = 翻訳完了 40 skill が揃った状態です。守破離の **守の完成** は Phase 6（browse 機構実装 + 14 件スキルの動作実装）で達成予定。
 
 **現在の uzustack 状態**：
 
 - runtime: bin 約 50 個 + テンプレート機構（SKILL.md.tmpl + 5 host 展開：claude / codex / kiro / factory / opencode）+ voice 翻案ガイドライン v1/v2 + ETHOS.md
-- skill: 27 件（動作する実翻訳）+ browse 機構必須 13 件（Phase 6 で実装検討）= top-level 40 directory
+- skill: 26 件（動作する実翻訳）+ browse 機構必須 14 件（Phase 6 で実装検討）= top-level 40 directory
 - (1) browser 機構と (2) ワークフロー skill の依存関係: 詳細は [docs/uzustack/phase6-pending-skills.md](docs/uzustack/phase6-pending-skills.md) と [ARCHITECTURE.md](ARCHITECTURE.md#1-browser-機構-と-2-ワークフロー-skill-の依存関係) 参照
 
 **Phase 3.6（進行中、 メンテナー個人領域）**：tac_vault（メンテナー個人 Obsidian vault）の Approach B Full Migration を 2026-05-05 に実施。 step note の frontmatter schema 完備 + TaskNotes 系 plugin の view configuration を整備し、 Phase 4 着手前の「メンテナー運用基盤」 を確立。 詳細はメンテナー個人領域に閉じる（uzustack repo のコード変更ゼロ）。
@@ -33,7 +33,7 @@ uzustack は Phase 0c → 1 → 2 → 3 → 3.5 を経て、**Phase 3 + Phase 3.
 
 - **Phase 4「絆を結ぶ」**: hook + 連鎖機構を runtime 上に実装。`freeze` / `unfreeze` skill pair 翻訳 + `investigate` の hook 復活 + obsidian-audit 系の連鎖実装
 - **Phase 5「記憶が編まれる」**: learnings 機構実装。`{{LEARNINGS_*}}` placeholder 展開 + `learn` skill 翻訳 + マシン間記憶同期 skill 連携
-- **Phase 6「守の完成」**: browse 機構実装（Playwright + Chromium + browser-manager + Chrome extension）+ 13 件 browse 機構必須スキル (browse / qa / qa-only / canary / benchmark / make-pdf / design-review / design-consultation / land-and-deploy / open-uzustack-browser / pair-agent / connect-chrome / setup-browser-cookies) の動作実装。実装が完了した瞬間が **守の完成**
+- **Phase 6「守の完成」**: browse 機構実装（Playwright + Chromium + browser-manager + Chrome extension）+ 14 件 browse 機構必須スキル (browse / qa / qa-only / canary / benchmark / make-pdf / design-review / design-consultation / devex-review / land-and-deploy / open-uzustack-browser / pair-agent / connect-chrome / setup-browser-cookies) の動作実装。実装が完了した瞬間が **守の完成**
 
 各 Phase の主要 PR # と完遂事項の詳細は [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md) を参照してください。
 
@@ -329,7 +329,7 @@ step 22 の自動 subtree pull PR が来た時、翻訳済み skill が変更さ
 
 ### bulk rebase（複数件が同時に更新を受けた時）
 
-Phase 3.5 完遂時点で翻訳済み skill は 40 件 (動作する 27 + browse 機構必須 13 件)。複数の翻訳済み skill が同じ自動 PR で上流更新を受けた場合、1 件ずつ rebase するのではなく月次 batch でまとめて rebase する運用にする。各 skill の影響範囲を `gh pr diff <auto-PR-number>` で先に確認し、変更がある skill だけを 1 つの feature ブランチに集めて再翻訳する。
+Phase 3.5 完遂時点で翻訳済み skill は 40 件 (動作する 26 + browse 機構必須 14 件)。複数の翻訳済み skill が同じ自動 PR で上流更新を受けた場合、1 件ずつ rebase するのではなく月次 batch でまとめて rebase する運用にする。各 skill の影響範囲を `gh pr diff <auto-PR-number>` で先に確認し、変更がある skill だけを 1 つの feature ブランチに集めて再翻訳する。
 
 ### Phase 6 待ち skill 翻訳時の warning 配置必須
 

@@ -12,7 +12,14 @@ uzustack の release notes。フォーマットは [Keep a Changelog](https://ke
 
 - **守完走判定を再定義** — 旧「Phase 6 予約スタブ 10 件の Type 1/3 判定」 から「browse 機構必須 13 skill の動作実装」 に articulate を統一。 (1) browser 機構 と (2) ワークフロー skill の依存関係を ARCHITECTURE.md / README.md / CONTRIBUTING.md / docs/uzustack/ で正式 articulate
 - **browse 機構必須 13 skill** (browse / qa / qa-only / canary / benchmark / make-pdf / design-review / design-consultation / land-and-deploy / open-uzustack-browser / pair-agent / connect-chrome / setup-browser-cookies) の SKILL.md.tmpl 先頭に Phase 6 待ち warning block を統一配置 — frontmatter `status: phase6-reserved` も全 13 skill で統一
-- **README.md の skill 一覧** — 旧「翻訳済 30 件 + 予約スタブ 10 件」 から「動作する 27 件 + browse 機構必須 13 件」 に分類変更。 design-review / design-consultation / land-and-deploy が browse 機構必須（= 現状動作しない）と判明したため再分類
+- **README.md の skill 一覧** — 旧「翻訳済 30 件 + 予約スタブ 10 件」 から「動作する 26 件 + browse 機構必須 14 件」 に分類変更。 design-review / design-consultation / devex-review / land-and-deploy が browse 機構必須（= 現状動作しない）と判明したため再分類
+
+### Fixed — fact-check 後の reclassify
+
+- **devex-review を browse 機構必須側に reclassify** — fact-check で description + 本文 line 50 + line 83「browse tool で docs を navigate / screenshot」 等の literal instruction が確認された。 旧「非依存 28 件」 → 新「必須依存 14 件」 へ移動 + SKILL.md.tmpl に warning block 配置
+- **autoplan を optional → 非依存 に reclassify** — uzustack 翻訳済 (repo top) では browse literal が翻訳時に削除済 (gstack 上流 line 322「Launch real browser for QA → invoke /open-gstack-browser」 が uzustack 側に存在しない)。 旧「optional 依存 3 件」 → 新「optional 依存 2 件」、 非依存 28 件は維持 (devex-review 抜き + autoplan 追加で同数)
+- **守完走 base 31 → 30 skill に修正** — 非依存 28 + optional 2 = 30
+- **判定基準の articulate 強化** — 「`{{BROWSE_SETUP}}` placeholder の存在 = browse 必須」 ではないことを明示 (placeholder engine の resolver は空文字列を返し SKILL.md 生成時に削除される)。 ARCHITECTURE.md「(1) browser 機構 と (2) ワークフロー skill の依存関係」 section に判定基準を追記
 
 ### Added — for contributors
 

@@ -49,7 +49,7 @@ warning block 自体は uzustack voice (= 経営者文脈 + 日本語) で書く
 
 `_upstream/gstack/` は subtree pull の上書き対象だが、 本 warning block は **uzustack 側 repo top の SKILL.md.tmpl に配置** するので subtree pull の影響を受けない。 月次自動 PR が gstack 本体を更新しても warning block は維持される。
 
-## 適用対象 skill (13 entry, 12 機能)
+## 適用対象 skill (14 entry, 13 機能)
 
 詳細は [phase6-pending-skills.md](phase6-pending-skills.md) を参照。
 
@@ -64,15 +64,16 @@ warning block 自体は uzustack voice (= 経営者文脈 + 日本語) で書く
 9. make-pdf
 10. design-review
 11. design-consultation
-12. setup-browser-cookies
-13. land-and-deploy
+12. devex-review
+13. setup-browser-cookies
+14. land-and-deploy
 
 ## 検証
 
 実装後の verification grep:
 
 ```bash
-for s in browse open-uzustack-browser pair-agent connect-chrome qa qa-only canary benchmark make-pdf design-review design-consultation setup-browser-cookies land-and-deploy; do
+for s in browse open-uzustack-browser pair-agent connect-chrome qa qa-only canary benchmark make-pdf design-review design-consultation devex-review setup-browser-cookies land-and-deploy; do
   if grep -q "Phase 6 で実装検討 — 現在動作しません" "$s/SKILL.md.tmpl" 2>/dev/null; then
     echo "  OK: $s"
   else
