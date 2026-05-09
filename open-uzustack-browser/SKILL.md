@@ -18,6 +18,14 @@ status: phase6-reserved
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
 
+> **Phase 6 で実装検討 — 現在動作しません**
+>
+> この skill は browse 機構 (永続的 browser daemon) を必要とし、 uzustack の Phase 6 で
+> 実装予定です。 現時点では翻訳された SKILL.md / SKILL.md.tmpl のみ存在し、 動作する bin は
+> 未配置です。 browse 機構が必要な場合は upstream gstack を直接利用してください。
+>
+> 詳細: [docs/uzustack/phase6-pending-skills.md](../docs/uzustack/phase6-pending-skills.md)
+
 
 
 # open-uzustack-browser — Phase 6 で対応予定
