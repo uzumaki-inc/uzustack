@@ -255,8 +255,8 @@ uzustack の **browse 機構必須 14 skill** (browse / qa / qa-only / canary / 
 
 「文字列が end user の **目に入る** か」 で判定する。 SKILL.md instruction や warning block は end user が読む = 翻案射程内。 内部 binary の error 出力 / log は debug 用 = 翻案射程外。
 
-**事例**: design-review / design-consultation / land-and-deploy は SKILL.md 本文を Phase 3.5 で翻訳完了したが、 内部で呼ぶ browse 機構の error / output は Phase 6 まで英語維持 — これを意図的な「partial 翻案」 として articulate する。
+**事例**: design-review / design-consultation / land-and-deploy は SKILL.md 本文を Phase 3.5 で翻訳完了したが、 内部で呼ぶ browse 機構の error / output は Phase 6 まで英語維持 — これを意図的な「partial 翻案」 として明文化する。
 
 ### CONTRIBUTING.md との関係
 
-CONTRIBUTING.md「Phase 6 待ち skill 翻訳時の warning 配置必須」 section で「frontmatter status + warning block 配置」 規律を articulate。 本節は voice 翻案の **射程** を articulate する補完。 配置規律 (どこに) ↔ 翻案射程規律 (何を) の 2 軸で運用する。
+CONTRIBUTING.md「Phase 6 待ち skill 翻訳時の warning 配置必須」 section で「frontmatter status + warning block 配置」 規律を明文化。 本節は voice 翻案の **射程** を明文化する補完。 配置規律 (どこに) ↔ 翻案射程規律 (何を) の 2 軸で運用する。

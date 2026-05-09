@@ -196,7 +196,7 @@ uzustack はこの 2 構成要素を **部分的依存** として引き受け�
 | 段階 | Phase | 状態 |
 |---|---|---|
 | **守** | 0c〜3.5（完了 2026-05-02） | gstack を subtree で取り込み、型を確立。runtime + Type 1 翻訳 + Phase 6 予約スタブ合計 40 skill が揃った |
-| **守** | 3.6（進行中） | 土台を構造化。`_upstream-sync/` directory 設計 + root file 4 件先行取込み + browse 機構必須 14 skill の Phase 6 待ち articulate 統一 |
+| **守** | 3.6（進行中） | 土台を構造化。`_upstream-sync/` directory 設計 + root file 4 件先行取込み + browse 機構必須 14 skill の Phase 6 待ち明文化統一 |
 | **守** | 4 | hook + 連鎖機構（`freeze` / `unfreeze` skill pair 翻訳 + `investigate` の hook 復活）|
 | **破** | 6（着手予定） | browse 機構実装（Playwright + Chromium + browser-manager + extension）。 14 skill の動作実装で守完走判定 30 skill から 43 skill 範囲に拡張 |
 

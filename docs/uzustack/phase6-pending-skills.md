@@ -1,6 +1,6 @@
 # Phase 6 で実装検討の skill 一覧
 
-uzustack は Phase 3.5 までに gstack の workflow skill を Markdown / docs 層で翻訳完了したが、 **browse 機構 (永続的 browser daemon)** を必要とする 14 skill (13 機能 + connect-chrome alias) は Phase 6 で実装検討の状態にある。 本 doc はその 14 entry を**正典 list** として articulate する。
+uzustack は Phase 3.5 までに gstack の workflow skill を Markdown / docs 層で翻訳完了したが、 **browse 機構 (永続的 browser daemon)** を必要とする 14 skill (13 機能 + connect-chrome alias) は Phase 6 で実装検討の状態にある。 本 doc はその 14 entry を**正典 list** として明文化する。
 
 ## 背景
 
