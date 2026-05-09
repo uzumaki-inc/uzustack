@@ -34,6 +34,7 @@ Thumbs.db
 .claude/skills/
 .claude/settings.local.json
 .claude/*.lock
+.claude/rules/
 
 # 個人作業 context（retros / draft / 個人 working note）
 .context/
