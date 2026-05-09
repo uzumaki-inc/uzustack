@@ -10,7 +10,7 @@ uzustack は Phase 3.5 までに gstack の workflow skill を Markdown / docs �
 
 gstack は (1) 永続的 browser 機構 と (2) ワークフロー skill の 2 構成要素を持つ。 (1) と (2) は logically separate だが、 全 43 skill のうち 14 entry (13 機能、 32%) が (1) を必須前提としている = **部分的依存**。
 
-uzustack の守期間 (Phase 0c〜3.5) では (2) の Markdown / docs 層を翻訳することに集中し、 (1) の Playwright + Chromium + Chrome extension 等の hard part は Phase 6 (= 守の完成 + 破への前段) で着手検討する。
+uzustack の守期間の前半 (Phase 0c〜3.5 = 型の取り込み完了) では (2) の Markdown / docs 層を翻訳することに集中し、 (1) の Playwright + Chromium + Chrome extension 等の hard part は Phase 6 (= 守の完成 + 破への前段) で着手検討する。 守期間全体は Phase 0c〜Phase 6 (Phase 6 完了で守完走) と位置付ける。
 
 ## 守完走判定の再定義
 
