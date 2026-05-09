@@ -29,7 +29,7 @@ bash code block 内では同じ値を `${NAME}` で評価する形で書く（`$
 gstack に存在しない概念（uzustack 独自）は、 4 層分類に当てはめて導入する。 既知の独自 placeholder：
 
 - `{PROJECT_REPO}` = git root（cwd の git remote から決定）→ system / per-project path layer
-- `{CLAUDE_CODE_PROJECT}` = Claude Code 内部の encoded-cwd directory（cwd を `/` → `-` 置換、 例 `-Users-tac-src-uzustack`）→ system / per-project path layer
+- `{CLAUDE_CODE_PROJECT}` = Claude Code 内部の encoded-cwd directory（cwd を `/` → `-` 置換、 例 `-Users-{user}-src-{repo}`）→ system / per-project path layer
 - `{LOCAL_VAULT}` = メンテナー個人 Obsidian vault root path（machine-specific、 OSS 公開不可な絶対 path を sanitize する）→ system / per-project path layer
 - `{LOCAL_VAULT_BACKUP}` = vault の dated backup dir path（同上）→ system / per-project path layer
 
