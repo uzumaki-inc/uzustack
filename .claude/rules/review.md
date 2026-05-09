@@ -110,3 +110,21 @@ PR (`gh pr create`) を起票した直後に、 必ず `/simplify` を 2 回実�
 5. 3 周目は回さない (既存規律)
 
 例外: PR が極小 diff (= 1〜2 file、 trivial fix) の場合は 1 周のみで OK と判断。 ただし 1 周で済ませた場合は PR body にその旨記載。
+
+---
+
+## sanitize 作業中、 sanitize 対象 string を audit trail に書かない
+
+sanitize の self-referential leak 防止規律。 機密 path / 固有名を sanitize する作業中、 commit message / PR body / issue body / comment / audit trail に **sanitize 対象 string を直接 list / 引用しない**。
+
+**Why:** sanitize の事実を articulate する際に `(<secret-A>, <secret-B>, ...) 0 件確認` のような形で sanitize 対象を直接列挙すると、 audit trail 自体が leak source になる。 commit message rewrite + force-push でも GitHub は orphan SHA を一定期間保持するため、 PR body / issue body / commit message のいずれかに secret 列挙が残ると公開範囲から完全消去できない。
+
+**事例:** PR #142 の sanitize 作業で「PC 固有情報 (sensitive path / 個人固有名) 0 件確認」 等の形ではなく具体 string を Test plan / audit trail / commit message に列挙、 工藤さん指摘で全件 history rewrite + force-push + PR/issue body 再 sanitize に発展。 sanitize の意図を直接逆走する典型 pattern。
+
+**How to apply:**
+
+1. **抽象表現で記述**: 具体 path / 固有名を「sensitive path」「絶対 path」「個人固有名」「vault 固有名」 等の抽象語に置換
+2. **list 形式の avoid**: `(A, B, C, D) 0 件確認` のような sanitize 対象 list は audit trail 価値が低く leak risk が高い。 「sensitive path / 固有名 sweep grep で 0 件確認」 で十分
+3. **placeholder name は記載 OK**: sanitize 後の placeholder 名 (`{LOCAL_VAULT}` 等) は sanitize 対象でないので audit trail に記載可能
+4. **draft 段階の checklist**: PR body / commit message / issue body の draft 完成時に sanitize 対象 string を grep。 含むなら抽象表現に置換してから push / 起票
+5. **適用対象**: 鍵情報 / API token のような hard secret に限らず、 個人 vault 名 / OS user 名 / 個人 dir 名等の soft secret にも同規律を適用
