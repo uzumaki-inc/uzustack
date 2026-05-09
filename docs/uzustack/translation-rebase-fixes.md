@@ -77,5 +77,3 @@ rm -rf \
 ```
 
 これらは git track 外なので削除しても repo 状態は変わらず、 commit も発生しない（手動 1 度の cleanup として完結）。
-
-**memory 規律との整合**：`setup_no_artifact_cleanup.md`「環境固有の遺物処理は setup 自動化より手動 1 回」 に従い、 `bin/dev-setup` には組み込まず手動対処とする。
