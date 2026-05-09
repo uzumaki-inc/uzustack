@@ -1,6 +1,6 @@
 # Phase 6 待ち skill の warning block — source of truth
 
-uzustack の browse 機構必須 12 skill (詳細は [phase6-pending-skills.md](phase6-pending-skills.md)) は Phase 6 まで動作しない。 end user に「翻訳されているのに動かない」 体験を強いないため、 各 SKILL.md.tmpl の **frontmatter 直後 (`{{PREAMBLE}}` 直前)** に共通 warning block を直書きする。
+uzustack の browse 機構必須 14 entry (13 機能 + connect-chrome alias、 詳細は [phase6-pending-skills.md](phase6-pending-skills.md)) は Phase 6 まで動作しない。 end user に「翻訳されているのに動かない」 体験を強いないため、 各 SKILL.md.tmpl の **frontmatter 直後 (`{{PREAMBLE}}` 直前)** に共通 warning block を直書きする。
 
 ## 共通 warning block
 
