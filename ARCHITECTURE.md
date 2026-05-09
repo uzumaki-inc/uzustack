@@ -179,7 +179,7 @@ uzustack はこの 2 構成要素を **部分的依存** として引き受け�
 
 | 分類 | 件数 | 例 |
 |---|---|---|
-| (1) 必須依存 | 13〜14 (32%) | browse / qa / qa-only / canary / benchmark / make-pdf / design-review / design-consultation / devex-review / land-and-deploy / open-gstack-browser / pair-agent / connect-chrome / setup-browser-cookies |
+| (1) 必須依存 | 13〜14 (32%) | browse / qa / qa-only / canary / benchmark / make-pdf / design-review / design-consultation / devex-review / land-and-deploy / open-uzustack-browser / pair-agent / connect-chrome / setup-browser-cookies |
 | (1) optional 依存 | 2 (5%) | design-html / design-shotgun |
 | (1) 非依存 | 28 (65%) | ship / review / investigate / cso / codex / claude / context-* / learn / office-hours / plan-* / retro / health / autoplan 等 |
 

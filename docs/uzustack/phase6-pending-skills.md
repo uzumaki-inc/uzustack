@@ -50,7 +50,7 @@ uzustack の守期間の前半 (Phase 0c〜3.5 = 型の取り込み完了) で�
 
 ## fact-check 履歴
 
-本 list は次の 3 段階の fact-check で確定:
+本 list は次の 4 段階の fact-check で確定:
 
 1. **Agent 2 grep (12 pattern)**: `browse/bin/`, `browser-manager`, `chrome-cdp`, `playwright`, `chromium`, `extension`, `screenshot` 等で全 43 skill を grep。 結果: 必須 12 / optional 3 / 非依存 28
 2. **本文 broad grep**: 「browse tool」「browse 経由」「screenshot を撮る」 等の自然言語 pattern で再 check。 devex-review が「browse tool で docs を navigate / screenshot」 と明示しており、 旧「非依存」 から「必須依存」 へ reclassify
