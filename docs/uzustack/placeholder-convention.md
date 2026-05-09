@@ -49,4 +49,3 @@ gstack に存在しない概念（uzustack 独自）は、 4 層分類に当て�
 - `~/.claude/CLAUDE.md` — user-level routing rule（5 パターン routing rule）の placeholder 適用例
 - `{PROJECT_REPO}/CONTRIBUTING.md` — voice 規約（voice 軸 / 訳語表）
 - `{PROJECT_REPO}/ARCHITECTURE.md` — 3 場所 layout / skill typology
-- `{PROJECT_REPO}/.claude/rules/translation.md` — 翻訳作業規律
