@@ -71,7 +71,7 @@ skill 実行の中間成果物（checkpoint / timeline / 学習履歴）は `~/.
 
 ## OSS 公開時の sanitize
 
-`~/.claude/` (user home) 内容を OSS 公開 surface に貼らない。絶対 path (`/Users/<name>/...`) / ls 出力 / file 内容 / 個人固有名 / OS user 名 / vault 名 を PR / issue / commit message / branch 名 / file 名 に書かない。OK: placeholder (`~/.claude/projects/{slug}/`) と抽象要約。push 前に `/Users/` `/home/` 等の残存を grep。
+`~/.claude/` (user home) 内容を OSS 公開 surface に貼らない。絶対 path (`/Users/<name>/...`) / ls 出力 / file 内容 / 個人固有名 / OS user 名 / vault 名 を PR (title / body / コメント) / issue (title / body / コメント) / commit message / branch 名 / file 名 に書かない。OK: placeholder (`~/.claude/projects/{slug}/`) と抽象要約。push 前に `/Users/` `/home/` 等の残存を grep。
 
 ## 守破離 / Phase 進捗
 
