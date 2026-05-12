@@ -69,6 +69,10 @@ skill 実行の中間成果物（checkpoint / timeline / 学習履歴）は `~/.
 
 詳細は [ARCHITECTURE.md](ARCHITECTURE.md) の State preservation layer section を参照。
 
+## OSS 公開時の sanitize
+
+`~/.claude/` (user home) 内容を OSS 公開 surface に貼らない。絶対 path (`/Users/<name>/...`) / ls 出力 / file 内容 / 個人固有名 / OS user 名 / vault 名 を PR (title / body / コメント) / issue (title / body / コメント) / commit message / branch 名 / file 名 に書かない。OK: placeholder (`~/.claude/projects/{slug}/`) と抽象要約。push 前に `/Users/` `/home/` 等の残存を grep。
+
 ## 守破離 / Phase 進捗
 
 現在は **Phase 3.6（進行中）**。型の取り込みは Phase 3.5 で完了（2026-05-02）、守の完成は Phase 6 で達成予定。
