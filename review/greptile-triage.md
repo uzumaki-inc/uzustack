@@ -34,7 +34,8 @@ wait
 
 project 固有の history path を derive：
 ```bash
-REMOTE_SLUG=$(browse/bin/remote-slug 2>/dev/null || ~/.claude/skills/uzustack/browse/bin/remote-slug 2>/dev/null || basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")
+eval "$(~/.claude/skills/uzustack/bin/uzustack-slug 2>/dev/null)"
+REMOTE_SLUG="${SLUG:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
 PROJECT_HISTORY="$HOME/.uzustack/projects/$REMOTE_SLUG/greptile-history.md"
 ```
 
@@ -183,7 +184,8 @@ escalation detection が fail（API error、曖昧 thread）した場合、Tier 
 
 書き込み前に両 directory が存在することを確保：
 ```bash
-REMOTE_SLUG=$(browse/bin/remote-slug 2>/dev/null || ~/.claude/skills/uzustack/browse/bin/remote-slug 2>/dev/null || basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")
+eval "$(~/.claude/skills/uzustack/bin/uzustack-slug 2>/dev/null)"
+REMOTE_SLUG="${SLUG:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
 mkdir -p "$HOME/.uzustack/projects/$REMOTE_SLUG"
 mkdir -p ~/.uzustack
 ```
