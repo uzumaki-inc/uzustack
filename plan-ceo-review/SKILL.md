@@ -117,8 +117,9 @@ git log --since=30.days --name-only --format="" | sort | uniq -c | sort -rn | he
 **設計ドキュメント check：**
 ```bash
 setopt +o nomatch 2>/dev/null || true  # zsh compat
-SLUG=$(~/.claude/skills/uzustack/browse/bin/remote-slug 2>/dev/null || basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")
-BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null | tr '/' '-' || echo 'no-branch')
+eval "$(~/.claude/skills/uzustack/bin/uzustack-slug 2>/dev/null)"
+SLUG="${SLUG:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
+BRANCH="${BRANCH:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null | tr '/' '-' || echo 'no-branch')}"
 DESIGN=$(ls -t ~/.uzustack/projects/$SLUG/*-$BRANCH-design-*.md 2>/dev/null | head -1)
 [ -z "$DESIGN" ] && DESIGN=$(ls -t ~/.uzustack/projects/$SLUG/*-design-*.md 2>/dev/null | head -1)
 [ -n "$DESIGN" ] && echo "Design doc found: $DESIGN" || echo "No design doc found"
