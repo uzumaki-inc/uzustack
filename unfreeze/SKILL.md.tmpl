@@ -1,0 +1,43 @@
+---
+name: unfreeze
+type: translated
+version: 0.1.0
+description: |
+  /freeze で設定した freeze 境界を clear し、全 directory への編集を再び許可する。
+  session を終了せずに編集 scope を広げたい時に使う。「unfreeze」「編集を unlock」
+  「freeze を解除」「全編集を許可」 と要求されたときに使用する。(uzustack)
+triggers:
+  - unfreezeモード
+  - 編集制限を解除
+  - 全フォルダ編集可能に
+  - 作業範囲を解除
+  - 誤爆防止を解除
+allowed-tools:
+  - Bash
+  - Read
+sensitive: true
+---
+
+# /unfreeze — freeze 境界を clear
+
+`/freeze` で設定した編集制限を解除し、全 directory への編集を許可する。
+
+```bash
+mkdir -p ~/.uzustack/analytics
+echo '{"skill":"unfreeze","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")'"}'  >> ~/.uzustack/analytics/skill-usage.jsonl 2>/dev/null || true
+```
+
+## 境界を clear
+
+```bash
+STATE_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.uzustack}"
+if [ -f "$STATE_DIR/freeze-dir.txt" ]; then
+  PREV=$(cat "$STATE_DIR/freeze-dir.txt")
+  rm -f "$STATE_DIR/freeze-dir.txt"
+  echo "Freeze 境界を解除 (旧設定: $PREV)。 編集はどこでも許可されます。"
+else
+  echo "Freeze 境界は設定されていませんでした。"
+fi
+```
+
+ユーザーに結果を伝える。 注：`/freeze` の hook は session に register されたままだが、 state file がないのですべて許可される。 再 freeze するには `/freeze` をもう一度実行する。

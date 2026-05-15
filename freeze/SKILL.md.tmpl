@@ -1,0 +1,82 @@
+---
+name: freeze
+type: translated
+version: 0.1.0
+description: |
+  ファイル編集を特定の directory に制限する（session スコープ）。許可された
+  path の外への Edit / Write 操作を block する。 デバッグ中に無関係なコードを
+  誤って「修正」してしまうのを防ぐ、 または変更を 1 つの module に限定したい時
+  に使う。「freeze して」「編集を制限」「この folder だけ編集」
+  「編集を lock down」 と要求されたときに使用する。(uzustack)
+triggers:
+  - freezeモード
+  - 編集範囲を固定して
+  - このフォルダ以外触らないで
+  - 作業範囲を制限
+  - 誤爆防止
+allowed-tools:
+  - Bash
+  - Read
+  - AskUserQuestion
+hooks:
+  PreToolUse:
+    - matcher: "Edit"
+      hooks:
+        - type: command
+          command: "bash $CLAUDE_PROJECT_DIR/.claude/skills/freeze/bin/check-freeze.sh"
+          statusMessage: "freeze 境界をチェック中..."
+    - matcher: "Write"
+      hooks:
+        - type: command
+          command: "bash $CLAUDE_PROJECT_DIR/.claude/skills/freeze/bin/check-freeze.sh"
+          statusMessage: "freeze 境界をチェック中..."
+sensitive: true
+---
+
+# /freeze — directory への編集制限
+
+ファイル編集を特定の directory に lock する。 許可された path の外を targeting する Edit / Write 操作は **block される**（警告だけではない）。
+
+```bash
+mkdir -p ~/.uzustack/analytics
+echo '{"skill":"freeze","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")'"}'  >> ~/.uzustack/analytics/skill-usage.jsonl 2>/dev/null || true
+```
+
+## Setup
+
+ユーザーに編集を制限する directory を尋ねる。 AskUserQuestion を使う：
+
+- Question: 「どの directory に編集を制限しますか？ この path の外のファイルは編集が block されます。」
+- Text input（multiple choice ではない）— ユーザーが path を typed input する。
+
+ユーザーが directory path を提供したら：
+
+1. 絶対 path に解決する：
+```bash
+FREEZE_DIR=$(cd "<user-provided-path>" 2>/dev/null && pwd)
+echo "$FREEZE_DIR"
+```
+
+2. trailing slash を確実にして freeze state file に保存：
+```bash
+FREEZE_DIR="${FREEZE_DIR%/}/"
+STATE_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.uzustack}"
+mkdir -p "$STATE_DIR"
+echo "$FREEZE_DIR" > "$STATE_DIR/freeze-dir.txt"
+echo "Freeze 境界を設定: $FREEZE_DIR"
+```
+
+ユーザーに伝える：「編集は今 `<path>/` に制限されています。 この directory 外の Edit / Write は block されます。 境界を変更するには `/freeze` をもう一度実行。 削除するには `/unfreeze` を実行するか session を終了。」
+
+## 動作の仕組み
+
+hook は Edit / Write tool input JSON から `file_path` を読み取り、 その path が freeze directory で始まるかを check する。 始まらない場合は `permissionDecision: "deny"` を返して操作を block する。
+
+freeze 境界は state file 経由で session 内で persist される。 hook script は Edit / Write の invocation ごとに state file を読む。
+
+## Notes
+
+- freeze directory の trailing `/` は `/src` が `/src-old` にマッチするのを防ぐ
+- freeze は Edit / Write tool のみに適用 — Read / Bash / Glob / Grep は影響を受けない
+- これは security boundary ではなく **事故防止** のもの — `sed` のような Bash コマンドは依然として境界外のファイルを変更できる
+- 無効化するには `/unfreeze` を実行するか会話を終了する
