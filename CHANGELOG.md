@@ -6,6 +6,19 @@ uzustack の release notes。フォーマットは [Keep a Changelog](https://ke
 
 ---
 
+## [0.3.5.2] — 2026-05-15
+
+### Added
+
+- **learnings resolver を実装** — `scripts/resolvers/learnings.ts` を upstream gstack から port（voice 翻案 + uzustack 機械置換）。`{{LEARNINGS_SEARCH}}` / `{{LEARNINGS_LOG}}` placeholder が空展開から実体に変わり、retro 等 13 skill で過去の学習検索と学習記録の指示文が展開されるようになった
+- cross-project 学習の初回確認（AskUserQuestion）、学習ログの型・信頼度・ソース指定をサポート
+
+### Fixed
+
+- retro skill の learnings 連携が「placeholder 空展開」で機能不全だった問題を解消
+
+---
+
 ## [0.3.5.1] — 2026-05-08
 
 ### Changed — user-facing
