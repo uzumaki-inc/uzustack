@@ -15,6 +15,7 @@ import type { TemplateContext } from './types';
 
 export function generateLearningsSearch(ctx: TemplateContext): string {
   if (ctx.host === 'codex') {
+    // Codex: simpler version, no cross-project, uses $UZUSTACK_BIN
     return `## 過去の学習
 
 前回のセッションから関連する学習を検索する:
