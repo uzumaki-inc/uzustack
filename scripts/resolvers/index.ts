@@ -11,6 +11,7 @@
  */
 
 import type { ResolverFn } from './types';
+import { generateLearningsLog, generateLearningsSearch } from './learnings';
 import { generateSlugSetup } from './utility';
 
 export const RESOLVERS: Record<string, ResolverFn> = {
@@ -18,10 +19,8 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   SLUG_SETUP: generateSlugSetup,
   // Phase 4+ で voice + ETHOS preamble を返す予定
   PREAMBLE: (_ctx, _args) => '',
-  // Phase 4+ で ~/.uzustack/projects/{SLUG}/learnings.jsonl から検索結果を返す予定（Phase 5）
-  LEARNINGS_SEARCH: (_ctx, _args) => '',
-  // Phase 4+ で学習ログ書き込み指示文を返す予定（Phase 5）
-  LEARNINGS_LOG: (_ctx, _args) => '',
+  LEARNINGS_SEARCH: (ctx) => generateLearningsSearch(ctx),
+  LEARNINGS_LOG: (ctx) => generateLearningsLog(ctx),
   // Phase 4+ でマシン間記憶同期の load 指示文を返す予定（Phase 5）
   GBRAIN_CONTEXT_LOAD: (_ctx, _args) => '',
   // Phase 4+ でマシン間記憶同期の save 指示文を返す予定（Phase 5）

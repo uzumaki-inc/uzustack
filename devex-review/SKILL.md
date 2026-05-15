@@ -219,7 +219,30 @@ live score < plan score - 2 となる dimension を flag（現実が plan に届
 
 
 
+## 学習の記録
 
+このセッションで発見した非自明なパターン、落とし穴、アーキテクチャ上の知見があれば、
+将来のセッション向けに記録する:
+
+```bash
+~/.claude/skills/uzustack/bin/uzustack-learnings-log '{"skill":"devex-review","type":"TYPE","key":"SHORT_KEY","insight":"DESCRIPTION","confidence":N,"source":"SOURCE","files":["path/to/relevant/file"]}'
+```
+
+**Types:** `pattern`（再利用可能なアプローチ）、`pitfall`（やってはいけないこと）、`preference`
+（ユーザーが明示）、`architecture`（構造的決定）、`tool`（ライブラリ / フレームワークの知見）、
+`operational`（プロジェクト環境 / CLI / ワークフローの知識）。
+
+**Sources:** `observed`（コード内で発見）、`user-stated`（ユーザーが伝達）、
+`inferred`（AI の推論）、`cross-model`（Claude と Codex の両方が合意）。
+
+**Confidence:** 1-10。正直に。コードで確認した observed パターンは 8-9。
+自信のない推論は 4-5。ユーザーが明示した preference は 10。
+
+**files:** 学習が参照する具体的なファイルパスを含める。これにより
+陳腐化検出が可能になる: 対象ファイルが後で削除されたら、学習にフラグを立てられる。
+
+**本当の発見だけを記録する。** 自明なことは記録しない。ユーザーが既に知っていることは記録しない。
+良いテスト: この知見は将来のセッションで時間を節約するか？ もし yes なら記録する。
 
 ## Next Steps
 
