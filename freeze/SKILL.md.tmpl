@@ -77,6 +77,6 @@ freeze 境界は state file 経由で session 内で persist される。 hook s
 ## Notes
 
 - freeze directory の trailing `/` は `/src` が `/src-old` にマッチするのを防ぐ
-- freeze は Edit と Write tool のみに適用 — Read / Bash / Glob / Grep は影響を受けない
+- freeze は Edit / Write tool のみに適用 — Read / Bash / Glob / Grep は影響を受けない
 - これは security boundary ではなく **事故防止** のもの — `sed` のような Bash コマンドは依然として境界外のファイルを変更できる
 - 無効化するには `/unfreeze` を実行するか会話を終了する

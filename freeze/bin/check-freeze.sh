@@ -74,6 +74,6 @@ case "$FILE_PATH" in
     mkdir -p ~/.uzustack/analytics 2>/dev/null || true
     echo '{"event":"hook_fire","skill":"freeze","pattern":"boundary_deny","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")'"}' >> ~/.uzustack/analytics/skill-usage.jsonl 2>/dev/null || true
 
-    printf '{"permissionDecision":"deny","message":"[freeze] block: %s は freeze 境界 (%s) の外です。freeze された directory 内の編集のみ許可されます。"}\n' "$FILE_PATH" "$FREEZE_DIR"
+    printf '{"permissionDecision":"deny","message":"[freeze] Blocked: %s は freeze 境界 (%s) の外です。freeze された directory 内の編集のみ許可されます。"}\n' "$FILE_PATH" "$FREEZE_DIR"
     ;;
 esac
