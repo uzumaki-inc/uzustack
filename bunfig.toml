@@ -1,0 +1,11 @@
+# uzustack bun config — bun 全体の設定 home (test / install / loader 等を集約予定)
+#
+# 現状は test scope の guard のみ。Phase 4+ で bun 関連設定が増えたら集約する。
+
+[test]
+# _upstream/gstack/ は subtree として保持し、 uzustack の `bun test` では実行しない。
+# 理由: _upstream/gstack/test/team-mode.test.ts が execSync で _upstream/gstack/setup -q
+# を spawn し、 ~/.claude/skills/ の全 symlink を gstack 英語版で上書きする副作用がある
+# (= 2026-05-15 12:50 実害発生、 issue #155)。 上流 test 自体は upstream PR で対処すべき
+# 領域だが、 守期間中の「上流 PR 出さない」 規律により uzustack 側 guard で防ぐ。
+pathIgnorePatterns = ["**/_upstream/**"]
