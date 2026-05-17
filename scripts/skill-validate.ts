@@ -43,6 +43,7 @@ interface VoiceRule {
 
 interface VoiceRulesFile {
   version: string;
+  description?: string;
   patterns: VoiceRule[];
 }
 
@@ -185,7 +186,7 @@ async function main() {
     console.log(`    ${v.excerpt}`);
   }
   console.log('─'.repeat(60));
-  console.error('::error::Voice 規約 v1 違反が検出されました。`docs/uzustack/translation-voice-guide.md` を参照して修正してください。');
+  console.error('::error::Voice 規約違反が検出されました。`docs/uzustack/translation-voice-guide.md` を参照して修正してください。');
   process.exit(1);
 }
 
