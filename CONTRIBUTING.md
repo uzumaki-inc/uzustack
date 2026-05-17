@@ -17,19 +17,28 @@ PR / Issue / 翻訳改善・新スキル提案・バグ修正、いずれの Con
 
 ---
 
-## Phase 進捗（2026-05-09 時点）
+## Phase 進捗（2026-05-17 時点）
 
-uzustack は Phase 0c → 1 → 2 → 3 → 3.5 を経て、**Phase 3 + Phase 3.5 で「型の取り込み」が完了**（PR #120 merged 2026-05-02）。runtime（bin 約 50 個 + テンプレート機構 + voice 翻案ガイドライン v1/v2 + ETHOS.md）と動作する Type 1 実翻訳 26 skill + browse 機構必須 14 skill (翻訳済 stub) = 翻訳完了 40 skill が揃った状態です。守期間全体は Phase 0c〜Phase 6 (Phase 6 完了で守完走) と位置付け、 守破離の **守の完成** は Phase 6（browse 機構実装 + 14 件スキルの動作実装）で達成予定。
+uzustack は Phase 0c → 1 → 2 → 3 → 3.5 を経て、**Phase 3 + Phase 3.5 で「型の取り込み」が完了**（PR #120 merged 2026-05-02）。Phase 3.5 完遂時点で **動作する translated skill 26 件 + 14 件（翻訳済 stub） = top-level 40 directory** が揃った状態に到達。 その後 Phase 3.6 + Phase 4 cluster sub-task 1 で **動作する translated skill が 30 件** に増加（履歴は下記）。 守期間全体は Phase 0c〜Phase 6 (Phase 6 完了で守完走) と位置付け、 守破離の **守の完成** は Phase 6（browse 機構実装 + 14 件スキルの動作実装）で達成予定。
 
 **現在の uzustack 状態**：
 
 - runtime: bin 約 50 個 + テンプレート機構（SKILL.md.tmpl + 5 host 展開：claude / codex / kiro / factory / opencode）+ voice 翻案ガイドライン v1/v2 + ETHOS.md
-- skill: 26 件（動作する実翻訳）+ browse 機構必須 14 件（Phase 6 で実装検討）= top-level 40 directory
+- skill: **30 件（動作する translated skill）+ 14 件（Phase 6 実装予定 stub）= top-level 44 directory**
+- 採用定義: `type: translated` + `status` が空 / `in-progress` / `ACTIVE` のいずれか（= `phase6-reserved` 以外）
 - (1) browser 機構と (2) ワークフロー skill の依存関係: 詳細は [docs/uzustack/phase6-pending-skills.md](docs/uzustack/phase6-pending-skills.md) と [ARCHITECTURE.md](ARCHITECTURE.md#1-browser-機構-と-2-ワークフロー-skill-の依存関係) 参照
+
+**skill 数増減 history（2026-05-02 → 2026-05-17）**：
+
+- Phase 3.5 完遂時（PR #120 merged 2026-05-02）: 動作 **26** 件 + Phase 6 stub 14 件 = top-level 40
+- Phase 3.6 step-82（PR #127 merged 2026-05-04）: learn skill 翻訳化 = 動作 **27** 件
+- Phase 4 PR-A（PR #153 merged 2026-05-15）: freeze + unfreeze pair 翻訳化 = 動作 **29** 件
+- Phase 4 PR-B（PR #154 merged 2026-05-15）: guard 翻訳化（careful + freeze combo）= 動作 **30** 件
+- Phase 4 PR-C（PR #158 merged 2026-05-17）: gstack 専用 dir 削除規律明確化（doc 整理 only、 stub 作成は Phase 6 温存）= 動作 **30** 件（変動なし）
 
 **Phase 3.6（進行中、 メンテナー個人領域）**：メンテナー個人 Obsidian vault の Approach B Full Migration を 2026-05-05 に実施。 step note の frontmatter schema 完備 + TaskNotes 系 plugin の view configuration を整備し、 Phase 4 着手前の「メンテナー運用基盤」 を確立。 詳細はメンテナー個人領域に閉じる（uzustack repo のコード変更ゼロ）。
 
-**Phase 3.6 続き（2026-05-09、 本 PR）**：browse 機構必須 14 skill を Phase 6 で実装検討 stub として正式に明文化。 守完走判定 base を 31 → 30 skill に再定義 (= 非依存 28 + optional 2)。 fact-check で devex-review を browse 必須側に reclassify、 autoplan を非依存側に reclassify。 ARCHITECTURE.md / README.md / CONTRIBUTING.md / CHANGELOG.md / docs/uzustack/ + 14 skill SKILL.md.tmpl warning block 統一配置 + 新規 doc 2 件 (phase6-pending-skills.md / phase6-warning-block.md)。 詳細は CHANGELOG.md [0.3.5.1] entry / issue #138 を参照。
+**Phase 3.6 続き（PR #138 merged 2026-05-09）**：browse 機構必須 14 skill を Phase 6 で実装検討 stub として正式に明文化。 守完走判定 base を 31 → 30 skill に再定義 (= 非依存 28 + optional 2)。 fact-check で devex-review を browse 必須側に reclassify、 autoplan を非依存側に reclassify。 ARCHITECTURE.md / README.md / CONTRIBUTING.md / CHANGELOG.md / docs/uzustack/ + 14 skill SKILL.md.tmpl warning block 統一配置 + 新規 doc 2 件 (phase6-pending-skills.md / phase6-warning-block.md)。 詳細は CHANGELOG.md [0.3.5.1] entry / issue #138 を参照。
 
 **Phase 4 / 5 / 6 への接続**：
 
