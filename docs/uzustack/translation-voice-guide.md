@@ -161,7 +161,7 @@ bash + 副言語 embedded（Python heredoc / bun -e の JS 等）の翻訳に適
 | premise | 前提（premise） |
 | Outside Voice | 外部視点（Outside Voice） |
 | founder mode | 創業者モード（founder-mode） |
-| wartime / peacetime | 戦時 / 平時 |
+| wartime / peacetime | 火消し対応 / 平常運転（wartime / peacetime） |
 
 #### Mode / 状態名 layer
 
