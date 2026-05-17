@@ -19,7 +19,7 @@ PR / Issue / 翻訳改善・新スキル提案・バグ修正、いずれの Con
 
 ## Phase 進捗（2026-05-17 時点）
 
-uzustack は Phase 0c → 1 → 2 → 3 → 3.5 を経て、**Phase 3 + Phase 3.5 で「型の取り込み」が完了**（PR #120 merged 2026-05-02）。Phase 3.5 完遂時点で **動作する Type 1 実翻訳 26 skill + browse 機構必須 14 skill (翻訳済 stub) = top-level 40 directory** が揃った状態に到達。 その後 Phase 3.6 + Phase 4 cluster sub-task 1 で動作 skill が **30 件** に増加（履歴は下記）。 守期間全体は Phase 0c〜Phase 6 (Phase 6 完了で守完走) と位置付け、 守破離の **守の完成** は Phase 6（browse 機構実装 + 14 件スキルの動作実装）で達成予定。
+uzustack は Phase 0c → 1 → 2 → 3 → 3.5 を経て、**Phase 3 + Phase 3.5 で「型の取り込み」が完了**（PR #120 merged 2026-05-02）。Phase 3.5 完遂時点で **動作する translated skill 26 件 + 14 件（翻訳済 stub） = top-level 40 directory** が揃った状態に到達。 その後 Phase 3.6 + Phase 4 cluster sub-task 1 で **動作する translated skill が 30 件** に増加（履歴は下記）。 守期間全体は Phase 0c〜Phase 6 (Phase 6 完了で守完走) と位置付け、 守破離の **守の完成** は Phase 6（browse 機構実装 + 14 件スキルの動作実装）で達成予定。
 
 **現在の uzustack 状態**：
 
