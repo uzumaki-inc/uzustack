@@ -237,9 +237,24 @@ git subtree pull --prefix _upstream/gstack https://github.com/garrytan/gstack.gi
 
 `feature/sync-gstack-<日付>-<skill>` ブランチで再翻訳。詳細手順は [CONTRIBUTING.md](CONTRIBUTING.md#gstack-更新追従) を参照。
 
-### `_upstream/gstack/` 内で setup を走らせない
+### `_upstream/gstack/setup` を実行しない（effect 軸）
 
-`cd _upstream/gstack && ./setup` 等、 `_upstream/` 配下を CWD として gstack 本家 setup を実行してはならない。 Claude Code の skill discovery（CWD 配下の `.claude/skills/` を再帰探索する monorepo 仕様）により subtree 英語版が翻訳版と重複表示される。 host install dir（`.claude/skills/` 等 11 系統）は `_upstream/gstack/.gitignore` で git track 外、 subtree pull の上書き対象でもないため、 一度作られると物理 rm 必要。 詳細は [docs/uzustack/translation-rebase-fixes.md](docs/uzustack/translation-rebase-fixes.md) 参照（issue #132 / step-86）。
+`_upstream/gstack/setup` の execution は **invocation method に関わらず禁止**（cd した手動 invocation / `bun test` 経由 / bin script からの spawn / 他いずれの経路でも）。 一度実行されると次の effect が同時発生する：
+
+- `~/.claude/skills/<name>/SKILL.md` の全 symlink が gstack 英語版で上書きされる
+- `~/.claude/skills/gstack-upgrade` / `~/.claude/skills/open-gstack-browser` 等 gstack 専用 dir が追加される
+- `~/.gstack/.last-setup-version` に gstack VERSION が書き込まれる
+- 後続の uzustack 翻訳版 skill 発火が gstack 英語版で発火するようになる (= 修復まで日本語 skill が事実上消滅)
+- host install dir（`.claude/skills/` 等 11 系統）が `_upstream/gstack/` 内に作られ、 Claude Code の skill discovery（CWD 配下の `.claude/skills/` を再帰探索する monorepo 仕様）により subtree 英語版が翻訳版と重複表示される
+- host install dir は `_upstream/gstack/.gitignore` で git track 外、 subtree pull の上書き対象でもないため、 一度作られると物理 rm 必要
+
+主要な発火経路 (= 防御対象):
+
+1. **`bun test` 経由** (issue #155): uzustack root の `bunfig.toml` に `[test] pathIgnorePatterns = ["**/_upstream/**"]` を配置して default discovery から除外
+2. **手動 `cd _upstream/gstack && ./setup`** (issue #132 / step-86): 規律として禁止
+3. **bin script からの spawn**: 現状 guard で block 済（将来注意）
+
+詳細は [docs/uzustack/translation-rebase-fixes.md](docs/uzustack/translation-rebase-fixes.md) 参照（issue #132 / step-86 / #155）。
 
 `_upstream/gstack/` 配下の編集は禁止（subtree pull の上書き対象）。uzustack 独自編集は repo top の `<skill>/` 配下または root level で行う。
 

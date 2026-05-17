@@ -188,11 +188,26 @@ gh pr create
 
 自動 PR の中に翻訳済み skill（`type: translated`）の上流変更が含まれていたら、[翻訳ガイド](#翻訳ガイドgstack-の英語スキルを翻訳する場合) の「rebase の手順」を参照して再翻訳します。uzustack 独自部分（`type: native`）は gstack 更新と無関係。
 
-### `_upstream/gstack/` 内で setup を走らせない
+### `_upstream/gstack/setup` を実行しない（effect 軸）
 
-**禁止**：`cd _upstream/gstack && ./setup` 等、 `_upstream/` 配下を CWD として gstack 本家 setup を実行してはならない。 host install 結果（`.claude/skills/` 等 11 dir）が `_upstream/gstack/` 内に作られると、 Claude Code の skill discovery（CWD 配下の `.claude/skills/` を再帰探索する monorepo 仕様）により **uzustack 翻訳版と subtree 英語版が同じ skill name で重複表示**される。
+**禁止**：`_upstream/gstack/setup` の execution。 invocation method (= cd した手動 invocation / `bun test` 経由 / bin script からの spawn / 他いずれの経路でも) に関わらず、 **gstack setup script の execution 自体が禁止**。
 
-詳細と再発時の手動 cleanup 手順は [docs/uzustack/translation-rebase-fixes.md](docs/uzustack/translation-rebase-fixes.md#_upstreamgstack-内で-setup-を走らせないpr-131-step-86--issue-132) を参照（issue #132 / step-86）。
+**effect**: 一度実行されると次の副作用が同時発生する：
+
+- `~/.claude/skills/<name>/SKILL.md` の全 symlink が gstack 英語版 (`_upstream/gstack/<name>/SKILL.md`) で上書きされる
+- `~/.claude/skills/gstack-upgrade` / `~/.claude/skills/open-gstack-browser` 等 gstack 専用 directory が新規追加される
+- `~/.gstack/.last-setup-version` に gstack VERSION が書き込まれる
+- 後続の uzustack 翻訳版 skill 発火が gstack 英語版で発火するようになる (= 修復まで日本語 skill が事実上消滅)
+- host install 結果（`.claude/skills/` 等 11 dir）が `_upstream/gstack/` 内にも作られ、 Claude Code の skill discovery（CWD 配下の `.claude/skills/` を再帰探索する monorepo 仕様）により **uzustack 翻訳版と subtree 英語版が同じ skill name で重複表示**される
+- host install dir は `_upstream/gstack/.gitignore` で git track 外、 subtree pull の上書き対象でもないため、 一度作られると物理 rm 必要
+
+**主要な発火経路 (= 防御対象)**:
+
+1. **`bun test` 経由** (= 2026-05-15 12:50 実害発生、 issue #155): `_upstream/gstack/test/team-mode.test.ts` が `execSync` で `_upstream/gstack/setup -q` を直接 spawn する。 uzustack root の `bunfig.toml` に `[test] pathIgnorePatterns = ["**/_upstream/**"]` を配置して `bun test` の default discovery から除外
+2. **手動 `cd _upstream/gstack && ./setup`** (= issue #132 / step-86): メンテナーが誤って実行する経路。 規律として禁止
+3. **bin script からの spawn** (= `_upstream/gstack/bin/gstack-session-update` 等): SessionStart hook 経由で発火する可能性。 現状は `.git` 不在 guard + team mode guard + `~/.claude/settings.json` 未登録 で block されているが、 将来 guard が外れる場合は注意
+
+詳細と再発時の手動 cleanup 手順は [docs/uzustack/translation-rebase-fixes.md](docs/uzustack/translation-rebase-fixes.md#_upstreamgstacksetup-の実行禁止effect-軸-pr-131-step-86--issue-132--155) を参照（issue #132 / step-86 / #155）。
 
 ---
 
