@@ -29,7 +29,7 @@
     },
     {
       "id": "garry_tan_name",
-      "name": "Garry Tan (固有名詞軸 v2)",
+      "name": "Garry Tan (人名)",
       "regex": "\\bGarry Tan\\b"
     }
   ]

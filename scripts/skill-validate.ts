@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 /**
- * Skill voice validation — voice 規約 v1 の機械チェック可能 subset。
+ * Skill voice validation — voice 規約 v1 + v2 の機械チェック可能 subset。
  * Phase 3.6 step-83 サブタスク 3 で配置、`.github/workflows/skill-docs.yml` の Voice validation step で実行。
  *
  * voice 規約の pattern は `scripts/voice-rules.json` で管理 (v2 拡張は同 file に追記)。
- * 4 pattern を named-capture group で merge し、 line 毎 1-pass scan で全 pattern を check する。
+ * patterns を named-capture group で merge し、 line 毎 1-pass scan で全 pattern を check する。
  *
  * Modes:
  *   default               - 全 .tmpl + .md scan (CI 既定)
