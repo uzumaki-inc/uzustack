@@ -244,6 +244,7 @@ git subtree pull --prefix _upstream/gstack https://github.com/garrytan/gstack.gi
 - `~/.claude/skills/<name>/SKILL.md` の全 symlink が gstack 英語版で上書きされる
 - `~/.claude/skills/gstack-upgrade` / `~/.claude/skills/open-gstack-browser` 等 gstack 専用 dir が追加される
 - `~/.gstack/.last-setup-version` に gstack VERSION が書き込まれる
+- 後続の uzustack 翻訳版 skill 発火が gstack 英語版で発火するようになる (= 修復まで日本語 skill が事実上消滅)
 - host install dir（`.claude/skills/` 等 11 系統）が `_upstream/gstack/` 内に作られ、 Claude Code の skill discovery（CWD 配下の `.claude/skills/` を再帰探索する monorepo 仕様）により subtree 英語版が翻訳版と重複表示される
 - host install dir は `_upstream/gstack/.gitignore` で git track 外、 subtree pull の上書き対象でもないため、 一度作られると物理 rm 必要
 
