@@ -132,8 +132,8 @@ bash + 副言語 embedded（Python heredoc / bun -e の JS 等）の翻訳に適
 - **インラインコメントは簡潔な日本語**、技術用語は backtick で英語維持
 - **括弧**：半角 `(...)` を維持
 - **embedded code 内コメント**（Python heredoc / bun -e の JS 等）も日本語化、技術用語は英語維持
-- **embedded Python heredoc 内の error 文字列** も日本語化対象（voice 規約 v1 #2 の客観形ルールが境界を貫通する）
-- **TypeScript / 主言語そのもの** は英語維持（reader 想定の言語と一致させる）
+- **embedded Python heredoc 内の error 文字列** も日本語化対象（`uzustack-brain-init` / `uzustack-brain-restore` で確認、voice 規約 v1 #2 の客観形ルールが境界を貫通する）
+- **TypeScript / 主言語そのもの** は英語維持（reader 想定の言語と一致させる、`uzustack-next-version` 477 行 TS で確立）
 
 #### 単語・短語 layer（Data flow 用語）
 
@@ -255,7 +255,7 @@ voice 規約は **ファイル名そのもの** も射程に含める。`bin/<na
 
 **運用方針の補足**：
 
-- **CONFIG_HEADER の日本語化方針**：英語コメントを bin 配置初期段階で保留する場合は、本ルール表整備後に brain 系翻訳と整合させて日本語化する
+- **CONFIG_HEADER の日本語化方針**：`gstack-config` の英語コメント約 70 行は、bin 配置初期段階で英語のままコピーで保留 → 本ルール表整備後、brain 系翻訳と整合させて日本語化済
 - **DEFAULTS の意味論判断は brain 系翻訳に集中**：gstack 文字を含まない key（例：`gbrain_sync_mode`）は機械置換せず、brain 系翻訳時に集中判断
 
 ### 2.4 翻案の指針（meta-rule）
@@ -288,25 +288,24 @@ CONTRIBUTING.md「Phase 6 待ち skill 翻訳時の warning 配置必須」 sect
 
 | axis | 内容 | 本ガイド section | 機械化状態 |
 |---|---|---|---|
-| 文字列軸 | path / env / bin 名 / URL 等 | [1.1 機械置換 / 文字列軸](#文字列軸パスbin-名url-等) | 機械化済（positive rules、6 patterns） |
-| 固有名詞軸 | Garry Tan 等 | [1.1 機械置換 / 固有名詞軸](#固有名詞軸) | 機械化済（positive rules） |
+| 文字列軸 | path / env / bin 名 / URL 等 | [1.1 機械置換 / 文字列軸](#文字列軸パスbin-名url-等) | 機械化済（positive rules、5 patterns） |
+| 固有名詞軸 | Garry Tan 等 | [1.1 機械置換 / 固有名詞軸](#固有名詞軸) | 機械化済（positive rules、1 pattern） |
 | axis 1（負） | 全角括弧 `（` `）` の voice 規約違反検出 | [1.3 翻案 / bash + 副言語 embedded layer](#bash--副言語-embedded-layer) | #165 で計画中 |
 | axis 2（負） | persona attribution / Mode 名表記の維持 | [1.3 翻案](#13-翻案) + [1.2 英語維持](#12-英語維持)（Mode 名 / 経営者思考特性 / persona attribution） | #165 で計画中 |
 | axis 3（負） | 外部 LLM prompt 英語維持 | [1.2 英語維持 / 外部 LLM 向け prompt 本体](#外部-llm-向け-prompt-本体) | #165 で計画中 |
 
 ### 3.2 voice-rules.json schema との cross-ref
 
-`scripts/voice-rules.json` の `patterns` array が validator 側の source of truth。`scripts/skill-validate.ts` が読み込み、`type: translated` な skill file 内の gstack 由来の生 string を検出する。全 pattern は [1.1 機械置換](#11-機械置換gstack--uzustack) の各軸に対応する：
+`scripts/voice-rules.json` の `patterns` array が validator 側の source of truth。`scripts/skill-validate.ts` が読み込み、`type: translated` な skill file 内の gstack 由来の生 string を検出する。全 pattern は [1.1 機械置換](#11-機械置換gstack--uzustack) の各軸に対応する（negative rules = axis 1/2/3 は #165 で計画中、3.1 参照）：
 
-| voice-rules.json pattern id | 検出対象 | 1.1 内軸 | 状態 |
-|---|---|---|---|
-| `gstack_home_path` | `~/.gstack/` (path) | 文字列軸 | 機械化済 |
-| `gstack_home_env` | `$GSTACK_HOME` (env var) | 文字列軸 | 機械化済 |
-| `gstack_bin_prefix` | `gstack-XXX` (bin 名) | 文字列軸 | 機械化済 |
-| `gstack_skill_path` | `~/.claude/skills/gstack/` | 文字列軸 | 機械化済 |
-| `gstack_repo_url` | `github.com/garrytan/gstack` | 文字列軸 | 機械化済 |
-| `garry_tan_name` | `Garry Tan` (人名) | 固有名詞軸 | 機械化済 |
-| （未登録） | axis 1/2/3（negative rules） | 上記 3.1 参照 | #165 で計画中 |
+| voice-rules.json pattern id | 検出対象 | 1.1 内軸 |
+|---|---|---|
+| `gstack_home_path` | `~/.gstack/` (path) | 文字列軸 |
+| `gstack_home_env` | `$GSTACK_HOME` (env var) | 文字列軸 |
+| `gstack_bin_prefix` | `gstack-XXX` (bin 名) | 文字列軸 |
+| `gstack_skill_path` | `~/.claude/skills/gstack/` | 文字列軸 |
+| `gstack_repo_url` | `github.com/garrytan/gstack` | 文字列軸 |
+| `garry_tan_name` | `Garry Tan` (人名) | 固有名詞軸 |
 
 新 pattern を追加する時は `scripts/voice-rules.json` の `patterns` array に entry を追記する（schema は `version` + `description` + `patterns[]` で forward compatible）。
 
