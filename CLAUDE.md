@@ -41,13 +41,10 @@ SKILL.md は **`.tmpl` から生成される**。直接編集してはならな�
 
 uzustack の翻訳作業（gstack の英語 skill → 日本語 + 経営者文脈）には voice 規約がある。**新規翻訳 / rebase 着手前は必読**：
 
-- [docs/uzustack/translation-voice-guide.md](docs/uzustack/translation-voice-guide.md) — voice 規約と訳語表（文字列軸 / 固有名詞軸 / voice 軸の 3 軸構成）
+- [docs/uzustack/translation-voice-guide.md](docs/uzustack/translation-voice-guide.md) — voice 規約と訳語表（読者目的別 3 章構成：translator / メンテナー / validator + Appendix 成立履歴）
 - [docs/uzustack/translation-rebase-fixes.md](docs/uzustack/translation-rebase-fixes.md) — rebase 時に保持すべき uzustack 独自 fix
 
-voice 規約は 2 層で蓄積：
-
-- **v1**：bin 翻訳時に確立（PR #40〜#48）
-- **v2 拡張**：plan / strategy / design / orchestration 系で確立（PR #66〜#118、PR #120 で集約）
+voice 規約の成立履歴（v1 / v2 / v2 拡張 の 3 段階）は本ガイド Appendix A を参照。
 
 翻訳作業中に追加ルール候補が出た場合、同 PR 内で `docs/uzustack/translation-voice-guide.md` も更新する（cluster-end の事後集約より気付き〜規約化の lag を最小化）。
 
