@@ -195,7 +195,7 @@ gh pr create
 **effect**: 一度実行されると次の副作用が同時発生する：
 
 - `~/.claude/skills/<name>/SKILL.md` の全 symlink が gstack 英語版 (`_upstream/gstack/<name>/SKILL.md`) で上書きされる
-- `~/.claude/skills/gstack-upgrade` / `~/.claude/skills/open-gstack-browser` 等 gstack 専用 directory が新規追加される
+- `~/.claude/skills/gstack-upgrade` / `~/.claude/skills/open-gstack-browser` 等 gstack 専用 directory が新規追加される（uzustack には翻訳済 `uzustack-upgrade` / `open-uzustack-browser` があるため dir 自体が不要、 流入したら削除する）
 - `~/.gstack/.last-setup-version` に gstack VERSION が書き込まれる
 - 後続の uzustack 翻訳版 skill 発火が gstack 英語版で発火するようになる (= 修復まで日本語 skill が事実上消滅)
 - host install 結果（`.claude/skills/` 等 11 dir）が `_upstream/gstack/` 内にも作られ、 Claude Code の skill discovery（CWD 配下の `.claude/skills/` を再帰探索する monorepo 仕様）により **uzustack 翻訳版と subtree 英語版が同じ skill name で重複表示**される

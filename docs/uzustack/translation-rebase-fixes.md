@@ -49,7 +49,7 @@ uzustack は `~/.uzustack/` で完結する世界線を持つ設計だが、 上
 **effect** (= 一度実行されると同時発生する副作用)：
 
 - `~/.claude/skills/<name>/SKILL.md` の全 symlink が gstack 英語版で上書きされる
-- `~/.claude/skills/gstack-upgrade` / `~/.claude/skills/open-gstack-browser` 等 gstack 専用 directory が新規追加される
+- `~/.claude/skills/gstack-upgrade` / `~/.claude/skills/open-gstack-browser` 等 gstack 専用 directory が新規追加される（uzustack には翻訳済 `uzustack-upgrade` / `open-uzustack-browser` があるため dir 自体が不要、 流入したら削除する）
 - `~/.gstack/.last-setup-version` に gstack VERSION が書き込まれる
 - 後続の uzustack 翻訳版 skill 発火が gstack 英語版で発火するようになる (= 修復まで日本語 skill が事実上消滅)
 - gstack 本家 setup は host 別の install 結果（`.claude/skills/`、 `.codex/skills/`、 `.factory/skills/` 等 11 host dir）を CWD 配下にも作成する
@@ -89,7 +89,7 @@ rm -rf \
 # symlink を uzustack 翻訳版に復元
 ./bin/dev-setup ~
 
-# 残存する gstack 専用 dir (gstack-upgrade / open-gstack-browser) も削除
+# 残存する gstack 専用 dir も削除（uzustack には翻訳済 uzustack-upgrade / open-uzustack-browser があるため dir 自体が不要、 流入したら削除する）
 rm -rf ~/.claude/skills/gstack-upgrade ~/.claude/skills/open-gstack-browser ~/.claude/skills/gstack
 ```
 
