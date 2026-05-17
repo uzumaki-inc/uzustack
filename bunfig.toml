@@ -1,6 +1,4 @@
-# uzustack bun config — bun 全体の設定 home (test / install / loader 等を集約予定)
-#
-# 現状は test scope の guard のみ。Phase 4+ で bun 関連設定が増えたら集約する。
+# uzustack bun config
 
 [test]
 # _upstream/gstack/ は subtree として保持し、 uzustack の `bun test` では実行しない。

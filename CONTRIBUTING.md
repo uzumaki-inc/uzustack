@@ -205,7 +205,7 @@ gh pr create
 
 1. **`bun test` 経由** (= 2026-05-15 12:50 実害発生、 issue #155): `_upstream/gstack/test/team-mode.test.ts` が `execSync` で `_upstream/gstack/setup -q` を直接 spawn する。 uzustack root の `bunfig.toml` に `[test] pathIgnorePatterns = ["**/_upstream/**"]` を配置して `bun test` の default discovery から除外
 2. **手動 `cd _upstream/gstack && ./setup`** (= issue #132 / step-86): メンテナーが誤って実行する経路。 規律として禁止
-3. **bin script からの spawn** (= `_upstream/gstack/bin/gstack-session-update` 等): SessionStart hook 経由で発火する可能性。 現状は `.git` 不在 guard + team mode guard で block されているが、 将来 guard が外れる場合は注意
+3. **bin script からの spawn** (= `_upstream/gstack/bin/gstack-session-update` 等): SessionStart hook 経由で発火する可能性。 現状は `.git` 不在 guard + team mode guard + `~/.claude/settings.json` 未登録 で block されているが、 将来 guard が外れる場合は注意
 
 詳細と再発時の手動 cleanup 手順は [docs/uzustack/translation-rebase-fixes.md](docs/uzustack/translation-rebase-fixes.md#_upstreamgstacksetup-の実行禁止effect-軸-pr-131-step-86--issue-132--155) を参照（issue #132 / step-86 / #155）。
 
