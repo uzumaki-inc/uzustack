@@ -1,6 +1,6 @@
 {
-  "version": "v1",
-  "description": "Voice 規約の機械チェック pattern 集。 scripts/skill-validate.ts が読み込み、 type: translated な skill file 内の gstack 由来の生 string を検出する。 v2 拡張は新規 pattern を本 file に追記する。",
+  "version": "v2",
+  "description": "Voice 規約 v1 + v2 の機械チェック pattern 集 (positive patterns: gstack 識別子 leak 検出)。 scripts/skill-validate.ts が読み込み、 type: translated な skill file 内の gstack 由来の生 string を検出する。 v1 = 文字列軸 (~/.gstack/, $GSTACK_HOME, gstack-*, github URL, ~/.claude/skills/gstack/)、 v2 = 固有名詞軸 (Garry Tan)。 v2 拡張は新規 pattern を本 file に追記する。",
   "patterns": [
     {
       "id": "gstack_home_path",
@@ -21,6 +21,16 @@
       "id": "gstack_skill_path",
       "name": "~/.claude/skills/gstack/ (skill path)",
       "regex": "~\\/\\.claude\\/skills\\/gstack\\/"
+    },
+    {
+      "id": "gstack_repo_url",
+      "name": "github.com/garrytan/gstack (repo URL)",
+      "regex": "github\\.com\\/garrytan\\/gstack"
+    },
+    {
+      "id": "garry_tan_name",
+      "name": "Garry Tan (人名)",
+      "regex": "\\bGarry Tan\\b"
     }
   ]
 }
