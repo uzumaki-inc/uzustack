@@ -1,0 +1,26 @@
+{
+  "version": "v1",
+  "description": "Voice 規約の機械チェック pattern 集。 scripts/skill-validate.ts が読み込み、 type: translated な skill file 内の gstack 由来の生 string を検出する。 v2 拡張は新規 pattern を本 file に追記する。",
+  "patterns": [
+    {
+      "id": "gstack_home_path",
+      "name": "~/.gstack/ (path)",
+      "regex": "~\\/\\.gstack\\/"
+    },
+    {
+      "id": "gstack_home_env",
+      "name": "$GSTACK_HOME (env var)",
+      "regex": "\\$GSTACK_HOME|\\$\\{GSTACK_HOME"
+    },
+    {
+      "id": "gstack_bin_prefix",
+      "name": "gstack-XXX (bin 名)",
+      "regex": "\\bgstack-[a-zA-Z0-9_-]+"
+    },
+    {
+      "id": "gstack_skill_path",
+      "name": "~/.claude/skills/gstack/ (skill path)",
+      "regex": "~\\/\\.claude\\/skills\\/gstack\\/"
+    }
+  ]
+}

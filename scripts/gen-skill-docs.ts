@@ -20,6 +20,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { discoverTemplates } from './discover-skills';
+import { parseFrontmatter } from './frontmatter';
 import { RESOLVERS } from './resolvers/index';
 import type { Host, TemplateContext } from './resolvers/types';
 import { HOST_PATHS } from './resolvers/types';
@@ -46,12 +47,9 @@ const HOST_ARG_VAL: HostArg = (() => {
 // ─── Frontmatter Helpers ────────────────────────────────────
 
 function extractNameAndDescription(content: string): { name: string; description: string } {
-  const fmStart = content.indexOf('---\n');
-  if (fmStart !== 0) return { name: '', description: '' };
-  const fmEnd = content.indexOf('\n---', fmStart + 4);
-  if (fmEnd === -1) return { name: '', description: '' };
+  const frontmatter = parseFrontmatter(content);
+  if (frontmatter === null) return { name: '', description: '' };
 
-  const frontmatter = content.slice(fmStart + 4, fmEnd);
   const nameMatch = frontmatter.match(/^name:\s*(.+)$/m);
   const name = nameMatch ? nameMatch[1].trim() : '';
 
@@ -86,11 +84,8 @@ function extractNameAndDescription(content: string): { name: string; description
 // ─── Voice Trigger Processing ───────────────────────────────
 
 function extractVoiceTriggers(content: string): string[] {
-  const fmStart = content.indexOf('---\n');
-  if (fmStart !== 0) return [];
-  const fmEnd = content.indexOf('\n---', fmStart + 4);
-  if (fmEnd === -1) return [];
-  const frontmatter = content.slice(fmStart + 4, fmEnd);
+  const frontmatter = parseFrontmatter(content);
+  if (frontmatter === null) return [];
 
   const triggers: string[] = [];
   let inVoice = false;
