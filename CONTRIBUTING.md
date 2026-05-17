@@ -31,7 +31,7 @@ uzustack は Phase 0c → 1 → 2 → 3 → 3.5 を経て、**Phase 3 + Phase 3.
 **skill 数増減 history（2026-05-02 → 2026-05-17）**：
 
 - Phase 3.5 完遂時（PR #120 merged 2026-05-02）: 動作 **26** 件 + Phase 6 stub 14 件 = top-level 40
-- Phase 3.6 step-82: learn skill 翻訳化 = 動作 **27** 件
+- Phase 3.6 step-82（PR #127 merged 2026-05-04）: learn skill 翻訳化 = 動作 **27** 件
 - Phase 4 PR-A（PR #153 merged 2026-05-15）: freeze + unfreeze pair 翻訳化 = 動作 **29** 件
 - Phase 4 PR-B（PR #154 merged 2026-05-15）: guard 翻訳化（careful + freeze combo）= 動作 **30** 件
 - Phase 4 PR-C（PR #158 merged 2026-05-17）: gstack 専用 dir 削除規律明確化（doc 整理 only、 stub 作成は Phase 6 温存）= 動作 **30** 件（変動なし）
