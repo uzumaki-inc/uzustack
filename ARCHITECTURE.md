@@ -116,13 +116,13 @@ uzustack の runtime は **約 50 個の bin script** + テンプレート機構
 
 ### voice 翻案ガイドライン
 
-[docs/uzustack/translation-voice-guide.md](docs/uzustack/translation-voice-guide.md) に集約。3 軸構成：
+[docs/uzustack/translation-voice-guide.md](docs/uzustack/translation-voice-guide.md) に集約。読者目的別の 3 章構成（第 1 章 translator 用 / 第 2 章 メンテナー用 / 第 3 章 validator 用）+ Appendix A（成立履歴）。第 1 章 1.1 の機械置換ルールは 3 軸：
 
 - **文字列軸**：パス / bin 名 / URL の機械置換ルール
 - **固有名詞軸**：プロジェクト名 / 用語の維持 / 翻訳ルール
 - **voice 軸**：思想 / 規律の翻案ルール
 
-voice 規約 v1（bin 翻訳時に確立、PR #40〜#48）+ v2 拡張（plan / strategy / design / orchestration 系、PR #66〜#118、PR #120 で集約）の 2 層がある。
+voice 規約 v1（Phase 3 bin 翻訳）+ v2（Phase 3.5 plan / strategy / design 系）+ v2 拡張（Phase 4 機械化）の 3 層、詳細は Appendix A 参照。
 
 ### freshness CI
 

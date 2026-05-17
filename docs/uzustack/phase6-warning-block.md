@@ -43,7 +43,7 @@ connect-chrome / canary / setup-browser-cookies に既存する `# <skill> — P
 
 ### voice 翻案の射程
 
-warning block 自体は uzustack voice (= 経営者文脈 + 日本語) で書く。 ただし browse 機構の英語 error / output / Chromium binary 出力 自体は Phase 6 まで翻案保留 (= 英語のまま動作させる) と明示する (詳細は `docs/uzustack/translation-voice-guide.md` の「Phase 6 待ち skill の voice 翻案射程」 section)。
+warning block 自体は uzustack voice (= 経営者文脈 + 日本語) で書く。 ただし browse 機構の英語 error / output / Chromium binary 出力 自体は Phase 6 まで翻案保留 (= 英語のまま動作させる) と明示する (詳細は `docs/uzustack/translation-voice-guide.md` の「1.4 射程外」 section)。
 
 ### subtree pull 上書き耐性
 

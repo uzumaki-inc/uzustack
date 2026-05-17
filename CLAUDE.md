@@ -41,7 +41,7 @@ SKILL.md は **`.tmpl` から生成される**。直接編集してはならな�
 
 uzustack の翻訳作業（gstack の英語 skill → 日本語 + 経営者文脈）には voice 規約がある。**新規翻訳 / rebase 着手前は必読**：
 
-- [docs/uzustack/translation-voice-guide.md](docs/uzustack/translation-voice-guide.md) — voice 規約と訳語表（文字列軸 / 固有名詞軸 / voice 軸の 3 軸構成）
+- [docs/uzustack/translation-voice-guide.md](docs/uzustack/translation-voice-guide.md) — voice 規約と訳語表（読者目的別 3 章構成：translator / メンテナー / validator + Appendix 成立履歴）
 - [docs/uzustack/translation-rebase-fixes.md](docs/uzustack/translation-rebase-fixes.md) — rebase 時に保持すべき uzustack 独自 fix
 
 voice 規約は 2 層で蓄積：

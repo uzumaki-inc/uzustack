@@ -282,7 +282,7 @@ push / PR ごとに以下を実行：
 
 ### voice 規約 + 訳語表
 
-uzustack の翻訳作業で使う **voice 規約と訳語表（置換ルール表 v1 + voice 規約 v1/v2）** は [docs/uzustack/translation-voice-guide.md](docs/uzustack/translation-voice-guide.md) に集約しています。文字列軸・固有名詞軸・voice 軸の 3 軸構成で訳語の機械置換ルールを定義しているため、新規翻訳着手前に必読です。
+uzustack の翻訳作業で使う **voice 規約と訳語表** は [docs/uzustack/translation-voice-guide.md](docs/uzustack/translation-voice-guide.md) に集約しています。読者目的別の 3 章構成（第 1 章 translator 用 / 第 2 章 メンテナー用 / 第 3 章 validator 用）+ Appendix A（成立履歴）を持ち、第 1 章 1.1 で訳語の機械置換ルールを 3 軸（文字列 / 固有名詞 / voice）で定義しています。新規翻訳着手前に必読です。
 
 ### 新規翻訳の手順（1 個ずつ、緊急時 / 単発の場合）
 
