@@ -52,7 +52,7 @@ const rulesPath = path.join(ROOT, 'scripts/voice-rules.json');
 const rules: VoiceRulesFile = JSON.parse(fs.readFileSync(rulesPath, 'utf-8'));
 const ID_TO_NAME = new Map(rules.patterns.map(p => [p.id, p.name]));
 // 各 pattern を named-capture group で wrap し alternation で merge。
-// 1-pass scan で全 pattern を check (元: 4-pass)。 group 名 = pattern id で復元する。
+// 1-pass scan で全 pattern を check、 group 名 = pattern id で hit pattern を復元する。
 const MERGED_REGEX = new RegExp(
   rules.patterns.map(p => `(?<${p.id}>${p.regex})`).join('|'),
   'g'
@@ -60,8 +60,8 @@ const MERGED_REGEX = new RegExp(
 
 function isTranslated(content: string): boolean {
   const fm = parseFrontmatter(content);
-  if (!fm) return false;
-  return /^type:\s*translated\s*$/m.test(fm.raw);
+  if (fm === null) return false;
+  return /^type:\s*translated\s*$/m.test(fm);
 }
 
 function checkFile(rel: string, content: string): { violations: Violation[]; translated: boolean } {
@@ -76,22 +76,20 @@ function checkFile(rel: string, content: string): { violations: Violation[]; tra
     // (subtree directory 名は voice 規約 v2 拡張で外部 identifier 維持、PR #116)
     if (line.includes('_upstream/gstack/')) continue;
 
-    // 同 line 内で同 pattern が複数回 hit しても violation は 1 件にまとめる
-    // (元の `regex.test(line)` の挙動を保持)。 異なる pattern が同 line に hit する場合は別 violation。
+    // alternation の 1 match には named-capture group が 1 つだけ hit する性質を使う。
+    // 同 line 内で同 pattern が複数回 hit しても violation は 1 件にまとめる (異なる pattern が
+    // 同 line に hit する場合は別 violation、 これは pattern x line で 1 件の元の挙動を保つ意図)。
     const matchedIds = new Set<string>();
     for (const m of line.matchAll(MERGED_REGEX)) {
-      if (!m.groups) continue;
-      for (const id of Object.keys(m.groups)) {
-        if (m.groups[id] !== undefined && !matchedIds.has(id)) {
-          matchedIds.add(id);
-          violations.push({
-            file: rel,
-            line: i + 1,
-            pattern: ID_TO_NAME.get(id)!,
-            excerpt: line.trim().slice(0, 120),
-          });
-        }
-      }
+      const id = Object.keys(m.groups!).find(k => m.groups![k] !== undefined);
+      if (!id || matchedIds.has(id)) continue;
+      matchedIds.add(id);
+      violations.push({
+        file: rel,
+        line: i + 1,
+        pattern: ID_TO_NAME.get(id)!,
+        excerpt: line.trim().slice(0, 120),
+      });
     }
   }
   return { violations, translated };

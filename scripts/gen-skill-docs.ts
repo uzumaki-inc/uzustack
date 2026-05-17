@@ -47,10 +47,9 @@ const HOST_ARG_VAL: HostArg = (() => {
 // ─── Frontmatter Helpers ────────────────────────────────────
 
 function extractNameAndDescription(content: string): { name: string; description: string } {
-  const fm = parseFrontmatter(content);
-  if (!fm) return { name: '', description: '' };
+  const frontmatter = parseFrontmatter(content);
+  if (frontmatter === null) return { name: '', description: '' };
 
-  const frontmatter = fm.raw;
   const nameMatch = frontmatter.match(/^name:\s*(.+)$/m);
   const name = nameMatch ? nameMatch[1].trim() : '';
 
@@ -85,9 +84,8 @@ function extractNameAndDescription(content: string): { name: string; description
 // ─── Voice Trigger Processing ───────────────────────────────
 
 function extractVoiceTriggers(content: string): string[] {
-  const fm = parseFrontmatter(content);
-  if (!fm) return [];
-  const frontmatter = fm.raw;
+  const frontmatter = parseFrontmatter(content);
+  if (frontmatter === null) return [];
 
   const triggers: string[] = [];
   let inVoice = false;
