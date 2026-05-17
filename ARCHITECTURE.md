@@ -242,7 +242,7 @@ git subtree pull --prefix _upstream/gstack https://github.com/garrytan/gstack.gi
 `_upstream/gstack/setup` の execution は **invocation method に関わらず禁止**（cd した手動 invocation / `bun test` 経由 / bin script からの spawn / 他いずれの経路でも）。 一度実行されると次の effect が同時発生する：
 
 - `~/.claude/skills/<name>/SKILL.md` の全 symlink が gstack 英語版で上書きされる
-- `~/.claude/skills/gstack-upgrade` / `~/.claude/skills/open-gstack-browser` 等 gstack 専用 dir が追加される
+- `~/.claude/skills/gstack-upgrade` / `~/.claude/skills/open-gstack-browser` 等 gstack 専用 dir が追加される（uzustack には翻訳済 `uzustack-upgrade` / `open-uzustack-browser` があるため dir 自体が不要、 流入したら削除する）
 - `~/.gstack/.last-setup-version` に gstack VERSION が書き込まれる
 - 後続の uzustack 翻訳版 skill 発火が gstack 英語版で発火するようになる (= 修復まで日本語 skill が事実上消滅)
 - host install dir（`.claude/skills/` 等 11 系統）が `_upstream/gstack/` 内に作られ、 Claude Code の skill discovery（CWD 配下の `.claude/skills/` を再帰探索する monorepo 仕様）により subtree 英語版が翻訳版と重複表示される
