@@ -122,7 +122,7 @@ uzustack の runtime は **約 50 個の bin script** + テンプレート機構
 - **固有名詞軸**：プロジェクト名 / 用語の維持 / 翻訳ルール
 - **voice 軸**：思想 / 規律の翻案ルール
 
-voice 規約 v1（Phase 3 bin 翻訳）+ v2（Phase 3.5 plan / strategy / design 系）+ v2 拡張（Phase 4 機械化）の 3 層、詳細は Appendix A 参照。
+voice 規約 v1（Phase 3 bin 翻訳）+ v2（Phase 3.5 plan / strategy / design 系）+ v2 拡張（Phase 4 機械化）の 3 段階、詳細は Appendix A 参照。
 
 ### freshness CI
 

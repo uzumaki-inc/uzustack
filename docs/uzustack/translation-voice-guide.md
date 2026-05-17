@@ -255,26 +255,24 @@ voice 規約は **ファイル名そのもの** も射程に含める。`bin/<na
 
 **運用方針の補足**：
 
-- **bash + 副言語 embedded** は副言語コメントも日本語化
-- **TypeScript / 主言語そのもの** は英語維持（reader 想定の言語と一致させる）
 - **CONFIG_HEADER の日本語化方針**：英語コメントを bin 配置初期段階で保留する場合は、本ルール表整備後に brain 系翻訳と整合させて日本語化する
 - **DEFAULTS の意味論判断は brain 系翻訳に集中**：gstack 文字を含まない key（例：`gbrain_sync_mode`）は機械置換せず、brain 系翻訳時に集中判断
 
 ### 2.4 翻案の指針（meta-rule）
 
+具体ルールは 1.2 / 1.3 に列挙、本 section は判断の meta-rule のみ。
+
 - **persona 表現は意味で訳す**：直訳より「日本語で持つべき重み」を優先。例：`Boil the Lake` の「徹底的にやり切る」感を「一晩でやり切る」で表現
 - **Mode 名は初出併記、以降短縮**：`スコープ拡張モード（SCOPE EXPANSION）` 初出 → 「拡張モード」短縮
 - **思考特性は意味訳 + 出典維持**：個人名（Bezos / Munger 等）は attribution として保持、訳語は意味重視
-- **STOP / OK / CRITICAL GAP 等の inline marker**：英語維持（CLI 慣習との整合）
-- **AskUserQuestion / RECOMMENDATION 等の tool / framework 名**：英語維持（fixed identifier）
 
 ### 2.5 蓄積観測
 
 bin 翻訳バッチ完了時の追加観測 3 点：
 
-- **機械置換は dangling reference まで忠実に伝播する**：comment 内の他 binary 参照も置換対象。実体未持ち込みの binary 参照を削除した事例あり。`/simplify` の quality + reuse agent が独立に同じ findings を発見、cross-validation で confidence 高い
+- **機械置換は dangling reference まで忠実に伝播する**：comment 内の他 binary 参照も置換対象。具体例：`uzustack-question-log:27` の `uzustack-question-sensitivity`（実体未持ち込み）参照を削除した事例。`/simplify` の quality + reuse agent が独立に同じ findings を発見、cross-validation で confidence 高い
 - **output 表示英語維持の境界線**：sentinel token + 周辺 context は parser 互換重視で英語維持。`uzustack-specialist-stats` output / dashboard 系で適用。コメント / status メッセージは日本語化、機械処理される token は英語維持
-- **judgment 軸数の動的性**：外部 CLI 連携の有無で軸数が変動する。事前合意で軸数を確定すれば翻訳バッチ進行が機械化される
+- **judgment 軸数の動的性**：外部 CLI 連携の有無で軸数が変動する。例：`gbrain` 連携あり → 3 軸 / なし → 2 軸 / なし + CONTRIBUTING 統合あり → 2 軸 + 統合タスク。事前合意で軸数を確定すれば翻訳バッチ進行が機械化される
 
 ### 2.6 CONTRIBUTING.md との関係
 
@@ -293,21 +291,21 @@ CONTRIBUTING.md「Phase 6 待ち skill 翻訳時の warning 配置必須」 sect
 | 文字列軸 | path / env / bin 名 / URL 等 | [1.1 機械置換 / 文字列軸](#文字列軸パスbin-名url-等) | 機械化済（positive rules、6 patterns） |
 | 固有名詞軸 | Garry Tan 等 | [1.1 機械置換 / 固有名詞軸](#固有名詞軸) | 機械化済（positive rules） |
 | axis 1（負） | 全角括弧 `（` `）` の voice 規約違反検出 | [1.3 翻案 / bash + 副言語 embedded layer](#bash--副言語-embedded-layer) | #165 で計画中 |
-| axis 2（負） | persona attribution / Mode 名表記の維持 | [1.2 英語維持 / design 固有用語](#design-固有用語--persona-attribution) + [1.3 翻案 / Mode 名](#mode--状態名-layer) + [1.3 翻案 / 経営者思考特性](#経営者思考特性cognitive-patterns) | #165 で計画中 |
+| axis 2（負） | persona attribution / Mode 名表記の維持 | [1.3 翻案](#13-翻案) + [1.2 英語維持](#12-英語維持)（Mode 名 / 経営者思考特性 / persona attribution） | #165 で計画中 |
 | axis 3（負） | 外部 LLM prompt 英語維持 | [1.2 英語維持 / 外部 LLM 向け prompt 本体](#外部-llm-向け-prompt-本体) | #165 で計画中 |
 
 ### 3.2 voice-rules.json schema との cross-ref
 
-`scripts/voice-rules.json` の `patterns` array が validator 側の source of truth。`scripts/skill-validate.ts` が読み込み、`type: translated` な skill file 内の gstack 由来の生 string を検出する。本ガイドとの対応：
+`scripts/voice-rules.json` の `patterns` array が validator 側の source of truth。`scripts/skill-validate.ts` が読み込み、`type: translated` な skill file 内の gstack 由来の生 string を検出する。全 pattern は [1.1 機械置換](#11-機械置換gstack--uzustack) の各軸に対応する：
 
-| voice-rules.json pattern id | 検出対象 | 本ガイド section | 状態 |
+| voice-rules.json pattern id | 検出対象 | 1.1 内軸 | 状態 |
 |---|---|---|---|
-| `gstack_home_path` | `~/.gstack/` (path) | [1.1 文字列軸](#文字列軸パスbin-名url-等) | 機械化済 |
-| `gstack_home_env` | `$GSTACK_HOME` (env var) | [1.1 文字列軸](#文字列軸パスbin-名url-等) | 機械化済 |
-| `gstack_bin_prefix` | `gstack-XXX` (bin 名) | [1.1 文字列軸](#文字列軸パスbin-名url-等) | 機械化済 |
-| `gstack_skill_path` | `~/.claude/skills/gstack/` | [1.1 文字列軸](#文字列軸パスbin-名url-等) | 機械化済 |
-| `gstack_repo_url` | `github.com/garrytan/gstack` | [1.1 文字列軸](#文字列軸パスbin-名url-等) | 機械化済 |
-| `garry_tan_name` | `Garry Tan` (人名) | [1.1 固有名詞軸](#固有名詞軸) | 機械化済 |
+| `gstack_home_path` | `~/.gstack/` (path) | 文字列軸 | 機械化済 |
+| `gstack_home_env` | `$GSTACK_HOME` (env var) | 文字列軸 | 機械化済 |
+| `gstack_bin_prefix` | `gstack-XXX` (bin 名) | 文字列軸 | 機械化済 |
+| `gstack_skill_path` | `~/.claude/skills/gstack/` | 文字列軸 | 機械化済 |
+| `gstack_repo_url` | `github.com/garrytan/gstack` | 文字列軸 | 機械化済 |
+| `garry_tan_name` | `Garry Tan` (人名) | 固有名詞軸 | 機械化済 |
 | （未登録） | axis 1/2/3（negative rules） | 上記 3.1 参照 | #165 で計画中 |
 
 新 pattern を追加する時は `scripts/voice-rules.json` の `patterns` array に entry を追記する（schema は `version` + `description` + `patterns[]` で forward compatible）。
