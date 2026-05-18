@@ -134,6 +134,10 @@ voice 規約 v1（Phase 3 bin 翻訳）+ v2（Phase 3.5 plan / strategy / design
 
 「ソース定義（`.tmpl` + `gen-skill-docs.ts`） ↔ 生成物（`SKILL.md`）」 の machine-enforced 整合性。
 
+### voice validation CI
+
+`.github/workflows/skill-validate.yml` が PR ごとに `bun run skill:validate` を実行し、`type: translated` skill での voice 規約違反（gstack 識別子 leak 等、`scripts/voice-rules.json` の pattern）を検出する。skill-docs.yml と独立 workflow として並列実行され、merge 前 gate を構成する。
+
 ---
 
 ## State preservation layer（状態保存層）
@@ -265,8 +269,8 @@ git subtree pull --prefix _upstream/gstack https://github.com/garrytan/gstack.gi
 `.github/workflows/` 配下：
 
 - **`skill-docs.yml`**：PR ごとに `gen:skill-docs` 整合性を検証（前述）
+- **`skill-validate.yml`**：PR ごとに voice 規約違反を検出（前述）
 - **`gstack-subtree-pull.yml`**：月次 subtree pull 自動 PR
-- **`actionlint.yml`**：GitHub Actions workflow lint
 
 ---
 

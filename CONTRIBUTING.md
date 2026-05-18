@@ -156,7 +156,7 @@ end user 視点の Architecture は [README.md](README.md#architecture) を参�
 1. `feature/<機能名>` ブランチで開発
 2. `bin/dev-setup` 経由で動作確認
 3. push して GitHub で PR 作成
-4. `skill-docs.yml`（freshness CI）が自動実行されることを確認
+4. `skill-docs.yml`（freshness CI）と `skill-validate.yml`（voice 規約 CI）が自動実行されることを確認
 5. CI が通ったら self-merge or レビュー後に merge
 
 ---
@@ -256,6 +256,12 @@ push / PR ごとに以下を実行：
 - `git diff --exit-code`（差分があれば CI 失敗）
 
 → 「ソース定義 ↔ 生成された SKILL.md」の整合性を機械的に保証します。
+
+### .github/workflows/skill-validate.yml
+
+push / PR ごとに `bun run skill:validate` を実行し、`type: translated` skill での voice 規約違反（gstack 識別子 leak 等、`scripts/voice-rules.json` の pattern）を検出します。
+
+→ 「voice 規約 ↔ 翻訳済 skill 内容」の整合性を機械的に保証します。skill-docs.yml と並列実行で fail-fast。
 
 ---
 
