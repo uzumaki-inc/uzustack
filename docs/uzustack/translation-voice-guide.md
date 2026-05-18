@@ -105,11 +105,10 @@ design / UI / UX 領域の固有用語と persona attribution は英語維持。
 
 #### 外部 LLM 向け prompt 本体
 
-外部 LLM（codex / openai / gemini 等）に投入する prompt 本体は英語維持。LLM 訓練語の効果を保つ。
+外部 LLM（codex / openai / gemini 等）に投入する prompt 本体は英語維持。判断軸：外部 product への入力は外部 product の言語 contract に従う。Claude Code は uzustack の言語方針（日本語化）を適用するため対象外。
 
 - **英語維持対象**：codex / openai-cli / gemini-cli 等への prompt 本体、system prompt、user prompt
 - **uzustack 化対象**：boundary path（`paths containing skills/uzustack`）等の path 識別子のみ
-- **判断軸**：外部 product への入力は外部 product の言語 contract に従う
 
 #### subtree path（`_upstream/gstack/`）
 
@@ -284,15 +283,15 @@ CONTRIBUTING.md「Phase 6 待ち skill 翻訳時の warning 配置必須」 sect
 
 ### 3.1 機械化対象索引
 
-`scripts/voice-rules.json` で機械化される pattern と、本ガイドの section との対応表。axis 1/2/3 は #165 で機械化計画中の負の規約軸。
+`scripts/voice-rules.json` で機械化される pattern と、本ガイドの section との対応表。axis 1/2/3 は #165 plan-eng-review で機械化対象外と判定された負の規約軸（rationale は各 row 併記、詳細は [§A.3](#a3-v2-拡張phase-4-機械化)）。
 
 | axis | 内容 | 本ガイド section | 機械化状態 |
 |---|---|---|---|
 | 文字列軸 | path / env / bin 名 / URL 等 | [1.1 機械置換 / 文字列軸](#文字列軸パスbin-名url-等) | 機械化済（positive rules、5 patterns） |
 | 固有名詞軸 | Garry Tan 等 | [1.1 機械置換 / 固有名詞軸](#固有名詞軸) | 機械化済（positive rules、1 pattern） |
-| axis 1（負） | 全角括弧 `（` `）` の voice 規約違反検出 | [1.3 翻案 / bash + 副言語 embedded layer](#bash--副言語-embedded-layer) | #165 で計画中 |
-| axis 2（負） | persona attribution / Mode 名表記の維持 | [1.3 翻案](#13-翻案) + [1.2 英語維持](#12-英語維持)（Mode 名 / 経営者思考特性 / persona attribution） | #165 で計画中 |
-| axis 3（負） | 外部 LLM prompt 英語維持 | [1.2 英語維持 / 外部 LLM 向け prompt 本体](#外部-llm-向け-prompt-本体) | #165 で計画中 |
+| axis 1（負） | 全角括弧 `（` `）` の voice 規約違反検出 | [1.3 翻案 / bash + 副言語 embedded layer](#bash--副言語-embedded-layer) | 機械化対象外（bash code block + string literal 検出に state machine 必須、実装コスト不釣り合い、#165） |
+| axis 2（負） | persona attribution / Mode 名表記の維持 | [1.3 翻案](#13-翻案) + [1.2 英語維持](#12-英語維持)（Mode 名 / 経営者思考特性 / persona attribution） | 機械化対象外（30+ identifier の near-miss 検出に file-level state + table drift 管理が必要、line-based validator 設計と質的乖離、#165） |
+| axis 3（負） | 外部 LLM prompt 英語維持 | [1.2 英語維持 / 外部 LLM 向け prompt 本体](#外部-llm-向け-prompt-本体) | 機械化対象外（bash 内 codex exec の入れ子 string literal 構造、codex 将来日本語対応で規律 re-evaluation 可能性、#165） |
 
 ### 3.2 voice-rules.json schema との cross-ref
 
@@ -307,7 +306,7 @@ CONTRIBUTING.md「Phase 6 待ち skill 翻訳時の warning 配置必須」 sect
 | `gstack_repo_url` | `github.com/garrytan/gstack` | 文字列軸 |
 | `garry_tan_name` | `Garry Tan` (人名) | 固有名詞軸 |
 
-新 pattern を追加する時は `scripts/voice-rules.json` の `patterns` array に entry を追記する（schema は `version` + `description` + `patterns[]` で forward compatible）。
+新 pattern を追加する時は `scripts/voice-rules.json` の `patterns` array に entry を追記する（schema は `version` + `description` + `patterns[]` で forward compatible）。axis 1/2/3 は #165 で機械化対象外確定（理由は §3.1 各 row 併記 + §A.3 末尾の audit trail）、将来 Phase 5 #166 hook 機構と一体で再 design 候補。
 
 ---
 
@@ -323,7 +322,15 @@ Phase 3.5 進行（plan / strategy / cli tuning / design / orchestration 系 ski
 
 ### A.3 v2 拡張（Phase 4 機械化）
 
-Phase 4 で voice-rules.json による機械化を開始。PR #164（commit `8d09561`）で `scripts/voice-rules.json` v2 を導入、positive rules 6 patterns（URL + 固有名詞軸を含む）を機械化。`scripts/skill-validate.ts` が読み込み、translated skill での gstack 識別子 leak を CI で検出。#165 で negative rules（axis 1/2/3 = 全角括弧 / persona attribution / external LLM prompt 英語維持）の機械化を計画中。
+Phase 4 で voice-rules.json による機械化を開始。PR #164（commit `8d09561`）で `scripts/voice-rules.json` v2 を導入、positive rules 6 patterns（URL + 固有名詞軸を含む）を機械化。`scripts/skill-validate.ts` が読み込み、translated skill での gstack 識別子 leak を CI で検出。#165 で negative rules（axis 1/2/3 = 全角括弧 / persona attribution / external LLM prompt 英語維持）の機械化を検討、plan-eng-review session（本 PR）で 3 軸全て機械化対象外と判定。
+
+判定の根拠（軸別）：
+
+- **axis 1（全角括弧）**：machine 化対象を正確に区別するには bash code block の境界検出に加え bash 内 string literal（subagent prompt / heredoc 等の multi-line 引数）検出が必要、state machine 実装が axis 3 と同コスト。fact check で translated skill の bash code block 内に全角括弧 34 instances / 10 files が既存、すべて bash comment 行（`# ...（注記）`）で日本語 punctuation として運用、voice 規約 v1 #7（bash 括弧は半角維持）と実態 drift。machine 化 attempt は voice 規約 v1 #7 改定（Phase 3 確立済規律の re-evaluation）か state machine 実装の二択になり、現時点で機械化対象外。
+- **axis 2（persona attribution / Mode 名）**：Mode 名 4 + 経営者思考特性 18 + persona attribution 10+ の 30+ identifier の near-miss 検出に file-level state（同 file 内で初出併記済か）+ identifier table drift 管理が必要、line-based 1-pass scan の validator 責務と質的乖離。docs §1.3 が source of truth として運用、翻訳作業時の reviewer 軸で覆う。
+- **axis 3（外部 LLM prompt 英語維持）**：bash 内 `codex exec "..."` の複数行引数として書かれた入れ子 string literal 構造（autoplan/SKILL.md.tmpl L253-261 / L359-373 / L437-446 / L552-566 等）で、region 検出に bash + string literal の二段 state machine が必須。codex / openai-cli / gemini-cli が将来日本語対応した場合に規律ごと見直しになる可能性があり、現時点で機械化必要性が低い。
+
+Phase 5 #166 hook 機構の発動経路検証と一体で 3 軸の機械化を再 design する候補（PR merge 経路で hook が enforce する path を整備する文脈で、region 検出機構と統合）。
 
 ---
 
