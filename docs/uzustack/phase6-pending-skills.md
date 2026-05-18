@@ -68,6 +68,6 @@ uzustack の守期間の前半 (Phase 0c〜3.5 = 型の取り込み完了) で�
 
 - [phase6-warning-block.md](phase6-warning-block.md) — 共通 warning block の source of truth + 配置規律
 - [translation-voice-guide.md](translation-voice-guide.md) — voice 翻案の射程 (browse 機構関連用語の取扱)
-- [phase-history.md](phase-history.md) — Phase 0c〜3.5 進捗 + 主要 PR # 内訳
+- [phase-history.md](phase-history.md) — Phase 0c〜現在（Phase 4 進行中）進捗 + 主要 PR # 内訳
 - 上位 doc: `ARCHITECTURE.md` の「(1) browser 機構 と (2) ワークフロー skill の依存関係」 + 「守破離における Phase 6 の位置付け」 section
 - 関連 issue: #134 (placeholder engine 空 stub 解決) / #135 (learn skill 機能性検証) / #138 (本作業のメイン issue)

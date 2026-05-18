@@ -99,5 +99,7 @@ uzustack の **初回公開 release**。「型の取り込み」 完遂時点（
 - **Supabase 連携の検証未実施** — gbrain（クロスマシン記憶同期機構）の Supabase 連携 binary は配置済（`bin/uzustack-gbrain-supabase-provision` / `bin/uzustack-gbrain-supabase-verify`）だが、実機 Supabase 接続による検証は未完了。`bash -n` syntax check と `--help` 出力の確認のみ完了。Supabase アカウントを持つ user は gstack 側の動作確認 evidence を参照しながら使用すること
 - **Phase 6 予約スタブ 10 件は未検証** — subtree pull で取り込めるかの実機検証が Phase 6 で実施予定
 
+[0.3.6.0]: https://github.com/uzumaki-inc/uzustack/releases/tag/v0.3.6.0
+[0.3.5.2]: https://github.com/uzumaki-inc/uzustack/releases/tag/v0.3.5.2
 [0.3.5.1]: https://github.com/uzumaki-inc/uzustack/releases/tag/v0.3.5.1
 [0.3.5.0]: https://github.com/uzumaki-inc/uzustack/releases/tag/v0.3.5.0
