@@ -261,7 +261,7 @@ push / PR ごとに以下を実行：
 
 push / PR ごとに `bun run skill:validate` を実行し、`type: translated` skill での voice 規約違反（gstack 識別子 leak 等、`scripts/voice-rules.json` の pattern）を検出します。
 
-→ 「voice 規約 ↔ 翻訳済 skill 内容」の整合性を機械的に保証します。skill-docs.yml と並列実行で fail-fast。
+→ 「voice 規約 ↔ 翻訳済 skill 内容」の整合性を機械的に保証します。skill-docs.yml と独立 trigger で並列実行。
 
 ---
 

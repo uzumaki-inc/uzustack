@@ -8,7 +8,7 @@ name: Skill Voice Validation
 # 不整合）を CI で捕まえるため（defense-in-depth）。
 #
 # 役割分離：freshness check（gen:skill-docs ↔ SKILL.md 整合性）は skill-docs.yml、
-# voice validation（voice 規約違反検出）は本 workflow。並列実行で fail-fast。
+# voice validation（voice 規約違反検出）は本 workflow。skill-docs.yml と独立 trigger で並列実行。
 
 on:
   push:
