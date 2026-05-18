@@ -128,3 +128,5 @@ Step 1 で `NO_CHECKPOINTS` が出力された場合、ユーザーに次のよ�
 - **コードを書き換えない。** 本 skill は保存ファイルを読んで提示するだけ。
 - **デフォルトで全ブランチを横断して検索する。** ブランチを跨いだ復元が本 skill の本質。タイトル断片マッチがたまたまブランチ固有になる場合のみ、結果としてブランチでフィルタされる。
 - **「最新」とはファイル名 `YYYYMMDD-HHMMSS` prefix のこと**、`ls -1t`（ファイルシステム mtime）ではない。ファイル名はファイルシステム操作後も安定、mtime はそうではない。
+
+<!-- DOGFOOD: skill-validate.yml workflow test (PR は close 予定、Garry Tan 識別子を意図注入し voice-validation fail を確認する) -->
