@@ -1,4 +1,4 @@
-name: Skill Docs Freshness
+name: Skill Voice Validation
 
 # Scope: skill directories at the repo top (those containing SKILL.md.tmpl).
 # Type 1/3 区別は SKILL.md.tmpl の frontmatter `type:` で表現される（ディレクトリ
@@ -6,6 +6,9 @@ name: Skill Docs Freshness
 # nested な _upstream/gstack/<skill>/SKILL.md.tmpl は path filter にかからない。
 # `*/SKILL.md` も filter に含めるのは、`.md` だけ手動編集された drift（.tmpl と
 # 不整合）を CI で捕まえるため（defense-in-depth）。
+#
+# 役割分離：freshness check（gen:skill-docs ↔ SKILL.md 整合性）は skill-docs.yml、
+# voice validation（voice 規約違反検出）は本 workflow。skill-docs.yml と独立 trigger で並列実行。
 
 on:
   push:
@@ -16,7 +19,7 @@ on:
       - 'scripts/**'
       - 'package.json'
       - 'bun.lock'
-      - '.github/workflows/skill-docs.yml'
+      - '.github/workflows/skill-validate.yml'
   pull_request:
     paths:
       - '*/SKILL.md.tmpl'
@@ -24,20 +27,14 @@ on:
       - 'scripts/**'
       - 'package.json'
       - 'bun.lock'
-      - '.github/workflows/skill-docs.yml'
+      - '.github/workflows/skill-validate.yml'
 
 jobs:
-  check-freshness:
+  voice-validation:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      - name: Regenerate SKILL.md files
-        run: bun run gen:skill-docs
-      - name: Verify working tree is clean
-        run: |
-          git diff --exit-code || {
-            echo "::error::Generated files are stale or gen:skill-docs wrote outside skills/. Run: bun run gen:skill-docs"
-            exit 1
-          }
+      - name: Voice validation
+        run: bun run skill:validate
