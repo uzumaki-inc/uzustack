@@ -6,6 +6,28 @@ uzustack の release notes。フォーマットは [Keep a Changelog](https://ke
 
 ---
 
+## [0.3.6.0] — 2026-05-18
+
+### Added
+
+- **Voice 規約 CI gating** — `bun run skill:validate` を PR-trigger で自動実行する独立 workflow (`.github/workflows/skill-validate.yml`) を新規追加 (#171)。skill-docs.yml (freshness check) と並列実行で merge 前に gstack 識別子 leak を catch、contributor 受け入れ準備の足腰
+- **voice-rules.json v2 拡張** — URL pattern (`github.com/garrytan/gstack`) + 固有名詞軸 pattern (`Garry Tan`) を追加 (#164)、translated skill の機械チェック対象を 4 → 6 pattern に拡張
+- **freeze + unfreeze + guard skill 翻訳化** (#153 / #154) — Phase 4「絆を結ぶ」 cluster の並走発火源 3 skill、careful + freeze combo の発火経路を整備
+- **skill:validate を 30 翻訳済 skill に横展開** (#160) — CONTRIBUTING.md の skill 数 doc 同期 lag 解消
+
+### Changed
+
+- **`docs/uzustack/translation-voice-guide.md` 構造再編** (#169) — 読者目的別 3 章構成 (translator / メンテナー / validator) + Appendix A audit trail 化、voice 規約 v2 訳語 microtuning 1 件
+- **`scripts/skill-validate.ts` 改善 6 項目** (#162) — frontmatter 共通 utility 抽出 (`scripts/frontmatter.ts`) + voice-rules.json への config 化 + Promise.all 並列化 + regex merge + diff-based fast mode (`--diff` flag) + error handling 強化
+- **CI workflow 役割分離** (#171 副次) — skill-docs.yml = freshness check / skill-validate.yml = voice validation の責務分離を確立、`ARCHITECTURE.md` / `CONTRIBUTING.md` も整合 update + 副次的に `actionlint.yml` doc drift 削除
+
+### Fixed
+
+- **bun test が `_upstream/gstack/setup` を spawn して symlink 上書きする経路を block** (#156) — `bunfig.toml` に `pathIgnorePatterns = ["**/_upstream/**"]` を追加、禁止規律を effect 軸に書き換え
+- **gstack 専用 dir 削除規律を「翻訳済のため不要」 と明確化** (#158) — CONTRIBUTING.md を rule expression から effect expression に転換
+
+---
+
 ## [0.3.5.2] — 2026-05-15
 
 ### Added

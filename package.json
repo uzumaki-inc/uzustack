@@ -1,6 +1,6 @@
 {
   "name": "uzustack",
-  "version": "0.1.0",
+  "version": "0.3.6.0",
   "private": true,
   "description": "UZUMAKI 社の Claude Code スキル集（gstack subtree ベース、日本語化 + 経営者コンテキスト）",
   "license": "MIT",
