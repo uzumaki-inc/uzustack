@@ -110,7 +110,7 @@ uzustack の runtime は **約 50 個の bin script** + テンプレート機構
 
 - `gen-skill-docs.ts` — `<skill>/SKILL.md.tmpl` → `<skill>/SKILL.md` 再生成（placeholder 展開を含む）
 - `host-config.ts` — host 切替（5 host 対応：claude / codex / kiro / factory / opencode）
-- `resolvers/` — placeholder 展開モジュール（preamble / design / review / gbrain 等）
+- `resolvers/` — placeholder 展開モジュール。`preamble/` 配下に 25 generator + 支援 file（`models.ts` / `jargon-list.json` / `model-overlay.ts` / `preamble.ts` / `question-tuning.ts`）を持ち、`index.ts` で全 52 placeholder を wire（v0.3.6.1 時点で 9 wired + 43 stub、後続 PR で段階的に wire 予定）
 
 5 host 対応の意図：uzustack は Claude Code only を主対象とするが、テンプレート機構は gstack 由来のため 5 host 切替を保持する。`host: claude` を default として、host ごとの SKILL.md を生成可能。
 

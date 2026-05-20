@@ -19,6 +19,9 @@ export interface HostPaths {
   skillRoot: string;
   localSkillRoot: string;
   binDir: string;
+  browseDir: string;
+  designDir: string;
+  makePdfDir: string;
 }
 
 /**
@@ -33,6 +36,9 @@ function buildHostPaths(): Record<string, HostPaths> {
         skillRoot: '$UZUSTACK_ROOT',
         localSkillRoot: config.localSkillRoot,
         binDir: '$UZUSTACK_BIN',
+        browseDir: '$UZUSTACK_BROWSE',
+        designDir: '$UZUSTACK_DESIGN',
+        makePdfDir: '$UZUSTACK_MAKE_PDF',
       };
     } else {
       const root = `~/${config.globalRoot}`;
@@ -40,6 +46,9 @@ function buildHostPaths(): Record<string, HostPaths> {
         skillRoot: root,
         localSkillRoot: config.localSkillRoot,
         binDir: `${root}/bin`,
+        browseDir: `${root}/browse/dist`,
+        designDir: `${root}/design/dist`,
+        makePdfDir: `${root}/make-pdf/dist`,
       };
     }
   }
@@ -48,6 +57,9 @@ function buildHostPaths(): Record<string, HostPaths> {
 
 export const HOST_PATHS: Record<string, HostPaths> = buildHostPaths();
 
+import type { Model } from '../models';
+export type { Model } from '../models';
+
 export interface TemplateContext {
   skillName: string;
   tmplPath: string;
@@ -55,6 +67,7 @@ export interface TemplateContext {
   host: Host;
   paths: HostPaths;
   preambleTier?: number;
+  model?: Model;
   interactive?: boolean;
 }
 

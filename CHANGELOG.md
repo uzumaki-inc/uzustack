@@ -6,6 +6,20 @@ uzustack の release notes。フォーマットは [Keep a Changelog](https://ke
 
 ---
 
+## [0.3.6.1] — 2026-05-21
+
+### Added
+
+- **preamble core resolver を実装** — upstream gstack の `scripts/resolvers/` 配下から preamble 関連 25 generator + 支援 file 3 個 (`models.ts` / `jargon-list.json` / `model-overlay.ts` / `preamble.ts` / `question-tuning.ts`) を port (PR-D1)。`{{PREAMBLE}}` placeholder が空展開から実体（~ 4 万行）に変わり、全 41 skill の SKILL.md にお帰りメッセージ・voice 指令・lake-intro・confusion protocol・continuous checkpoint・writing style 等の preamble が展開されるようになった (Refs #176)
+- `scripts/resolvers/types.ts` に `model?` field + `HostPaths` の 3 新規 path field (`browseDir` / `designDir` / `makePdfDir`) を追加、env var は `$UZUSTACK_BROWSE` / `$UZUSTACK_DESIGN` / `$UZUSTACK_MAKE_PDF`
+- `scripts/resolvers/index.ts` に全 52 placeholder を予約（PR-D1 で 9 wired + 43 stub、後続 PR-D2/D3/D4a/D4b で順次 wire 予定）
+
+### Changed
+
+- **生成 SKILL.md の preamble injection 実体化** — 全 41 skill の SKILL.md が再生成され、合計 51,108 行 / 約 505K tokens の preamble 拡張を含むようになった（preamble が空 → 実体化した structural change）
+
+---
+
 ## [0.3.6.0] — 2026-05-18
 
 ### Added

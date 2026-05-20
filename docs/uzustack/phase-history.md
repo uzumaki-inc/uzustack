@@ -100,8 +100,9 @@ uzustack の **初回 OSS 公開** と、それに伴う **守完走判定の再
 - **translation-voice-guide.md 構造再編**：PR #169（読者目的別 3 章構成 = translator / メンテナー / validator + Appendix A audit trail 化）
 - **周辺修正**：PR #156（`bunfig.toml` に `pathIgnorePatterns = ["**/_upstream/**"]` を追加、`bun test` が `_upstream/gstack/setup` を spawn して symlink を上書きする経路を block、Closes #155）/ PR #158（gstack 専用 dir 削除規律を「翻訳済のため不要」 と明確化、step-84-1 PR-C）
 - **release v0.3.6.0 bundle**：PR #173（9 PR を Phase 4 cluster 進行中の milestone として minor bump で bundle、VERSION + CHANGELOG drift 解消）
+- **preamble core resolver port**：PR-D1（v0.3.6.1、upstream gstack の `scripts/resolvers/preamble/` から 25 generator + 支援 file 3 個 = 計 28 file を port、`models.ts` / `jargon-list.json` / `model-overlay.ts` / `preamble.ts` / `question-tuning.ts` を含む、`scripts/resolvers/index.ts` に全 52 placeholder を wire/予約 = 9 wired + 43 stub、`{{PREAMBLE}}` placeholder が空展開から実体へ移行し全 41 skill の SKILL.md にお帰りメッセージ・voice 指令・lake-intro・confusion protocol・continuous checkpoint・writing style 等が展開、Refs #176）
 
-このフェーズで **Voice 規約 CI gating**（`skill:validate` の PR-trigger 自動実行 + 役割分離 workflow）+ **freeze / unfreeze / guard の発火経路整備** + **voice-guide の 3 章構成化**（translator / メンテナー / validator 別）が確立し、contributor の merge 前に gstack 識別子 leak を機械的に catch できる足腰が v0.3.6.0 milestone までに完成した。残作業（#165 voice 規約 v2 negative rules 機械化 / #166 hook 機構の発動経路検証 / 子 issue 全 close 後の Phase 4 epic #152 auto-close）は `CONTRIBUTING.md` の「Phase 進捗」 section を参照。
+このフェーズで **Voice 規約 CI gating**（`skill:validate` の PR-trigger 自動実行 + 役割分離 workflow）+ **freeze / unfreeze / guard の発火経路整備** + **voice-guide の 3 章構成化**（translator / メンテナー / validator 別）が v0.3.6.0 milestone までに確立し、続いて **preamble core resolver の実体化**（v0.3.6.1、`{{PREAMBLE}}` の空展開を解消）が完成した。残作業（#165 voice 規約 v2 negative rules 機械化 / #166 hook 機構の発動経路検証 / 子 issue 全 close 後の Phase 4 epic #152 auto-close + 後続 PR-D2 / PR-D3 / PR-D4a / PR-D4b で stub 43 placeholder の段階的 wire）は `CONTRIBUTING.md` の「Phase 進捗」 section を参照。
 
 ---
 
