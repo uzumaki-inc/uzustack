@@ -279,11 +279,12 @@ push / PR ごとに `bun run skill:validate` を実行し、`type: translated` s
 
 - 翻訳は **「守」段階では原文に忠実に**（用語のみ日本語化）
 - 経営者コンテキストへの翻案は **「破」段階で**（数ヶ月後）
-- **gstack 専用機構** は機械的踏襲ができないため、Phase 1 では削除（論点 5、段階的取り込み）：
-  - `{{PREAMBLE}}`、`{{LEARNINGS_SEARCH}}`、`{{LEARNINGS_LOG}}`、`{{GBRAIN_CONTEXT_LOAD}}`、`{{GBRAIN_SAVE_RESULTS}}` の placeholder
-  - `hooks:` frontmatter（`freeze` 等の他 skill との連携）
-  - bash 内の `~/.claude/skills/gstack/bin/*` 呼び出し（uzustack に対応バイナリが未実装のため）
-- これらは uzustack 版バイナリ（`bin/uzustack-config` 等）が整備された後の Phase 3 以降で段階的に再取り込み
+- **gstack 専用機構** は段階的に再取り込み中（論点 5、段階的取り込み）：
+  - `{{PREAMBLE}}` placeholder：Phase 4（v0.3.6.1、PR-D1）で core resolver port 済、空展開から実体（お帰りメッセージ / voice 指令 / lake-intro / confusion protocol / continuous checkpoint / writing style 等）へ移行
+  - `{{LEARNINGS_SEARCH}}` / `{{LEARNINGS_LOG}}` placeholder：Phase 3.6（v0.3.5.2、PR #151）で learnings resolver port 済
+  - `{{GBRAIN_CONTEXT_LOAD}}` / `{{GBRAIN_SAVE_RESULTS}}` placeholder：未取り込み（後続 PR で対応予定）
+  - `hooks:` frontmatter（`freeze` 等の他 skill との連携）：Phase 4 残作業 #166 で発動経路検証中
+  - bash 内の `~/.claude/skills/gstack/bin/*` 呼び出しは uzustack 版バイナリ（`bin/uzustack-config` 等）へ置換
 - **メソッド本体**（Iron Law、Phase 構造、Important Rules、レポート形式 等）は **原文忠実に翻訳**
 
 ### voice 規約 + 訳語表
@@ -347,7 +348,7 @@ step 22 の自動 subtree pull PR が来た時、翻訳済み skill が変更さ
    - auto PR を先に merge → main で `feature/sync-gstack-<日付>-<skill>` ブランチを切る
    - 翻訳済み `<skill>/SKILL.md.tmpl` を上流差分に合わせて更新
    - メソッド本体の変更：**原文忠実に再翻訳**
-   - 機構関連の追加（`{{PREAMBLE}}` 等）：引き続き **削除** する方針（Phase 3+ まで）
+   - 機構関連の placeholder：取り込み済のものは **維持**（`{{PREAMBLE}}` は Phase 4 / v0.3.6.1 で実体化済、`{{LEARNINGS_*}}` は v0.3.5.2 で実体化済）。未取り込みのもの（`{{GBRAIN_*}}` 等）は引き続き削除
    - 既存の日本語 trigger は維持
 3. **検証**：
    - `bun run gen:skill-docs` を実行 → `git diff` が clean（または期待通りの差分のみ）

@@ -72,7 +72,7 @@ skill 実行の中間成果物（checkpoint / timeline / 学習履歴）は `~/.
 
 ## 守破離 / Phase 進捗
 
-現在は **Phase 4 cluster（絆を結ぶ、進行中）**。Phase 3.6 で OSS 公開準備 + 守完走判定 reframe を完遂（v0.3.5.2 まで、2026-05-15）、型の取り込みは Phase 3.5 で完了（2026-05-02）、守の完成は Phase 6 で達成予定。Phase 4 cluster は v0.3.6.0 milestone（2026-05-18、PR #173）まで達成済、残作業は voice 規約 v2 negative rules 機械化（#165）+ hook 機構の発動経路検証（#166）+ Phase 4 epic（#152）auto-close。
+現在は **Phase 4 cluster（絆を結ぶ、進行中）**。Phase 3.6 で OSS 公開準備 + 守完走判定 reframe を完遂（v0.3.5.2 まで、2026-05-15）、型の取り込みは Phase 3.5 で完了（2026-05-02）、守の完成は Phase 6 で達成予定。Phase 4 cluster は v0.3.6.0 milestone（2026-05-18、PR #173）に続き v0.3.6.1（2026-05-21、PR-D1 = preamble core resolver port、`{{PREAMBLE}}` 空展開を解消）まで達成済、残作業は voice 規約 v2 negative rules 機械化（#165）+ hook 機構の発動経路検証（#166）+ Phase 4 epic（#152）auto-close + 後続 PR-D2 / PR-D3 / PR-D4a / PR-D4b で stub 43 placeholder の段階的 wire。
 
 守破離の概念詳細は [README.md](README.md#守破離uzustack-の進化段階)、各 Phase の主要 PR # は [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md) と [ARCHITECTURE.md](ARCHITECTURE.md) の Phase progression section を参照。
 
