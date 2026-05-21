@@ -85,10 +85,10 @@ export function generateCommandReference(_ctx: TemplateContext): string {
   return sections.join('\n').trimEnd();
 }
 
-export function generateSnapshotFlags(_ctx: TemplateContext): string {
+export function generateSnapshotFlags(ctx: TemplateContext): string {
   const lines: string[] = [
     'snapshot は page を理解 / 操作するための primary tool です。',
-    '`$B` は browse binary (`$_ROOT/.claude/skills/uzustack/browse/dist/browse` または `~/.claude/skills/uzustack/browse/dist/browse` から解決)。',
+    `\`$B\` は browse binary (\`$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse\` または \`${ctx.paths.browseDir}/browse\` から解決)。`,
     '',
     '**Syntax:** `$B snapshot [flags]`',
     '',
