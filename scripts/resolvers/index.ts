@@ -2,7 +2,10 @@
  * RESOLVERS record — maps {{PLACEHOLDER}} names to generator functions.
  * Each resolver takes a TemplateContext and returns the replacement string.
  *
- * PR-D1 で preamble core を wire。残りの stub は後続 PR (D2-D4b) で順次 wire。
+ * PR-D1: preamble core を wire (PREAMBLE / MODEL_OVERLAY / TEST_FAILURE_TRIAGE 等)
+ * PR-D2: utility resolvers を wire (SLUG_EVAL / BASE_BRANCH_DETECT / QA_METHODOLOGY 等)
+ * PR-D3: 中型 resolvers 8 file を wire (本 PR、 9 placeholder)
+ * PR-D4a / PR-D4b で残 stub を順次 wire。
  * 未登録 placeholder（{{BOGUS}} 等）は gen-skill-docs.ts 側が
  * "Unresolved placeholders" で fail-loud にする。
  */
@@ -21,6 +24,12 @@ import {
   generateCoAuthorTrailer,
   generateChangelogWorkflow,
 } from './utility';
+import { generateConfidenceCalibration } from './confidence';
+import { generateInvokeSkill } from './composition';
+import { generateDxFramework } from './dx';
+import { generateGBrainContextLoad, generateGBrainSaveResults } from './gbrain';
+import { generateMakePdfSetup } from './make-pdf';
+import { generateCommandReference, generateSnapshotFlags, generateBrowseSetup } from './browse';
 
 export const RESOLVERS: Record<string, ResolverFn> = {
   SLUG_SETUP: generateSlugSetup,
@@ -38,26 +47,31 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   INLINE_TUNE_FEEDBACK: generateInlineTuneFeedback,
   LEARNINGS_SEARCH: generateLearningsSearch,
   LEARNINGS_LOG: generateLearningsLog,
-  // --- 以下は後続 PR (D3 / D4a / D4b) で wire 予定 ---
-  GBRAIN_CONTEXT_LOAD: (_ctx, _args) => '',
-  GBRAIN_SAVE_RESULTS: (_ctx, _args) => '',
+  // --- PR-D3: 中型 resolvers (本 PR) ---
+  CONFIDENCE_CALIBRATION: generateConfidenceCalibration,
+  INVOKE_SKILL: generateInvokeSkill,
+  DX_FRAMEWORK: generateDxFramework,
+  GBRAIN_CONTEXT_LOAD: generateGBrainContextLoad,
+  GBRAIN_SAVE_RESULTS: generateGBrainSaveResults,
+  MAKE_PDF_SETUP: generateMakePdfSetup,
+  COMMAND_REFERENCE: generateCommandReference,
+  SNAPSHOT_FLAGS: generateSnapshotFlags,
+  BROWSE_SETUP: generateBrowseSetup,
+  BIN_DIR: (ctx) => ctx.paths.binDir,
+  // --- 以下は後続 PR (D4a / D4b) で wire 予定 ---
   BENEFITS_FROM: (_ctx, _args) => '',
-  INVOKE_SKILL: (_ctx, _args) => '',
   SPEC_REVIEW_LOOP: (_ctx, _args) => '',
   CODEX_PLAN_REVIEW: (_ctx, _args) => '',
   REVIEW_DASHBOARD: (_ctx, _args) => '',
   PLAN_FILE_REVIEW_REPORT: (_ctx, _args) => '',
-  CONFIDENCE_CALIBRATION: (_ctx, _args) => '',
   ADVERSARIAL_STEP: (_ctx, _args) => '',
   CROSS_REVIEW_DEDUP: (_ctx, _args) => '',
   PLAN_COMPLETION_AUDIT_REVIEW: (_ctx, _args) => '',
   REVIEW_ARMY: (_ctx, _args) => '',
   SCOPE_DRIFT: (_ctx, _args) => '',
-  BROWSE_SETUP: (_ctx, _args) => '',
   CODEX_SECOND_OPINION: (_ctx, _args) => '',
   DESIGN_MOCKUP: (_ctx, _args) => '',
   DESIGN_SKETCH: (_ctx, _args) => '',
-  DX_FRAMEWORK: (_ctx, _args) => '',
   DESIGN_REVIEW_LITE: (_ctx, _args) => '',
   PLAN_COMPLETION_AUDIT_SHIP: (_ctx, _args) => '',
   PLAN_VERIFICATION_EXEC: (_ctx, _args) => '',
@@ -72,8 +86,4 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   UX_PRINCIPLES: (_ctx, _args) => '',
   DESIGN_HARD_RULES: (_ctx, _args) => '',
   DESIGN_METHODOLOGY: (_ctx, _args) => '',
-  BIN_DIR: (ctx) => ctx.paths.binDir,
-  COMMAND_REFERENCE: (_ctx, _args) => '',
-  SNAPSHOT_FLAGS: (_ctx, _args) => '',
-  MAKE_PDF_SETUP: (_ctx, _args) => '',
 };
