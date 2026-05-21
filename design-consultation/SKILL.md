@@ -1106,7 +1106,41 @@ browse が利用不可でも問題ない — visual research は optional。WebS
 
 **uzustack designer を探す（optional — AI mockup 生成を可能にする）：**
 
+## DESIGN SETUP (design mockup command の前にこの check を実行)
 
+```bash
+_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+D=""
+[ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/uzustack/design/dist/design" ] && D="$_ROOT/.claude/skills/uzustack/design/dist/design"
+[ -z "$D" ] && D="$HOME/.claude/skills/uzustack/design/dist/design"
+if [ -x "$D" ]; then
+  echo "DESIGN_READY: $D"
+else
+  echo "DESIGN_NOT_AVAILABLE"
+fi
+B=""
+[ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/uzustack/browse/dist/browse" ] && B="$_ROOT/.claude/skills/uzustack/browse/dist/browse"
+[ -z "$B" ] && B="$HOME/.claude/skills/uzustack/browse/dist/browse"
+if [ -x "$B" ]; then
+  echo "BROWSE_READY: $B"
+else
+  echo "BROWSE_NOT_AVAILABLE (will use 'open' to view comparison boards)"
+fi
+```
+
+`DESIGN_NOT_AVAILABLE` の場合: visual mockup 生成を skip して、 既存の HTML wireframe approach (`DESIGN_SKETCH`) に fall back。 design mockup は progressive enhancement、 hard requirement ではない。
+
+`BROWSE_NOT_AVAILABLE` の場合: `$B goto` の代わりに `open file://...` で comparison board を開く。 user は任意の browser で HTML file を見るだけで OK。
+
+`DESIGN_READY` の場合: design binary が visual mockup 生成に available。 Commands:
+- `$D generate --brief "..." --output /path.png` — 単一 mockup 生成
+- `$D variants --brief "..." --count 3 --output-dir /path/` — N style variant 生成
+- `$D compare --images "a.png,b.png,c.png" --output /path/board.html --serve` — comparison board + HTTP server
+- `$D serve --html /path/board.html` — comparison board を serve、 HTTP 経由で feedback を集める
+- `$D check --image /path.png --brief "..."` — vision quality gate
+- `$D iterate --session /path/session.json --feedback "..." --output /path.png` — iterate
+
+**CRITICAL PATH RULE:** 全 design artifact (mockup / comparison board / approved.json) は `~/.uzustack/projects/$SLUG/designs/` に保存しなければならない、 `.context/` / `docs/designs/` / `/tmp/` / project-local directory には NEVER。 design artifact は USER データ、 project file ではない。 branch / conversation / workspace を横断して persist する。
 
 `DESIGN_READY` の場合：Phase 5 は提案された design system を実際の screen に適用した AI mockup を生成する（HTML preview page だけではなく）。はるかに強力 — ユーザーは自分のプロダクトが実際にどう見えるかを目にする。
 
@@ -1173,7 +1207,35 @@ README や office-hours の出力で十分な context が得られる場合、pr
 
 ### Taste profile（このユーザーが過去 session を持っている場合）
 
+persistent taste profile があれば読む:
 
+```bash
+_TASTE_PROFILE=~/.uzustack/projects/$SLUG/taste-profile.json
+if [ -f "$_TASTE_PROFILE" ]; then
+  # Schema v1: { dimensions: { fonts, colors, layouts, aesthetics }, sessions: [] }
+  # 各 dimension に approved[] と rejected[] entry、
+  # { value, confidence, approved_count, rejected_count, last_seen } を持つ
+  # confidence は inactivity 1 週ごとに 5% decay — 読み取り時に計算される。
+  cat "$_TASTE_PROFILE" 2>/dev/null | head -200
+  echo "TASTE_PROFILE_FOUND"
+else
+  echo "NO_TASTE_PROFILE"
+fi
+```
+
+**TASTE_PROFILE_FOUND の場合:** 最強の signal を要約する (dimension あたり confidence * approved_count による top-3 approved entry)。 design brief に含める:
+
+「過去 \${SESSION_COUNT} session の傾向から、 この user の taste は以下に傾いている:
+fonts [top-3]、 colors [top-3]、 layouts [top-3]、 aesthetics [top-3]。 user が明示的に別 direction を要求しない限り、 これらに biased な生成。
+強い rejection も避ける: [dimension あたり top-3 rejected]」。
+
+**NO_TASTE_PROFILE の場合:** session 別 approved.json file (legacy) に fall through。
+
+**Conflict handling:** 現 user request が strong persistent signal と矛盾する場合 (例: taste profile が minimal を強く好むのに 「make it playful」 と言う)、 flag する: 「Note: your taste profile strongly prefers minimal. 今回 playful を要求 — そのまま進めますが、 taste profile を update しますか、 それとも one-off として扱いますか？」。
+
+**Decay:** confidence score は inactivity 1 週ごとに 5% decay。 6 ヶ月前に 10 approval された font は先週 approve された font より weight が少ない。 decay 計算は read 時、 write 時ではない、 ので file は変化時にのみ grow。
+
+**Schema migration:** file に `version` field がない / `version: 0` なら、 legacy approved.json aggregate — `~/.claude/skills/uzustack/bin/uzustack-taste-update` が次回 write で schema v1 に migrate する。
 
 このプロジェクト用の taste profile が存在する場合、Phase 3 の proposal に factor in する。profile はユーザーが過去 session で実際に承認したものを反映する — 制約ではなく demonstrated preference として扱う。プロダクト方向性が異なるものを要求する場合、意図的に逸脱してよい。逸脱する時は明示的にそう言い、上の memorable-thing answer に逸脱を connect する。
 
@@ -1227,7 +1289,71 @@ browse 利用不可の場合、WebSearch 結果と built-in design 知識に頼�
 
 ---
 
+## Design Outside Voices (parallel)
 
+AskUserQuestion を使う:
+> 「outside design voice が欲しいですか？ Codex が OpenAI の design hard rules + litmus checks に対して評価、 Claude subagent が独立した design direction proposal を行います。」
+>
+> A) Yes — outside design voices を実行
+> B) No — そのまま進める
+
+user が B を選んだら、 この step を skip して継続する。
+
+**Codex 利用可否を check:**
+```bash
+which codex 2>/dev/null && echo "CODEX_AVAILABLE" || echo "CODEX_NOT_AVAILABLE"
+```
+
+**Codex が available なら**、 両 voice を同時に launch:
+
+1. **Codex design voice** (Bash 経由):
+```bash
+TMPERR_DESIGN=$(mktemp /tmp/codex-design-XXXXXXXX)
+_REPO_ROOT=$(git rev-parse --show-toplevel) || { echo "ERROR: not in a git repo" >&2; exit 1; }
+codex exec "Given this product context, propose a complete design direction:
+- Visual thesis: one sentence describing mood, material, and energy
+- Typography: specific font names (not defaults — no Inter/Roboto/Arial/system) + hex colors
+- Color system: CSS variables for background, surface, primary text, muted text, accent
+- Layout: composition-first, not component-first. First viewport as poster, not document
+- Differentiation: 2 deliberate departures from category norms
+- Anti-slop: no purple gradients, no 3-column icon grids, no centered everything, no decorative blobs
+
+Be opinionated. Be specific. Do not hedge. This is YOUR design direction — own it." -C "$_REPO_ROOT" -s read-only -c 'model_reasoning_effort="medium"' --enable web_search_cached < /dev/null 2>"$TMPERR_DESIGN"
+```
+timeout は 5 分 (`timeout: 300000`)。 command 完了後、 stderr を読む:
+```bash
+cat "$TMPERR_DESIGN" && rm -f "$TMPERR_DESIGN"
+```
+
+2. **Claude design subagent** (Agent tool 経由):
+subagent を以下の prompt で dispatch:
+「Given this product context, propose a design direction that would SURPRISE. What would the cool indie studio do that the enterprise UI team wouldn't?
+- Propose an aesthetic direction, typography stack (specific font names), color palette (hex values)
+- 2 deliberate departures from category norms
+- What emotional reaction should the user have in the first 3 seconds?
+
+Be bold. Be specific. No hedging.」
+
+**Error handling (全 non-blocking):**
+- **Auth failure:** stderr が 「auth」「login」「unauthorized」「API key」 を含む場合: 「Codex authentication failed. `codex login` を実行して認証してください」。
+- **Timeout:** 「Codex timed out after 5 minutes.」
+- **Empty response:** 「Codex returned no response.」
+- Codex error 時: Claude subagent output のみで継続、 `[single-model]` tag を付ける。
+- Claude subagent も失敗時: 「Outside voices unavailable — primary review で継続」。
+
+Codex output は `CODEX SAYS (design direction):` header の下に提示。
+subagent output は `CLAUDE SUBAGENT (design direction):` header の下に提示。
+
+**Synthesis:** Claude main が Codex と subagent の両 proposal を Phase 3 proposal で reference する。 提示:
+- Claude main + Codex + subagent の 3 voice の agreement area
+- 真の divergence は user が選ぶ creative alternative として
+- 「Codex と私は X で agree。 Codex は Y を提案したが私は Z を提案 — その理由は...」
+
+**結果を log する:**
+```bash
+~/.claude/skills/uzustack/bin/uzustack-review-log '{"skill":"design-outside-voices","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","status":"STATUS","source":"SOURCE","commit":"'"$(git rev-parse --short HEAD)"'"}'
+```
+置換: STATUS = 「clean」 / 「issues_found」、 SOURCE = 「codex+subagent」 / 「codex-only」 / 「subagent-only」 / 「unavailable」。
 
 ## Phase 3: 完全な Proposal
 
@@ -1372,7 +1498,90 @@ $D check --image "$_DESIGN_DIR/variant-A.png" --brief "<the original brief>"
 
 ユーザーに伝える：「あなたの design system を realistic な [product type] screen に適用した 3 つの visual direction を生成した。今 browser で開いた comparison board でお気に入りを選んで。variant 間で element を remix してもいい。」
 
+### Comparison Board + Feedback Loop
 
+comparison board を作って HTTP で serve する:
+
+```bash
+$D compare --images "$_DESIGN_DIR/variant-A.png,$_DESIGN_DIR/variant-B.png,$_DESIGN_DIR/variant-C.png" --output "$_DESIGN_DIR/design-board.html" --serve
+```
+
+この command が board HTML を生成、 random port で HTTP server を start、 user の default browser で開く。 user が board と interact している間 server は running を維持する必要があるので、 **background で実行する** (`&` 付き)。
+
+stderr output から port を parse する: `SERVE_STARTED: port=XXXXX`。 board URL と regeneration cycle 中の reload に必要。
+
+**PRIMARY WAIT: AskUserQuestion with board URL**
+
+board が serve 中になったら、 AskUserQuestion で user を待つ。 board URL を含めて、 browser tab を失っても click できるように:
+
+「design variant の comparison board を開きました:
+http://127.0.0.1:<PORT>/ — rate して、 comment を残して、 気に入った element を remix して、 Submit を click してください。 feedback を submit したら教えてください (または preference をここに paste)。 board で Regenerate / Remix を click したら教えてください、 新 variant を生成します。」
+
+**user がどの variant が好きかを訊くのに AskUserQuestion を使わないこと。** comparison board が chooser。 AskUserQuestion は単に blocking wait の機構。
+
+**user が AskUserQuestion に応答した後:**
+
+board HTML の隣に feedback file があるかを check:
+- `$_DESIGN_DIR/feedback.json` — user が Submit を click したときに書き込まれる (final choice)
+- `$_DESIGN_DIR/feedback-pending.json` — user が Regenerate / Remix / More Like This を click したときに書き込まれる
+
+```bash
+if [ -f "$_DESIGN_DIR/feedback.json" ]; then
+  echo "SUBMIT_RECEIVED"
+  cat "$_DESIGN_DIR/feedback.json"
+elif [ -f "$_DESIGN_DIR/feedback-pending.json" ]; then
+  echo "REGENERATE_RECEIVED"
+  cat "$_DESIGN_DIR/feedback-pending.json"
+  rm "$_DESIGN_DIR/feedback-pending.json"
+else
+  echo "NO_FEEDBACK_FILE"
+fi
+```
+
+feedback JSON の形:
+```json
+{
+  "preferred": "A",
+  "ratings": { "A": 4, "B": 3, "C": 2 },
+  "comments": { "A": "Love the spacing" },
+  "overall": "Go with A, bigger CTA",
+  "regenerated": false
+}
+```
+
+**`feedback.json` が見つかった場合:** user が board で Submit を click。
+JSON から `preferred` / `ratings` / `comments` / `overall` を読む。 approved variant で継続。
+
+**`feedback-pending.json` が見つかった場合:** user が board で Regenerate / Remix を click。
+1. JSON から `regenerateAction` を読む (`"different"` / `"match"` / `"more_like_B"` / `"remix"` / custom text)
+2. `regenerateAction` が `"remix"` なら `remixSpec` を読む (例: `{"layout":"A","colors":"B"}`)
+3. 更新 brief で `$D iterate` / `$D variants` を使って新 variant を生成
+4. 新 board を作る: `$D compare --images "..." --output "$_DESIGN_DIR/design-board.html"`
+5. user の browser で board を reload (同じ tab):
+   `curl -s -X POST http://127.0.0.1:PORT/api/reload -H 'Content-Type: application/json' -d '{"html":"$_DESIGN_DIR/design-board.html"}'`
+6. board が auto-refresh。 **AskUserQuestion で再度** 同じ board URL を含めて待つ、 次の feedback round を。 `feedback.json` が現れるまで repeat。
+
+**`NO_FEEDBACK_FILE` の場合:** user が board ではなく直接 AskUserQuestion response に preference を type した。 その text response を feedback として使う。
+
+**POLLING FALLBACK:** polling は `$D serve` が failed した場合のみ (port 不可)。 その場合、 各 variant を Read tool で inline で見せる (user が見えるように)、 AskUserQuestion を使う:
+「comparison board server の起動に失敗。 上に variant を見せました。 どれが好み？ feedback は？」。
+
+**feedback 受信後 (どの path 経由でも):** 何を理解したか確認の summary を出力:
+
+「あなたの feedback を以下のように理解しました:
+PREFERRED: Variant [X]
+RATINGS: [list]
+YOUR NOTES: [comments]
+DIRECTION: [overall]
+
+これで合っていますか？」
+
+進める前に AskUserQuestion で verify する。
+
+**approved choice を保存:**
+```bash
+echo '{"approved_variant":"<V>","feedback":"<FB>","date":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","screen":"<SCREEN>","branch":"'$(git branch --show-current 2>/dev/null)'"}' > "$_DESIGN_DIR/approved.json"
+```
 
 ユーザーが direction を選んだ後：
 
