@@ -1038,7 +1038,7 @@ PLAN MODE EXCEPTION — always allowed (it's the plan file).
 project と、ユーザーが変えたい領域を理解する。
 
 ```bash
-
+eval "$(~/.claude/skills/uzustack/bin/uzustack-slug 2>/dev/null)"
 ```
 
 1. `CLAUDE.md`、`TODOS.md` を読む（存在すれば）。

@@ -1021,7 +1021,44 @@ PLAN MODE EXCEPTION — always allowed (it's the plan file).
 
 
 
+## Step 0: platform と base branch を検出
 
+まず git remote URL から git hosting platform を判別する：
+
+```bash
+git remote get-url origin 2>/dev/null
+```
+
+- URL に "github.com" が含まれる → platform は **GitHub**
+- URL に "gitlab" が含まれる → platform は **GitLab**
+- それ以外: CLI 利用可否を確認：
+  - `gh auth status 2>/dev/null` 成功 → platform は **GitHub** (GitHub Enterprise も含む)
+  - `glab auth status 2>/dev/null` 成功 → platform は **GitLab** (self-hosted も含む)
+  - どちらも不可 → **unknown** (git ネイティブコマンドのみ使用)
+
+この PR/MR が target する branch、または PR/MR が無ければ repo の default branch を判定する。
+結果を以降の全 step で "the base branch" として使う。
+
+**GitHub の場合:**
+1. `gh pr view --json baseRefName -q .baseRefName` — 成功すればそれを使う
+2. `gh repo view --json defaultBranchRef -q .defaultBranchRef.name` — 成功すればそれを使う
+
+**GitLab の場合:**
+1. `glab mr view -F json 2>/dev/null` を実行して `target_branch` field を抽出 — 成功すればそれを使う
+2. `glab repo view -F json 2>/dev/null` を実行して `default_branch` field を抽出 — 成功すればそれを使う
+
+**Git ネイティブ fallback (platform が unknown、または CLI が失敗した場合):**
+1. `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'`
+2. それが失敗: `git rev-parse --verify origin/main 2>/dev/null` → `main` を使う
+3. それが失敗: `git rev-parse --verify origin/master 2>/dev/null` → `master` を使う
+
+全て失敗したら `main` に fallback する。
+
+検出された base branch 名を print する。 以降の `git diff` / `git log` /
+`git fetch` / `git merge` および PR/MR 作成コマンドでは、 指示文中の
+"the base branch" や `<default>` を検出した branch 名に置換して使う。
+
+---
 
 **上記で検出された platform が GitLab または unknown の場合：** 次の文言で **STOP**：「GitLab support for /land-and-deploy is not yet implemented. Run `/ship` to create the MR, then merge manually via the GitLab web UI.」 続行しない。
 
@@ -1103,7 +1140,7 @@ gh pr view --json number,state,title,url,mergeStateStatus,mergeable,baseRefName,
 このプロジェクトが過去に `/land-and-deploy` を成功させたことがあるか、deploy 設定が当時と変わっていないかを check：
 
 ```bash
-
+eval "$(~/.claude/skills/uzustack/bin/uzustack-slug 2>/dev/null)"
 if [ ! -f ~/.uzustack/projects/$SLUG/land-deploy-confirmed ]; then
   echo "FIRST_RUN"
 else
@@ -1146,7 +1183,40 @@ Let me take a look at your setup.」
 
 deploy configuration bootstrap を実行して platform と settings を検出：
 
+```bash
+# Check for persisted deploy config in CLAUDE.md
+DEPLOY_CONFIG=$(grep -A 20 "## Deploy Configuration" CLAUDE.md 2>/dev/null || echo "NO_CONFIG")
+echo "$DEPLOY_CONFIG"
 
+# If config exists, parse it
+if [ "$DEPLOY_CONFIG" != "NO_CONFIG" ]; then
+  PROD_URL=$(echo "$DEPLOY_CONFIG" | grep -i "production.*url" | head -1 | sed 's/.*: *//')
+  PLATFORM=$(echo "$DEPLOY_CONFIG" | grep -i "platform" | head -1 | sed 's/.*: *//')
+  echo "PERSISTED_PLATFORM:$PLATFORM"
+  echo "PERSISTED_URL:$PROD_URL"
+fi
+
+# Auto-detect platform from config files
+[ -f fly.toml ] && echo "PLATFORM:fly"
+[ -f render.yaml ] && echo "PLATFORM:render"
+([ -f vercel.json ] || [ -d .vercel ]) && echo "PLATFORM:vercel"
+[ -f netlify.toml ] && echo "PLATFORM:netlify"
+[ -f Procfile ] && echo "PLATFORM:heroku"
+([ -f railway.json ] || [ -f railway.toml ]) && echo "PLATFORM:railway"
+
+# Detect deploy workflows
+for f in $(find .github/workflows -maxdepth 1 \( -name '*.yml' -o -name '*.yaml' \) 2>/dev/null); do
+  [ -f "$f" ] && grep -qiE "deploy|release|production|cd" "$f" 2>/dev/null && echo "DEPLOY_WORKFLOW:$f"
+  [ -f "$f" ] && grep -qiE "staging" "$f" 2>/dev/null && echo "STAGING_WORKFLOW:$f"
+done
+```
+
+`PERSISTED_PLATFORM` と `PERSISTED_URL` が CLAUDE.md から見つかった場合は、
+それらを直接使い、 manual detection は skip する。 persisted config が無ければ、
+auto-detect した platform を deploy 検証の指針とする。 何も検出できなければ、
+下の decision tree の中で AskUserQuestion で user に訊く。
+
+deploy 設定を将来の run で persist させたい場合、 user に `/setup-deploy` の実行を提案する。
 
 output を parse して以下を記録：検出された platform、production URL、deploy workflow（ある場合）、CLAUDE.md 由来の persisted config。
 
@@ -1627,7 +1697,40 @@ deploy report 用に merge timestamp / duration / merge path を記録。
 
 最初に deploy configuration bootstrap を実行して platform を検出または persisted な deploy 設定を読み込む：
 
+```bash
+# Check for persisted deploy config in CLAUDE.md
+DEPLOY_CONFIG=$(grep -A 20 "## Deploy Configuration" CLAUDE.md 2>/dev/null || echo "NO_CONFIG")
+echo "$DEPLOY_CONFIG"
 
+# If config exists, parse it
+if [ "$DEPLOY_CONFIG" != "NO_CONFIG" ]; then
+  PROD_URL=$(echo "$DEPLOY_CONFIG" | grep -i "production.*url" | head -1 | sed 's/.*: *//')
+  PLATFORM=$(echo "$DEPLOY_CONFIG" | grep -i "platform" | head -1 | sed 's/.*: *//')
+  echo "PERSISTED_PLATFORM:$PLATFORM"
+  echo "PERSISTED_URL:$PROD_URL"
+fi
+
+# Auto-detect platform from config files
+[ -f fly.toml ] && echo "PLATFORM:fly"
+[ -f render.yaml ] && echo "PLATFORM:render"
+([ -f vercel.json ] || [ -d .vercel ]) && echo "PLATFORM:vercel"
+[ -f netlify.toml ] && echo "PLATFORM:netlify"
+[ -f Procfile ] && echo "PLATFORM:heroku"
+([ -f railway.json ] || [ -f railway.toml ]) && echo "PLATFORM:railway"
+
+# Detect deploy workflows
+for f in $(find .github/workflows -maxdepth 1 \( -name '*.yml' -o -name '*.yaml' \) 2>/dev/null); do
+  [ -f "$f" ] && grep -qiE "deploy|release|production|cd" "$f" 2>/dev/null && echo "DEPLOY_WORKFLOW:$f"
+  [ -f "$f" ] && grep -qiE "staging" "$f" 2>/dev/null && echo "STAGING_WORKFLOW:$f"
+done
+```
+
+`PERSISTED_PLATFORM` と `PERSISTED_URL` が CLAUDE.md から見つかった場合は、
+それらを直接使い、 manual detection は skip する。 persisted config が無ければ、
+auto-detect した platform を deploy 検証の指針とする。 何も検出できなければ、
+下の decision tree の中で AskUserQuestion で user に訊く。
+
+deploy 設定を将来の run で persist させたい場合、 user に `/setup-deploy` の実行を提案する。
 
 その後 `uzustack-diff-scope` で変更を分類：
 
@@ -1880,7 +1983,7 @@ report を `.uzustack/deploy-reports/{date}-pr{number}-deploy.md` に保存。
 review dashboard に log：
 
 ```bash
-
+eval "$(~/.claude/skills/uzustack/bin/uzustack-slug 2>/dev/null)"
 mkdir -p ~/.uzustack/projects/$SLUG
 ```
 

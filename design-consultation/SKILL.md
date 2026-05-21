@@ -1055,7 +1055,7 @@ office-hours の出力を探す：
 
 ```bash
 setopt +o nomatch 2>/dev/null || true  # zsh compat
-
+eval "$(~/.claude/skills/uzustack/bin/uzustack-slug 2>/dev/null)"
 ls ~/.uzustack/projects/$SLUG/*office-hours* 2>/dev/null | head -5
 ls .context/*office-hours* .context/attachments/*office-hours* 2>/dev/null | head -5
 ```

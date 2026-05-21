@@ -1018,7 +1018,44 @@ Design/DX Review）をすべてゼロで追記し、verdict は "NO REVIEWS YET 
 
 PLAN MODE EXCEPTION — always allowed (it's the plan file).
 
+## Step 0: platform と base branch を検出
 
+まず git remote URL から git hosting platform を判別する：
+
+```bash
+git remote get-url origin 2>/dev/null
+```
+
+- URL に "github.com" が含まれる → platform は **GitHub**
+- URL に "gitlab" が含まれる → platform は **GitLab**
+- それ以外: CLI 利用可否を確認：
+  - `gh auth status 2>/dev/null` 成功 → platform は **GitHub** (GitHub Enterprise も含む)
+  - `glab auth status 2>/dev/null` 成功 → platform は **GitLab** (self-hosted も含む)
+  - どちらも不可 → **unknown** (git ネイティブコマンドのみ使用)
+
+この PR/MR が target する branch、または PR/MR が無ければ repo の default branch を判定する。
+結果を以降の全 step で "the base branch" として使う。
+
+**GitHub の場合:**
+1. `gh pr view --json baseRefName -q .baseRefName` — 成功すればそれを使う
+2. `gh repo view --json defaultBranchRef -q .defaultBranchRef.name` — 成功すればそれを使う
+
+**GitLab の場合:**
+1. `glab mr view -F json 2>/dev/null` を実行して `target_branch` field を抽出 — 成功すればそれを使う
+2. `glab repo view -F json 2>/dev/null` を実行して `default_branch` field を抽出 — 成功すればそれを使う
+
+**Git ネイティブ fallback (platform が unknown、または CLI が失敗した場合):**
+1. `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'`
+2. それが失敗: `git rev-parse --verify origin/main 2>/dev/null` → `main` を使う
+3. それが失敗: `git rev-parse --verify origin/master 2>/dev/null` → `master` を使う
+
+全て失敗したら `main` に fallback する。
+
+検出された base branch 名を print する。 以降の `git diff` / `git log` /
+`git fetch` / `git merge` および PR/MR 作成コマンドでは、 指示文中の
+"the base branch" や `<default>` を検出した branch 名に置換して使う。
+
+---
 
 
 
@@ -1690,7 +1727,50 @@ echo "Drift repaired: package.json synced to $REPAIR_VERSION. No version bump pe
 
 ---
 
+## Step 13: CHANGELOG (auto-generate)
 
+1. `CHANGELOG.md` の header を読んで format を把握する。
+
+2. **まず branch 上の全 commit を enumerate：**
+   ```bash
+   git log <base>..HEAD --oneline
+   ```
+   全 list を copy。 commit 数を数える。 これを checklist として使う。
+
+3. **full diff を読む** ことで、 各 commit が実際に何を変えたかを把握：
+   ```bash
+   git diff <base>...HEAD
+   ```
+
+4. **何かを書く前に commit を theme で group する。** 一般的な theme：
+   - 新機能 / capability
+   - performance 改善
+   - bug fix
+   - dead code 削除 / cleanup
+   - infrastructure / tooling / test
+   - refactoring
+
+5. **全 group を cover する CHANGELOG entry を書く：**
+   - branch 上の既存 CHANGELOG entry がいくつかの commit を既に cover している場合は、
+     それらを replace して新 version 用の 1 つの統一された entry にする
+   - 該当する section に変更を分類：
+     - `### Added` — 新機能
+     - `### Changed` — 既存機能への変更
+     - `### Fixed` — bug fix
+     - `### Removed` — 削除された機能
+   - 簡潔で記述的な bullet を書く
+   - file の header の後 (line 5) に insert、 today date
+   - format: `## [X.Y.Z.W] - YYYY-MM-DD`
+   - **Voice:** user が今 **できる** ようになったことから始める (前は出来なかったこと)。
+     実装の詳細ではなく平易な言葉。 TODOS.md / 内部 tracking / contributor 向け詳細には絶対に触れない。
+
+6. **Cross-check:** CHANGELOG entry を step 2 の commit list と比較する。
+   全 commit が少なくとも 1 つの bullet に map されている必要がある。 もし
+   どれかの commit が represent されていなければ、 今追加する。 branch が
+   K 個の theme を跨ぐ N 個の commit を持つなら、 CHANGELOG は K theme 全部を
+   反映する必要がある。
+
+**user に変更内容を describe するよう絶対に訊かない。** diff と commit 履歴から推測する。
 
 ---
 
@@ -1843,7 +1923,7 @@ Runtime にどちらの option が適用されるか決定。不明なら、non-
 git commit -m "$(cat <<'EOF'
 chore: bump version and changelog (vX.Y.Z.W)
 
-
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
 EOF
 )"
 ```
