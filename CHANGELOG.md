@@ -6,6 +6,20 @@ uzustack の release notes。フォーマットは [Keep a Changelog](https://ke
 
 ---
 
+## [0.3.6.2] — 2026-05-21
+
+### Added
+
+- **utility resolver を実装** — upstream gstack の `scripts/resolvers/utility.ts` から 6 関数を port (PR-D2)：`generateSlugEval` / `generateBaseBranchDetect` / `generateDeployBootstrap` / `generateQAMethodology` (280 行 / 単一最大) / `generateCoAuthorTrailer` / `generateChangelogWorkflow`。 既存 `generateSlugSetup` と合わせ utility.ts は 7 関数に拡張 (Refs #176)
+- `scripts/resolvers/index.ts` で 6 placeholder を stub から wired に切替: `SLUG_EVAL` / `BASE_BRANCH_DETECT` / `DEPLOY_BOOTSTRAP` / `QA_METHODOLOGY` / `CO_AUTHOR_TRAILER` / `CHANGELOG_WORKFLOW`
+
+### Changed
+
+- **14 SKILL.md に utility 系 placeholder が展開** — `ship` (+82 行 / CHANGELOG_WORKFLOW + CO_AUTHOR_TRAILER + BASE_BRANCH_DETECT) / `land-and-deploy` (+107 行 / BASE_BRANCH_DETECT + DEPLOY_BOOTSTRAP) / `autoplan` / `codex` / `claude` / `devex-review` / `document-release` / `plan-ceo-review` / `plan-design-review` / `plan-devex-review` / `retro` / `review` / `office-hours` / `design-consultation` に展開。 合計 51,108 行 → 51,661 行 (+553 行 / ~+5K tokens)
+- `QA_METHODOLOGY` (280 行 / qa skill methodology doc) は uzustack 側 callsite なしの状態で port — 後続で qa/qa-only skill body を upstream port する時に 0 コストで activate される設計 (= 資産先行配置)
+
+---
+
 ## [0.3.6.1] — 2026-05-21
 
 ### Added
