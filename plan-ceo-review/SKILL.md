@@ -1168,7 +1168,25 @@ HANDOFF=$(ls -t ~/.uzustack/projects/$SLUG/*-$BRANCH-ceo-handoff-*.md 2>/dev/nul
 
 A を選んだら：
 
+Read tool で `/office-hours` skill file (`~/.claude/skills/uzustack/office-hours/SKILL.md`) を読む。
 
+**読めない場合:** 「Could not load /office-hours — skipping.」 と告げて skip、 続行する。
+
+その instruction を上から下まで実行する。 ただし以下 section は **skip** する (parent skill 側で処理済):
+- Preamble (run first)
+- AskUserQuestion Format
+- 完全性の原則 — 一晩でやり切る（Boil the Lake）
+- 作る前に探す（Search Before Building）
+- リポジトリ所有権 — 気づいたら声を上げる
+- Completion Status Protocol
+- Telemetry (run last)
+- Step 0: platform と base branch を検出
+- Review Readiness Dashboard
+- Plan File Review Report
+- Prerequisite Skill Offer
+- Plan Status Footer
+
+それ以外の section は full depth で実行する。 loaded skill の instruction が完了したら、 次の step に進む。
 
 現在の Step 0A の進捗を note しておき、既に答えた質問を再質問しないようにする。
 完了後、設計ドキュメント check を再実行し、レビューを再開する。

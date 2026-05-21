@@ -1021,7 +1021,41 @@ Design/DX Review）をすべてゼロで追記し、verdict は "NO REVIEWS YET 
 
 PLAN MODE EXCEPTION — always allowed (it's the plan file).
 
+## SETUP (browse command を使う前に必ずこの check を走らせる)
 
+```bash
+_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+B=""
+[ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/uzustack/browse/dist/browse" ] && B="$_ROOT/.claude/skills/uzustack/browse/dist/browse"
+[ -z "$B" ] && B="$HOME/.claude/skills/uzustack/browse/dist/browse"
+if [ -x "$B" ]; then
+  echo "READY: $B"
+else
+  echo "NEEDS_SETUP"
+fi
+```
+
+`NEEDS_SETUP` の場合:
+1. user に伝える: 「uzustack browse は 1 回だけ build が必要 (~10 秒)。 進めて良いか？」 そして STOP して待つ。
+2. 実行: `cd <SKILL_DIR> && ./setup`
+3. `bun` が未インストールなら:
+   ```bash
+   if ! command -v bun >/dev/null 2>&1; then
+     BUN_VERSION="1.3.10"
+     BUN_INSTALL_SHA="bab8acfb046aac8c72407bdcce903957665d655d7acaa3e11c7c4616beae68dd"
+     tmpfile=$(mktemp)
+     curl -fsSL "https://bun.sh/install" -o "$tmpfile"
+     actual_sha=$(shasum -a 256 "$tmpfile" | awk '{print $1}')
+     if [ "$actual_sha" != "$BUN_INSTALL_SHA" ]; then
+       echo "ERROR: bun install script checksum mismatch" >&2
+       echo "  expected: $BUN_INSTALL_SHA" >&2
+       echo "  got:      $actual_sha" >&2
+       rm "$tmpfile"; exit 1
+     fi
+     BUN_VERSION="$BUN_VERSION" bash "$tmpfile"
+     rm "$tmpfile"
+   fi
+   ```
 
 # YC Office Hours
 
