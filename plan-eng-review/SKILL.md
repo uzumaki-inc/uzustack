@@ -1075,7 +1075,61 @@ DESIGN=$(ls -t ~/.uzustack/projects/$SLUG/*-$BRANCH-design-*.md 2>/dev/null | he
 ```
 design doc が存在すれば読め。問題定義、制約、選ばれた approach の source of truth として使え。`Supersedes:` field があれば、これは改訂版の design — 何が変わったかなぜ変わったかの context のために前バージョンを check せよ。
 
+## Prerequisite Skill Offer
 
+上記 design doc check が "No design doc found" を print した場合、 続行前に prerequisite skill を offer する。
+
+AskUserQuestion で user に告げる:
+
+> "No design doc found for this branch. `/office-hours` produces a structured problem
+> statement, premise challenge, and explored alternatives — it gives this review much
+> sharper input to work with. Takes about 10 minutes. The design doc is per-feature,
+> not per-product — it captures the thinking behind this specific change."
+
+Options:
+- A) Run /office-hours now (we'll pick up the review right after)
+- B) Skip — proceed with standard review
+
+skip 選択時: "No worries — standard review. If you ever want sharper input, try
+/office-hours first next time." 通常通り続行。 同 session 内で再 offer しない。
+
+A 選択時:
+
+告げる: "Running /office-hours inline. Once the design doc is ready, I'll pick up
+the review right where we left off."
+
+Read tool で `/office-hours` skill file (`~/.claude/skills/uzustack/office-hours/SKILL.md`) を読む。
+
+**読めない場合:** 「Could not load /office-hours — skipping.」 と告げて skip、 続行する。
+
+その instruction を上から下まで実行する。 ただし以下 section は **skip** する (parent skill 側で処理済):
+- Preamble (run first)
+- AskUserQuestion Format
+- 完全性の原則 — 一晩でやり切る（Boil the Lake）
+- 作る前に探す（Search Before Building）
+- リポジトリ所有権 — 気づいたら声を上げる
+- Completion Status Protocol
+- Telemetry (run last)
+- Step 0: platform と base branch を検出
+- Review Readiness Dashboard
+- Plan File Review Report
+- Prerequisite Skill Offer
+- Plan Status Footer
+
+それ以外の section は full depth で実行する。 loaded skill の instruction が完了したら、 次の step に進む。
+
+/office-hours 完了後、 design doc check を再実行:
+```bash
+setopt +o nomatch 2>/dev/null || true  # zsh compat
+SLUG=$(~/.claude/skills/uzustack/browse/bin/remote-slug 2>/dev/null || basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null | tr '/' '-' || echo 'no-branch')
+DESIGN=$(ls -t ~/.uzustack/projects/$SLUG/*-$BRANCH-design-*.md 2>/dev/null | head -1)
+[ -z "$DESIGN" ] && DESIGN=$(ls -t ~/.uzustack/projects/$SLUG/*-design-*.md 2>/dev/null | head -1)
+[ -n "$DESIGN" ] && echo "Design doc found: $DESIGN" || echo "No design doc found"
+```
+
+design doc が見つかれば read して review を続行。
+無ければ (user が cancel した可能性)、 standard review で続行。
 
 ### Step 0: スコープ challenge
 何かをレビューする前に、以下の問いに答えよ：
@@ -1197,7 +1251,181 @@ B の場合: `~/.claude/skills/uzustack/bin/uzustack-config set cross_project_le
 
 ### 3. テストレビュー
 
+100% coverage が goal。 plan 内の全 codepath を evaluate、 plan が各 path に test を含むことを ensure。 plan に test 漏れがあれば追加 — 実装開始時に full test coverage が組み込まれる程度に plan が complete であるべき。
 
+### Test Framework Detection
+
+coverage 分析前に、 project の test framework を detect:
+
+1. **CLAUDE.md を read** — test command + framework 名を含む `## Testing` section を look for。 見つかれば authoritative source として使う。
+2. **CLAUDE.md に testing section なしなら auto-detect:**
+
+```bash
+setopt +o nomatch 2>/dev/null || true  # zsh compat
+# Project runtime を detect
+[ -f Gemfile ] && echo "RUNTIME:ruby"
+[ -f package.json ] && echo "RUNTIME:node"
+[ -f requirements.txt ] || [ -f pyproject.toml ] && echo "RUNTIME:python"
+[ -f go.mod ] && echo "RUNTIME:go"
+[ -f Cargo.toml ] && echo "RUNTIME:rust"
+# 既存 test infrastructure を check
+ls jest.config.* vitest.config.* playwright.config.* cypress.config.* .rspec pytest.ini phpunit.xml 2>/dev/null
+ls -d test/ tests/ spec/ __tests__/ cypress/ e2e/ 2>/dev/null
+```
+
+3. **framework が detect できない場合:** coverage diagram は produce する、 test 生成は skip。
+
+**Step 1. plan 内の全 codepath を trace:**
+
+plan document を read。 記述された各 新機能 / service / endpoint / component について、 計画された code を data flow で trace — 計画された function を list するだけでなく、 計画された execution を実際 follow:
+
+1. **plan を read。** 計画された各 component が何をするか、 既存 code とどう繋がるかを理解。
+2. **Data flow を trace。** 各 entry point (route handler / exported function / event listener / component render) から始めて、 全 branch を data で follow:
+   - input はどこから来る？ (request params / props / database / API call)
+   - 何が transform する？ (validation / mapping / computation)
+   - どこへ行く？ (database write / API response / rendered output / side effect)
+   - 各 step で何が起きうる？ (null/undefined / invalid input / network failure / empty collection)
+3. **Execution を diagram 化。** 各 changed file について以下を示す ASCII diagram を draw:
+   - 追加 or 変更された全 function / method
+   - 全 conditional branch (if/else / switch / ternary / guard clause / early return)
+   - 全 error path (try/catch / rescue / error boundary / fallback)
+   - 他 function への全 call (trace 入る — それも untested branch を持つか？)
+   - 全 edge: null input なら？ empty array なら？ invalid type なら？
+
+これが critical step — input によって異なる実行をする全 line の map を build している。 この diagram の全 branch に test が要る。
+
+**Step 2. user flow / interaction / error state を map:**
+
+code coverage だけでは不十分 — real user が changed code とどう interact するかを cover する必要。 各 changed feature について以下を思考:
+
+- **User flow:** どの sequence of action が user にこの code を触らせる？ full journey を map (e.g., "user clicks 'Pay' → form validates → API call → success/failure screen")。 journey の各 step に test が要る。
+- **Interaction edge case:** user が予想外の動作をしたら何が起きる？
+  - Double-click / rapid resubmit
+  - mid-operation で navigate away (back button / close tab / 他 link click)
+  - stale data で submit (page を 30 分開きっぱなし / session expired)
+  - Slow connection (API takes 10 秒 — user に何が見える？)
+  - Concurrent action (2 tab / 同じ form)
+- **User が見える error state:** code が handle する各 error について、 user は実際に何を experience する？
+  - clear な error message があるか silent failure か？
+  - user が recover できる (retry / 戻る / input fix) か stuck か？
+  - network なしなら？ API から 500 なら？ server から invalid data なら？
+- **Empty/zero/boundary state:** UI は zero result で何を見せる？ 10,000 result で？ 1 文字 input で？ max-length input で？
+
+これらを code branch と並べて diagram に追加。 test なしの user flow は test なしの if/else と同じ gap。
+
+**Step 3. 各 branch を既存 test と照合:**
+
+diagram を branch 単位で go through — code path AND user flow 両方。 各 branch について exercise する test を search:
+- function `processPayment()` → `billing.test.ts`, `billing.spec.ts`, `test/billing_test.rb` を look for
+- if/else → true AND false 両 path を cover する test を look for
+- error handler → その specific error condition を trigger する test を look for
+- 自身に branch を持つ `helperFn()` への call → その branch にも test が要る
+- user flow → journey を walk through する integration / E2E test を look for
+- interaction edge case → 予想外 action を simulate する test を look for
+
+Quality scoring rubric:
+- ★★★  behavior + edge case + error path を test
+- ★★   correct behavior、 happy path のみ test
+- ★    smoke test / existence check / trivial assertion (e.g., "it renders", "it doesn't throw")
+
+### E2E Test Decision Matrix
+
+各 branch を check 時、 unit test と E2E / integration test のどちらが適切かも判定:
+
+**E2E を RECOMMEND (diagram で [→E2E] mark):**
+- 3+ component/service にまたがる common user flow (e.g., signup → verify email → first login)
+- mock が real failure を隠す integration point (e.g., API → queue → worker → DB)
+- Auth / payment / data destruction flow — unit test だけに信を置くには too important
+
+**EVAL を RECOMMEND (diagram で [→EVAL] mark):**
+- quality eval が要る critical LLM call (e.g., prompt 変更 → output が quality bar を満たすか test)
+- prompt template / system instruction / tool definition の変更
+
+**UNIT TEST で STICK:**
+- input/output が明確な pure function
+- side effect なしの internal helper
+- 単一 function の edge case (null input / empty array)
+- customer-facing でない obscure / rare flow
+
+### REGRESSION RULE (mandatory)
+
+**IRON RULE:** coverage audit が REGRESSION を identify (= 以前動いていた code が diff で broken) した場合、 regression test を plan に critical requirement として追加。 AskUserQuestion なし。 skip なし。 regression は何かが壊れた証拠なので highest-priority test。
+
+regression は以下のとき:
+- diff が既存 behavior を modify (新 code でない)
+- 既存 test suite (あれば) が changed path を cover していない
+- 変更が既存 caller に新 failure mode を introduce
+
+ある変更が regression かどうか uncertain なら、 test を書く側に err on the side of。
+
+**Step 4. ASCII coverage diagram を output:**
+
+code path + user flow 両方を同 diagram に。 E2E worthy + eval worthy path を mark:
+
+```
+CODE PATHS                                            USER FLOWS
+[+] src/services/billing.ts                           [+] Payment checkout
+  ├── processPayment()                                  ├── [★★★ TESTED] Complete purchase — checkout.e2e.ts:15
+  │   ├── [★★★ TESTED] happy + declined + timeout      ├── [GAP] [→E2E] Double-click submit
+  │   ├── [GAP]         Network timeout                 └── [GAP]        Navigate away mid-payment
+  │   └── [GAP]         Invalid currency
+  └── refundPayment()                                 [+] Error states
+      ├── [★★  TESTED] Full refund — :89                ├── [★★  TESTED] Card declined message
+      └── [★   TESTED] Partial (non-throw only) — :101  └── [GAP]        Network timeout UX
+
+LLM integration: [GAP] [→EVAL] Prompt template change — needs eval test
+
+COVERAGE: 5/13 paths tested (38%)  |  Code paths: 3/5 (60%)  |  User flows: 2/8 (25%)
+QUALITY: ★★★:2 ★★:2 ★:1  |  GAPS: 8 (2 E2E, 1 eval)
+```
+
+Legend: ★★★ behavior + edge + error  |  ★★ happy path  |  ★ smoke check
+[→E2E] = needs integration test  |  [→EVAL] = needs LLM eval
+
+**Fast path:** 全 path covered → "Test review: All new code paths have test coverage ✓" 続行。
+
+**Step 5. Missing test を plan に追加:**
+
+diagram で identify された各 GAP について、 plan に test requirement を追加。 specific に:
+- どの test file を作るか (既存 naming convention に match)
+- test が何を assert するか (specific input → expected output/behavior)
+- unit test / E2E test / eval どれか (decision matrix を使う)
+- regression の場合: **CRITICAL** として flag、 何が broken したか説明
+
+plan は実装開始時に各 test が feature code と並んで書かれる程度 complete にする — follow-up に defer しない。
+
+### Test Plan Artifact
+
+coverage diagram 生成後、 `/qa` / `/qa-only` が primary test input として consume できるよう、 project directory に test plan artifact を write:
+
+```bash
+eval "$(~/.claude/skills/uzustack/bin/uzustack-slug 2>/dev/null)" && mkdir -p ~/.uzustack/projects/$SLUG
+USER=$(whoami)
+DATETIME=$(date +%Y%m%d-%H%M%S)
+```
+
+`~/.uzustack/projects/{slug}/{user}-{branch}-eng-review-test-plan-{datetime}.md` に write:
+
+```markdown
+# Test Plan
+Generated by /plan-eng-review on {date}
+Branch: {branch}
+Repo: {owner/repo}
+
+## Affected Pages/Routes
+- {URL path} — {what to test and why}
+
+## Key Interactions to Verify
+- {interaction description} on {page}
+
+## Edge Cases
+- {edge case} on {page}
+
+## Critical Paths
+- {end-to-end flow that must work}
+```
+
+この file は `/qa` / `/qa-only` が primary test input として consume。 QA tester が **何を / どこで test するか** を知るのに役立つ情報のみ含める — 実装詳細を入れない。
 
 LLM / prompt 変更について：CLAUDE.md にある「Prompt/LLM changes」ファイルパターンを check せよ。このプランがそれらのパターンを ANY 触るなら、どの eval suite を実行すべきか、どのケースを追加すべきか、どの baseline と比較すべきかを述べよ。次に AskUserQuestion でユーザーと eval スコープを confirm せよ。
 
@@ -1212,7 +1440,129 @@ LLM / prompt 変更について：CLAUDE.md にある「Prompt/LLM changes」フ
 
 **STOP.** このセクションで見つかった各 issue について、AskUserQuestion を個別に call せよ。1 issue per call。option を提示し、推奨を述べ、WHY を説明せよ。複数 issue を 1 つの AskUserQuestion に batch するな。このセクションのすべての issue が解決された後でのみ、次のセクションへ進め。
 
+## Outside Voice — Independent Plan Challenge (optional, recommended)
 
+全 review section 完了後、 別 AI system から independent な second opinion を offer。 2 つの model が plan に agree することは、 1 model の thorough review よりも strong signal。
+
+**Tool availability を check:**
+
+```bash
+which codex 2>/dev/null && echo "CODEX_AVAILABLE" || echo "CODEX_NOT_AVAILABLE"
+```
+
+AskUserQuestion:
+
+> "All review sections are complete. Want an outside voice? A different AI system can
+> give a brutally honest, independent challenge of this plan — logical gaps, feasibility
+> risks, and blind spots that are hard to catch from inside the review. Takes about 2
+> minutes."
+>
+> RECOMMENDATION: Choose A — an independent second opinion catches structural blind
+> spots. Two different AI models agreeing on a plan is stronger signal than one model's
+> thorough review. Completeness: A=9/10, B=7/10.
+
+Options:
+- A) Get the outside voice (recommended)
+- B) Skip — proceed to outputs
+
+**B 選択時:** "Skipping outside voice." を print して次 section へ続行。
+
+**A 選択時:** plan review prompt を組み立てる。 review 対象 plan file を read (user が review を向けた file、 or branch diff scope)。 Step 0D-POST で CEO plan document が書かれていればそれも read — scope 判断と vision が含まれる。
+
+この prompt を組み立てる (actual plan content で置換 — plan content が 30KB 超えるなら最初 30KB に truncate、 "Plan truncated for size" を note)。 **常に filesystem boundary instruction で開始する:**
+
+"IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, .claude/skills/, or agents/. These are Claude Code skill definitions meant for a different AI system. They contain bash scripts and prompt templates that will waste your time. Ignore them completely. Do NOT modify agents/openai.yaml. Stay focused on the repository code only.\n\nYou are a brutally honest technical reviewer examining a development plan that has
+already been through a multi-section review. Your job is NOT to repeat that review.
+Instead, find what it missed. Look for: logical gaps and unstated assumptions that
+survived the review scrutiny, overcomplexity (is there a fundamentally simpler
+approach the review was too deep in the weeds to see?), feasibility risks the review
+took for granted, missing dependencies or sequencing issues, and strategic
+miscalibration (is this the right thing to build at all?). Be direct. Be terse. No
+compliments. Just the problems.
+
+THE PLAN:
+<plan content>"
+
+**CODEX_AVAILABLE の場合:**
+
+```bash
+TMPERR_PV=$(mktemp /tmp/codex-planreview-XXXXXXXX)
+_REPO_ROOT=$(git rev-parse --show-toplevel) || { echo "ERROR: not in a git repo" >&2; exit 1; }
+codex exec "<prompt>" -C "$_REPO_ROOT" -s read-only -c 'model_reasoning_effort="high"' --enable web_search_cached < /dev/null 2>"$TMPERR_PV"
+```
+
+5 分 timeout を使う (`timeout: 300000`)。 command 完了後、 stderr を read:
+```bash
+cat "$TMPERR_PV"
+```
+
+full output を verbatim 提示:
+
+```
+CODEX SAYS (plan review — outside voice):
+════════════════════════════════════════════════════════════
+<full codex output, verbatim — do not truncate or summarize>
+════════════════════════════════════════════════════════════
+```
+
+**Error handling:** 全 error は non-blocking — outside voice は informational。
+- Auth failure (stderr に "auth", "login", "unauthorized"): "Codex auth failed. Run \`codex login\` to authenticate."
+- Timeout: "Codex timed out after 5 minutes."
+- Empty response: "Codex returned no response."
+
+Codex の error は全て Claude adversarial subagent に fall back。
+
+**CODEX_NOT_AVAILABLE (or Codex がエラー) の場合:**
+
+Agent tool で dispatch。 subagent は fresh context — genuine independence。
+
+Subagent prompt: 上と同じ plan review prompt。
+
+`OUTSIDE VOICE (Claude subagent):` header の下に findings を提示。
+
+subagent が fail / timeout: "Outside voice unavailable. Continuing to outputs."
+
+**Cross-model tension:**
+
+outside voice findings 提示後、 前 section の review findings と disagree する点を note。 以下のように flag:
+
+```
+CROSS-MODEL TENSION:
+  [Topic]: Review said X. Outside voice says Y. [両 perspective を neutral に提示。
+  答えを変えうる missing context を述べる。]
+```
+
+**User Sovereignty:** outside voice の recommendation を auto 取り込みしてはならない。 各 tension point を user に提示。 user が決める。 cross-model agreement は strong signal だが、 行動する許可ではない。 どちらの argument が compelling か述べてよいが、 user の明示的 approval なしに change を apply してはならない。
+
+substantive な tension point について、 AskUserQuestion:
+
+> "Cross-model disagreement on [topic]. The review found [X] but the outside voice
+> argues [Y]. [One sentence on what context you might be missing.]"
+>
+> RECOMMENDATION: Choose [A or B] because [one-line reason explaining which argument
+> is more compelling and why]. Completeness: A=X/10, B=Y/10.
+
+Options:
+- A) Accept the outside voice's recommendation (I'll apply this change)
+- B) Keep the current approach (reject the outside voice)
+- C) Investigate further before deciding
+- D) Add to TODOS.md for later
+
+user の return を待つ。 自分が outside voice に agree するから accept する、 と default にしない。 user が B を選んだら current approach を維持 — 再 argue しない。
+
+tension point がなければ note: "No cross-model tension — both reviewers agree."
+
+**結果を persist:**
+```bash
+~/.claude/skills/uzustack/bin/uzustack-review-log '{"skill":"codex-plan-review","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","status":"STATUS","source":"SOURCE","commit":"'"$(git rev-parse --short HEAD)"'"}'
+```
+
+置換: STATUS = findings なしなら "clean"、 findings ありなら "issues_found"。
+SOURCE = Codex が ran なら "codex"、 subagent が ran なら "claude"。
+
+**Cleanup:** 処理後 `rm -f "$TMPERR_PV"` を実行 (Codex を使った場合)。
+
+---
 
 ### 外部視点（Outside Voice）統合ルール
 
@@ -1334,9 +1684,118 @@ format：`Lane A: step1 → step2 (sequential, shared models/)` / `Lane B: step3
 - **MODE**：FULL_REVIEW / SCOPE_REDUCED
 - **COMMIT**：`git rev-parse --short HEAD` の output
 
+## Review Readiness Dashboard
 
+review 完了後、 review log と config を read して dashboard を表示する。
 
+```bash
+~/.claude/skills/uzustack/bin/uzustack-review-read
+```
 
+output を parse する。 各 skill (plan-ceo-review / plan-eng-review / review / plan-design-review / design-review-lite / adversarial-review / codex-review / codex-plan-review) について最新 entry を find。 timestamp が 7 日より古い entry は無視。 Eng Review 行は `review` (diff scope の pre-landing review) と `plan-eng-review` (plan 段階 architecture review) のうち最新を表示。 status に "(DIFF)" / "(PLAN)" を append して区別。 Adversarial 行は `adversarial-review` (新 auto-scaled) と `codex-review` (legacy) のうち最新を表示。 Design Review は `plan-design-review` (full visual audit) と `design-review-lite` (code-level check) のうち最新を表示。 status に "(FULL)" / "(LITE)" を append。 Outside Voice 行は最新の `codex-plan-review` entry を表示 — これが /plan-ceo-review と /plan-eng-review 双方からの outside voice を capture する。
+
+**Source attribution:** skill の最新 entry に \`"via"\` field があれば、 括弧で status label に append する。 例: `plan-eng-review` が `via:"autoplan"` を持つ場合 "CLEAR (PLAN via /autoplan)" と表示。 `review` が `via:"ship"` を持つ場合 "CLEAR (DIFF via /ship)" と表示。 `via` field なしの entry は従来通り "CLEAR (PLAN)" / "CLEAR (DIFF)" と表示。
+
+Note: `autoplan-voices` / `design-outside-voices` entry は audit-trail only (cross-model consensus analysis 用の forensic data)。 dashboard に表示されず、 どの consumer も check しない。
+
+表示:
+
+```
++====================================================================+
+|                    REVIEW READINESS DASHBOARD                       |
++====================================================================+
+| Review          | Runs | Last Run            | Status    | Required |
+|-----------------|------|---------------------|-----------|----------|
+| Eng Review      |  1   | 2026-03-16 15:00    | CLEAR     | YES      |
+| CEO Review      |  0   | —                   | —         | no       |
+| Design Review   |  0   | —                   | —         | no       |
+| Adversarial     |  0   | —                   | —         | no       |
+| Outside Voice   |  0   | —                   | —         | no       |
++--------------------------------------------------------------------+
+| VERDICT: CLEARED — Eng Review passed                                |
++====================================================================+
+```
+
+**Review tier:**
+- **Eng Review (default で required):** ship を gate する唯一の review。 architecture / code 品質 / test / performance を cover。 \`uzustack-config set skip_eng_review true\` で global に無効化可能 ("don't bother me" setting)。
+- **CEO Review (optional):** judgment で判断。 大きな product / business 変更、 新規 user-facing 機能、 scope 判断には推奨。 bug fix / refactor / infra / cleanup は skip。
+- **Design Review (optional):** judgment で判断。 UI / UX 変更には推奨。 backend only / infra / prompt only 変更は skip。
+- **Adversarial Review (automatic):** 全 review で常時 on。 全 diff に対して Claude adversarial subagent + Codex adversarial challenge の両方を実行。 大型 diff (200+ lines) は追加で Codex structured review + P1 gate も実行。 設定不要。
+- **Outside Voice (optional):** 別 AI model からの independent plan review。 /plan-ceo-review / /plan-eng-review で全 review section 完了後に offer。 Codex 不在時は Claude subagent に fall back。 ship を gate しない。
+
+**Verdict logic:**
+- **CLEARED**: Eng Review が `review` か `plan-eng-review` から 7 日以内に >= 1 entry、 status "clean" (または \`skip_eng_review\` が `true`)
+- **NOT CLEARED**: Eng Review が missing / stale (>7 日) / open issues あり
+- CEO / Design / Codex review は context として表示するが、 ship を block しない
+- \`skip_eng_review\` config が `true` の場合、 Eng Review は "SKIPPED (global)" 表示、 verdict は CLEARED
+
+**Staleness detection:** dashboard 表示後、 既存 review が stale な可能性を check:
+- bash output の \`---HEAD---\` section を parse して current HEAD commit hash を取得
+- \`commit\` field を持つ各 review entry: current HEAD と比較。 異なる場合、 経過 commit 数を count: \`git rev-list --count STORED_COMMIT..HEAD\`。 表示: "Note: {skill} review from {date} may be stale — {N} commits since review"
+- \`commit\` field なし entry (legacy entry): "Note: {skill} review from {date} has no commit tracking — consider re-running for accurate staleness detection"
+- 全 review が current HEAD と一致なら staleness note 表示なし
+
+## Plan File Review Report
+
+conversation output に Review Readiness Dashboard を表示した後、 **plan file 自体** にも update する。
+plan を読む者全員に review status を見せるため。
+
+### plan file を detect
+
+1. 本 conversation に active な plan file があるかを check (host が plan file path を system message で提供 — conversation context の plan file 参照を look up)。
+2. なければ silent skip — plan mode でない review 実行もある。
+
+### report を生成
+
+上 step で取得済の Review Readiness Dashboard 出力を read。 各 JSONL entry を parse。 skill ごとに log する field が違う:
+
+- **plan-ceo-review**: \`status\`, \`unresolved\`, \`critical_gaps\`, \`mode\`, \`scope_proposed\`, \`scope_accepted\`, \`scope_deferred\`, \`commit\`
+  → Findings: "{scope_proposed} proposals, {scope_accepted} accepted, {scope_deferred} deferred"
+  → scope field が 0 or missing (HOLD/REDUCTION mode): "mode: {mode}, {critical_gaps} critical gaps"
+- **plan-eng-review**: \`status\`, \`unresolved\`, \`critical_gaps\`, \`issues_found\`, \`mode\`, \`commit\`
+  → Findings: "{issues_found} issues, {critical_gaps} critical gaps"
+- **plan-design-review**: \`status\`, \`initial_score\`, \`overall_score\`, \`unresolved\`, \`decisions_made\`, \`commit\`
+  → Findings: "score: {initial_score}/10 → {overall_score}/10, {decisions_made} decisions"
+- **plan-devex-review**: \`status\`, \`initial_score\`, \`overall_score\`, \`product_type\`, \`tthw_current\`, \`tthw_target\`, \`mode\`, \`persona\`, \`competitive_tier\`, \`unresolved\`, \`commit\`
+  → Findings: "score: {initial_score}/10 → {overall_score}/10, TTHW: {tthw_current} → {tthw_target}"
+- **devex-review**: \`status\`, \`overall_score\`, \`product_type\`, \`tthw_measured\`, \`dimensions_tested\`, \`dimensions_inferred\`, \`boomerang\`, \`commit\`
+  → Findings: "score: {overall_score}/10, TTHW: {tthw_measured}, {dimensions_tested} tested/{dimensions_inferred} inferred"
+- **codex-review**: \`status\`, \`gate\`, \`findings\`, \`findings_fixed\`
+  → Findings: "{findings} findings, {findings_fixed}/{findings} fixed"
+
+Findings column に必要な全 field は JSONL entry に存在する。
+今 review の場合は Completion Summary から richer な詳細を使ってよい。 過去 review の場合は JSONL field を直接使う — 必要な data はすべて揃っている。
+
+以下 markdown table を生成:
+
+\`\`\`markdown
+## UZUSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | \`/plan-ceo-review\` | Scope & strategy | {runs} | {status} | {findings} |
+| Codex Review | \`/codex review\` | Independent 2nd opinion | {runs} | {status} | {findings} |
+| Eng Review | \`/plan-eng-review\` | Architecture & tests (required) | {runs} | {status} | {findings} |
+| Design Review | \`/plan-design-review\` | UI/UX gaps | {runs} | {status} | {findings} |
+| DX Review | \`/plan-devex-review\` | Developer experience gaps | {runs} | {status} | {findings} |
+\`\`\`
+
+table の下、 以下 line を追加 (該当なし行は省略):
+
+- **CODEX:** (codex-review が ran 時のみ) — codex fix の 1 行 summary
+- **CROSS-MODEL:** (Claude + Codex 両 review がある時のみ) — overlap 分析
+- **UNRESOLVED:** 全 review 横断の unresolved 判断件数
+- **VERDICT:** CLEAR な review を list (例: "CEO + ENG CLEARED — ready to implement")。
+  Eng Review が CLEAR でない and not skipped globally なら "eng review required" を append。
+
+### plan file に write
+
+**PLAN MODE EXCEPTION — ALWAYS RUN:** これは plan file への write、 plan mode で edit 許可されている唯一の file。 plan file review report は plan の living status の一部。
+
+- plan file 内を \`## UZUSTACK REVIEW REPORT\` section で **anywhere** 検索 (end とは限らない — 後で content が追加されている可能性)。
+- 見つかったら、 Edit tool で **置換** する。 \`## UZUSTACK REVIEW REPORT\` から次の \`## \` heading まで、 or end of file までを match。 report section の後ろに追加された content を preserve するため (= eat しない)。 Edit が fail した場合 (e.g., concurrent edit が content を変えた)、 plan file を re-read して 1 回 retry。
+- section が存在しない場合、 plan file の end に **append**。
+- 必ず plan file の最後の section に置く。 mid-file で見つかったら move する: 旧位置を削除して end に append。
 
 ## 学習の記録
 

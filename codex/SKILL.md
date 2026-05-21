@@ -1228,7 +1228,67 @@ findings_fixed（ship 前に対処/修正された findings 数）。
 rm -f "$TMPERR"
 ```
 
+## Plan File Review Report
 
+conversation output に Review Readiness Dashboard を表示した後、 **plan file 自体** にも update する。
+plan を読む者全員に review status を見せるため。
+
+### plan file を detect
+
+1. 本 conversation に active な plan file があるかを check (host が plan file path を system message で提供 — conversation context の plan file 参照を look up)。
+2. なければ silent skip — plan mode でない review 実行もある。
+
+### report を生成
+
+上 step で取得済の Review Readiness Dashboard 出力を read。 各 JSONL entry を parse。 skill ごとに log する field が違う:
+
+- **plan-ceo-review**: \`status\`, \`unresolved\`, \`critical_gaps\`, \`mode\`, \`scope_proposed\`, \`scope_accepted\`, \`scope_deferred\`, \`commit\`
+  → Findings: "{scope_proposed} proposals, {scope_accepted} accepted, {scope_deferred} deferred"
+  → scope field が 0 or missing (HOLD/REDUCTION mode): "mode: {mode}, {critical_gaps} critical gaps"
+- **plan-eng-review**: \`status\`, \`unresolved\`, \`critical_gaps\`, \`issues_found\`, \`mode\`, \`commit\`
+  → Findings: "{issues_found} issues, {critical_gaps} critical gaps"
+- **plan-design-review**: \`status\`, \`initial_score\`, \`overall_score\`, \`unresolved\`, \`decisions_made\`, \`commit\`
+  → Findings: "score: {initial_score}/10 → {overall_score}/10, {decisions_made} decisions"
+- **plan-devex-review**: \`status\`, \`initial_score\`, \`overall_score\`, \`product_type\`, \`tthw_current\`, \`tthw_target\`, \`mode\`, \`persona\`, \`competitive_tier\`, \`unresolved\`, \`commit\`
+  → Findings: "score: {initial_score}/10 → {overall_score}/10, TTHW: {tthw_current} → {tthw_target}"
+- **devex-review**: \`status\`, \`overall_score\`, \`product_type\`, \`tthw_measured\`, \`dimensions_tested\`, \`dimensions_inferred\`, \`boomerang\`, \`commit\`
+  → Findings: "score: {overall_score}/10, TTHW: {tthw_measured}, {dimensions_tested} tested/{dimensions_inferred} inferred"
+- **codex-review**: \`status\`, \`gate\`, \`findings\`, \`findings_fixed\`
+  → Findings: "{findings} findings, {findings_fixed}/{findings} fixed"
+
+Findings column に必要な全 field は JSONL entry に存在する。
+今 review の場合は Completion Summary から richer な詳細を使ってよい。 過去 review の場合は JSONL field を直接使う — 必要な data はすべて揃っている。
+
+以下 markdown table を生成:
+
+\`\`\`markdown
+## UZUSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | \`/plan-ceo-review\` | Scope & strategy | {runs} | {status} | {findings} |
+| Codex Review | \`/codex review\` | Independent 2nd opinion | {runs} | {status} | {findings} |
+| Eng Review | \`/plan-eng-review\` | Architecture & tests (required) | {runs} | {status} | {findings} |
+| Design Review | \`/plan-design-review\` | UI/UX gaps | {runs} | {status} | {findings} |
+| DX Review | \`/plan-devex-review\` | Developer experience gaps | {runs} | {status} | {findings} |
+\`\`\`
+
+table の下、 以下 line を追加 (該当なし行は省略):
+
+- **CODEX:** (codex-review が ran 時のみ) — codex fix の 1 行 summary
+- **CROSS-MODEL:** (Claude + Codex 両 review がある時のみ) — overlap 分析
+- **UNRESOLVED:** 全 review 横断の unresolved 判断件数
+- **VERDICT:** CLEAR な review を list (例: "CEO + ENG CLEARED — ready to implement")。
+  Eng Review が CLEAR でない and not skipped globally なら "eng review required" を append。
+
+### plan file に write
+
+**PLAN MODE EXCEPTION — ALWAYS RUN:** これは plan file への write、 plan mode で edit 許可されている唯一の file。 plan file review report は plan の living status の一部。
+
+- plan file 内を \`## UZUSTACK REVIEW REPORT\` section で **anywhere** 検索 (end とは限らない — 後で content が追加されている可能性)。
+- 見つかったら、 Edit tool で **置換** する。 \`## UZUSTACK REVIEW REPORT\` から次の \`## \` heading まで、 or end of file までを match。 report section の後ろに追加された content を preserve するため (= eat しない)。 Edit が fail した場合 (e.g., concurrent edit が content を変えた)、 plan file を re-read して 1 回 retry。
+- section が存在しない場合、 plan file の end に **append**。
+- 必ず plan file の最後の section に置く。 mid-file で見つかったら move する: 旧位置を削除して end に append。
 
 ---
 
