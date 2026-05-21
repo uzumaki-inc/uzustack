@@ -1486,7 +1486,61 @@ test では catch されない構造的 issue について diff を review。
 
 **Calibration learning:** confidence < 7 で report した finding を user が「実際に real issue」 と confirm した場合、 それは calibration event。 初期 confidence が低すぎた。 修正済 pattern を learning として記録し、 将来の review で高 confidence でキャッチできるようにする。
 
+## Design Review（条件付き、 diff scope）
 
+`uzustack-diff-scope` で diff が frontend ファイルに触れているかを check する:
+
+```bash
+source <(~/.claude/skills/uzustack/bin/uzustack-diff-scope <base> 2>/dev/null)
+```
+
+**もし `SCOPE_FRONTEND=false`:** design review を silent に skip。 output なし。
+
+**もし `SCOPE_FRONTEND=true`:**
+
+1. **DESIGN.md を check。** repo root に `DESIGN.md` または `design-system.md` があれば読み込む。 全 design findings は DESIGN.md に対して calibration される、 DESIGN.md で bless されている pattern は flag しない。 見つからなければ universal な design principles を使う。
+
+2. **`.claude/skills/review/design-checklist.md` を読む。** 読めない場合は design review を skip して note を残す: 「Design checklist が見つかりません — design review を skip」。
+
+3. **変更された frontend file をそれぞれ読む** (file 全体、 diff hunks だけではない)。 frontend file は checklist にある pattern で identify。
+
+4. **design checklist を変更 file に適用。** 各項目について:
+   - **[HIGH] mechanical CSS fix** (`outline: none`、 `!important`、 `font-size < 16px`): AUTO-FIX に classify
+   - **[HIGH/MEDIUM] design judgment が必要**: ASK に classify
+   - **[LOW] intent-based detection**: 「Possible — visual に verify するか /design-review を実行」 として提示
+
+5. **findings を review output に含める** — 「Design Review」 header の下に、 checklist の output 形式に従って。 design findings は code review findings と同じ Fix-First flow に merge される。
+
+6. **結果を log する** — Review Readiness Dashboard 用に:
+
+```bash
+~/.claude/skills/uzustack/bin/uzustack-review-log '{"skill":"design-review-lite","timestamp":"TIMESTAMP","status":"STATUS","findings":N,"auto_fixed":M,"commit":"COMMIT"}'
+```
+
+置換: TIMESTAMP = ISO 8601 datetime、 STATUS = 「clean」 (0 findings の場合) または 「issues_found」、 N = 総 findings 数、 M = auto-fixed 数、 COMMIT = `git rev-parse --short HEAD` の output。
+
+7. **Codex design voice** (optional, automatic if available):
+
+```bash
+which codex 2>/dev/null && echo "CODEX_AVAILABLE" || echo "CODEX_NOT_AVAILABLE"
+```
+
+Codex が available なら、 diff に対して lightweight な design check を走らせる:
+
+```bash
+TMPERR_DRL=$(mktemp /tmp/codex-drl-XXXXXXXX)
+_REPO_ROOT=$(git rev-parse --show-toplevel) || { echo "ERROR: not in a git repo" >&2; exit 1; }
+codex exec "Review the git diff on this branch. Run 7 litmus checks (YES/NO each): 1. first screen で brand / product がまぎれもなく分かる？ 2. 強い visual anchor が 1 つ存在する？ 3. headline だけ scan して page が理解できる？ 4. 各 section に job が 1 つ？ 5. その card は本当に必要？ 6. motion は hierarchy / atmosphere を改善している？ 7. 装飾的 shadow を全部消しても premium に感じる？ Flag any hard rejections: 1. first impression が汎用 SaaS card grid 2. beautiful image だが brand が弱い 3. strong headline はあるが明確な action がない 4. text の背後に busy な imagery 5. 同じ mood statement を繰り返す section 6. narrative purpose のない carousel 7. app UI が layout でなく card stacked で構成されている 5 most important design findings only. Reference file:line." -C "$_REPO_ROOT" -s read-only -c 'model_reasoning_effort="high"' --enable web_search_cached < /dev/null 2>"$TMPERR_DRL"
+```
+
+timeout は 5 分 (`timeout: 300000`)。 command 完了後、 stderr を読む:
+```bash
+cat "$TMPERR_DRL" && rm -f "$TMPERR_DRL"
+```
+
+**Error handling:** 全 error は non-blocking。 auth failure / timeout / empty response の場合は brief note を残して skip して継続する。
+
+Codex output は `CODEX (design):` header の下に提示、 上の checklist findings と merge する。
 
    Design findings は code review findings と並んで含める。下記の Fix-First flow に従う。
 

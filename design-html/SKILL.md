@@ -1005,9 +1005,86 @@ text が正しく動く production 品質の HTML を生成する。CSS の近�
 computed layout。text は resize で reflow し、height は content に合わせて adjust し、card は
 self-size し、chat bubble は shrinkwrap し、editorial spread は obstacle 周りを flow する。
 
+## DESIGN SETUP (design mockup command の前にこの check を実行)
 
+```bash
+_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+D=""
+[ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/uzustack/design/dist/design" ] && D="$_ROOT/.claude/skills/uzustack/design/dist/design"
+[ -z "$D" ] && D="$HOME/.claude/skills/uzustack/design/dist/design"
+if [ -x "$D" ]; then
+  echo "DESIGN_READY: $D"
+else
+  echo "DESIGN_NOT_AVAILABLE"
+fi
+B=""
+[ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/uzustack/browse/dist/browse" ] && B="$_ROOT/.claude/skills/uzustack/browse/dist/browse"
+[ -z "$B" ] && B="$HOME/.claude/skills/uzustack/browse/dist/browse"
+if [ -x "$B" ]; then
+  echo "BROWSE_READY: $B"
+else
+  echo "BROWSE_NOT_AVAILABLE (will use 'open' to view comparison boards)"
+fi
+```
 
+`DESIGN_NOT_AVAILABLE` の場合: visual mockup 生成を skip して、 既存の HTML wireframe approach (`DESIGN_SKETCH`) に fall back。 design mockup は progressive enhancement、 hard requirement ではない。
 
+`BROWSE_NOT_AVAILABLE` の場合: `$B goto` の代わりに `open file://...` で comparison board を開く。 user は任意の browser で HTML file を見るだけで OK。
+
+`DESIGN_READY` の場合: design binary が visual mockup 生成に available。 Commands:
+- `$D generate --brief "..." --output /path.png` — 単一 mockup 生成
+- `$D variants --brief "..." --count 3 --output-dir /path/` — N style variant 生成
+- `$D compare --images "a.png,b.png,c.png" --output /path/board.html --serve` — comparison board + HTTP server
+- `$D serve --html /path/board.html` — comparison board を serve、 HTTP 経由で feedback を集める
+- `$D check --image /path.png --brief "..."` — vision quality gate
+- `$D iterate --session /path/session.json --feedback "..." --output /path.png` — iterate
+
+**CRITICAL PATH RULE:** 全 design artifact (mockup / comparison board / approved.json) は `~/.uzustack/projects/$SLUG/designs/` に保存しなければならない、 `.context/` / `docs/designs/` / `/tmp/` / project-local directory には NEVER。 design artifact は USER データ、 project file ではない。 branch / conversation / workspace を横断して persist する。
+
+## UX Principles: How Users Actually Behave
+
+これらの principle は real human が interface とどう interact するかを支配する。 preference ではなく observed behavior。 全 design 判断の前、 最中、 後で適用する。
+
+### The Three Laws of Usability (Krug)
+
+1. **Don't make me think.** (ユーザーに考えさせるな) 全 page が self-evident であるべき。 user が立ち止まって 「何 click すればいい？」 「これは何を意味する？」 と思う時点で design は失敗している。 self-evident > self-explanatory > requires explanation。
+
+2. **Clicks don't matter, thinking does.** (click 数は重要でない、 思考が重要) mindless で曖昧さのない 3 click は、 思考を要する 1 click を上回る。 各 step は obvious な choice (animal / vegetable / mineral) と感じるべきで、 puzzle ではない。
+
+3. **Omit, then omit again.** (削れ、 また削れ) 各 page の word を半分にする、 残ったものをまた半分にする。 Happy talk (自画自賛 text) は死ね。 Instructions は死ね。 読む必要があるなら design は失敗している。
+
+### How Users Actually Behave
+
+- **Users scan, they don't read.** scanning 用に design: visual hierarchy (prominence = importance)、 明確に定義された area、 heading と bullet list、 key term の highlight。 我々は 60 mph で通り過ぎる billboard を design している、 人が studying する product brochure ではない。
+- **Users satisfice.** (満足化する) best ではなく最初の reasonable option を pick する。 正しい choice を最も visible な choice にする。
+- **Users muddle through.** (なんとなくやり過ごす) 物事の仕組みを figure out しない。 wing it (出たとこ勝負)。 偶然で goal を達成したら、 「right」 な way を探さない。 一旦動くものを見つけたら、 どんなに badly でも stick する。
+- **Users don't read instructions.** dive in する。 guidance は brief / timely / unavoidable でないと見られない。
+
+### Billboard Design for Interfaces
+
+- **convention を使う。** Logo は top-left、 nav は top / left、 search は 虫眼鏡。 clever ぶって navigation を innovate しない。 better idea を KNOW している時のみ innovate、 それ以外は convention。 言語 / 文化を跨いでも web convention は logo / nav / search / main content を identify させる。
+- **Visual hierarchy is everything.** 関連物は visually group。 nested 物は visually contain。 より重要 = より prominent。 全部 shout していれば何も聞こえない。 全ては visual noise、 innocent と証明されるまで guilty、 という assumption で start する。
+- **Make clickable things obviously clickable.** discoverability を hover state に頼らない、 特に hover が存在しない mobile で。 Shape / location / formatting (color / underline) が interaction なしで clickability を signal する必要がある。
+- **Eliminate noise.** noise の 3 source: 注意を奪い合う too many thing (shouting)、 logical でない organization (disorganization)、 too much stuff (clutter)。 noise は addition ではなく removal で fix する。
+- **Clarity trumps consistency.** 何かを significantly clearer にするのに slightly inconsistent が必要なら、 毎回 clarity を choose。
+
+### Navigation as Wayfinding
+
+web 上の user は scale / direction / location の sense を持たない。 navigation は常に答える必要: これは何の site？ どの page？ major section は？ この level での option は？ 現在位置は？ どう search する？
+
+全 page で persistent navigation。 deep hierarchy には breadcrumbs。 現 section を visually 示す。 「trunk test」: navigation 以外を全部覆う。 まだ site が何か、 どの page か、 major section が何かが分かるべき。 分からないなら navigation が失敗している。
+
+### The Goodwill Reservoir
+
+user は goodwill の reservoir (蓄え) を持って start する。 friction point ごとに減る。
+
+**Deplete faster (速く減る):** user が欲しい情報 (price / contact / shipping) を Hide。 自分の way 通りでないと user を punish (phone number の format 要求)。 不要な情報を要求。 sizzle を path に置く (splash screen / forced tour / interstitial)。 Unprofessional / sloppy appearance。
+
+**Replenish (補充):** user が何したいか知って obvious にする。 知りたいことを upfront で告げる。 可能な限り step を save。 error から recover しやすく。 迷ったら apologize。
+
+### Mobile: Same Rules, Higher Stakes
+
+全 rule は mobile でも適用、 ただし stake が higher。 real estate が scarce、 ただし space savings のために usability を sacrifice しない。 Affordance は VISIBLE であるべき: cursor がない = hover-to-discover ができない。 Touch target は big enough (44px minimum)。 Flat design は interactivity を signal する useful な visual information を strip する可能性。 ruthlessly に prioritize する: 急ぎで必要なものは close at hand、 それ以外は数 tap 先で obvious path 付きに。
 
 ## SETUP (browse command を使う前に必ずこの check を走らせる)
 

@@ -1477,9 +1477,154 @@ AskUserQuestion で提示。Approach のユーザー承認なしに進まない�
 
 ---
 
+## Visual Design Exploration
 
+```bash
+_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+D=""
+[ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/uzustack/design/dist/design" ] && D="$_ROOT/.claude/skills/uzustack/design/dist/design"
+[ -z "$D" ] && D="$HOME/.claude/skills/uzustack/design/dist/design"
+[ -x "$D" ] && echo "DESIGN_READY" || echo "DESIGN_NOT_AVAILABLE"
+```
 
+**`DESIGN_NOT_AVAILABLE` の場合:** 既存の DESIGN_SKETCH section の HTML wireframe approach に fall back。 visual mockup は design binary を要求する。
 
+**`DESIGN_READY` の場合:** user 向けに visual mockup exploration を生成する。
+
+提案された design の visual mockup を生成中... (visual 不要なら「skip」 と言う)
+
+**Step 1: design directory を setup**
+
+```bash
+eval "$(~/.claude/skills/uzustack/bin/uzustack-slug 2>/dev/null)"
+_DESIGN_DIR="$HOME/.uzustack/projects/$SLUG/designs/mockup-$(date +%Y%m%d)"
+mkdir -p "$_DESIGN_DIR"
+echo "DESIGN_DIR: $_DESIGN_DIR"
+```
+
+**Step 2: design brief を組み立てる**
+
+DESIGN.md があれば読む — visual style の制約に使う。 DESIGN.md がなければ、 多様な方向に wide に explore。
+
+**Step 3: 3 variant を生成**
+
+```bash
+$D variants --brief "<assembled brief>" --count 3 --output-dir "$_DESIGN_DIR/"
+```
+
+同じ brief の style variation 3 つを生成 (~40 秒 total)。
+
+**Step 4: variant を inline で見せる、 その後 comparison board を開く**
+
+最初に各 variant を inline で user に見せる (Read tool で PNG を読む)、 その後 comparison board を作って serve:
+
+```bash
+$D compare --images "$_DESIGN_DIR/variant-A.png,$_DESIGN_DIR/variant-B.png,$_DESIGN_DIR/variant-C.png" --output "$_DESIGN_DIR/design-board.html" --serve
+```
+
+board が user の default browser で開く、 feedback 受信まで block する。 stdout で structured JSON result を読む。 polling 不要。
+
+`$D serve` が利用不可 / 失敗した場合、 AskUserQuestion に fall back:
+「design board を開きました。 どの variant が好みですか？ feedback あれば」。
+
+**Step 5: feedback を handle**
+
+JSON が `"regenerated": true` を含む場合:
+1. `regenerateAction` を読む (remix request なら `remixSpec`)
+2. `$D iterate` または `$D variants` で更新 brief を使って新 variant を生成
+3. `$D compare` で新 board を作成
+4. 動作中の server に新 HTML を POST: `curl -X POST http://localhost:PORT/api/reload -H 'Content-Type: application/json' -d '{"html":"$_DESIGN_DIR/design-board.html"}'`
+   (port は stderr から parse: `SERVE_STARTED: port=XXXXX`)
+5. board は同じ tab で auto-refresh
+
+`"regenerated": false` の場合: approved variant で継続。
+
+**Step 6: approved choice を保存**
+
+```bash
+echo '{"approved_variant":"<VARIANT>","feedback":"<FEEDBACK>","date":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","screen":"mockup","branch":"'$(git branch --show-current 2>/dev/null)'"}' > "$_DESIGN_DIR/approved.json"
+```
+
+保存した mockup を design doc / plan で reference。
+
+## Visual Sketch (UI ideas only)
+
+選んだ approach が user-facing UI (screen / page / form / dashboard / interactive element) を含むなら、 rough wireframe を生成して user が visualize できるようにする。 idea が backend のみ、 infrastructure、 または UI component を持たないなら — この section を silent に skip。
+
+**Step 1: design context を集める**
+
+1. repo root に `DESIGN.md` があるか check。 あれば design system 制約 (color / typography / spacing / component pattern) を読む。 wireframe にこの制約を適用する。
+2. core design principles を適用:
+   - **Information hierarchy** — user は first / second / third に何を見るか？
+   - **Interaction states** — loading / empty / error / success / partial
+   - **Edge case paranoia** — 名前が 47 文字なら？ Zero result なら？ Network failure なら？
+   - **Subtraction default** — 「as little design as possible」 (Rams)。 全 element が pixel を earn する。
+   - **Design for trust** — 全 interface element が user trust を build / erode する。
+
+**Step 2: wireframe HTML を生成**
+
+以下の制約で single-page HTML file を生成:
+- **意図的に rough な aesthetic** — system font、 thin gray border、 no color、 hand-drawn-style element。 これは sketch であって polished mockup ではない。
+- Self-contained — 外部依存なし、 CDN link なし、 inline CSS のみ
+- core interaction flow を見せる (最大 1-3 screen / state)
+- 現実的な placeholder content (「Lorem ipsum」 ではなく、 actual use case に matches する content)
+- design 判断を説明する HTML comment を追加
+
+temp file に書く:
+```bash
+SKETCH_FILE="/tmp/uzustack-sketch-$(date +%s).html"
+```
+
+**Step 3: Render and capture**
+
+```bash
+$B goto "file://$SKETCH_FILE"
+$B screenshot /tmp/uzustack-sketch.png
+```
+
+`$B` が利用不可なら (browse binary 未 setup)、 render step を skip。 user に伝える: 「Visual sketch requires the browse binary. setup script を実行して enable してください」。
+
+**Step 4: Present and iterate**
+
+screenshot を user に見せる。 訊く: 「Does this feel right? layout を iterate しますか？」
+
+変更が欲しいなら、 feedback を踏まえて HTML を regenerate して re-render。
+approve された / 「good enough」 と言われたら次へ。
+
+**Step 5: design doc に含める**
+
+design doc の 「Recommended Approach」 section で wireframe screenshot を reference。
+`/tmp/uzustack-sketch.png` の screenshot file は downstream skill (`/plan-design-review`、 `/design-review`) から、 当初 envision していたものを見るために reference 可能。
+
+**Step 6: Outside design voices** (optional)
+
+wireframe approve 後、 outside design perspective を offer:
+
+```bash
+which codex 2>/dev/null && echo "CODEX_AVAILABLE" || echo "CODEX_NOT_AVAILABLE"
+```
+
+Codex が available なら、 AskUserQuestion を使う:
+> 「選んだ approach に outside design perspective が欲しいですか？ Codex が visual thesis、 content plan、 interaction idea を提案。 Claude subagent が代替 aesthetic direction を提案します。」
+>
+> A) Yes — outside design voices を取得
+> B) No — そのまま進める
+
+user が A を選んだら、 両 voice を同時に launch:
+
+1. **Codex** (Bash 経由、 `model_reasoning_effort="medium"`):
+```bash
+TMPERR_SKETCH=$(mktemp /tmp/codex-sketch-XXXXXXXX)
+_REPO_ROOT=$(git rev-parse --show-toplevel) || { echo "ERROR: not in a git repo" >&2; exit 1; }
+codex exec "For this product approach, provide: a visual thesis (one sentence — mood, material, energy), a content plan (hero → support → detail → CTA), and 2 interaction ideas that change page feel. Apply beautiful defaults: composition-first, brand-first, cardless, poster not document. Be opinionated." -C "$_REPO_ROOT" -s read-only -c 'model_reasoning_effort="medium"' --enable web_search_cached < /dev/null 2>"$TMPERR_SKETCH"
+```
+timeout は 5 分 (`timeout: 300000`)。 完了後: `cat "$TMPERR_SKETCH" && rm -f "$TMPERR_SKETCH"`
+
+2. **Claude subagent** (Agent tool 経由):
+「For this product approach, what design direction would you recommend? What aesthetic, typography, and interaction patterns fit? What would make this approach feel inevitable to the user? Be specific — font names, hex colors, spacing values.」
+
+Codex output を `CODEX SAYS (design sketch):` の下、 subagent output を `CLAUDE SUBAGENT (design direction):` の下に提示。
+Error handling: 全 non-blocking。 failure 時は skip して継続。
 
 ---
 

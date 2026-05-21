@@ -6,6 +6,20 @@ uzustack の release notes。フォーマットは [Keep a Changelog](https://ke
 
 ---
 
+## [0.3.6.4] — 2026-05-21
+
+### Added
+
+- **design resolver を port** — upstream gstack の `scripts/resolvers/design.ts` (1,142 行) を翻訳して `scripts/resolvers/design.ts` に配置 (PR-D4a / Refs #176)。 10 関数を export: `generateDesignReviewLite` / `generateDesignMethodology` / `generateDesignSketch` / `generateDesignOutsideVoices` / `generateDesignHardRules` / `generateDesignSetup` / `generateDesignMockup` / `generateDesignShotgunLoop` / `generateTasteProfile` / `generateUXPrinciples`。 voice 規約 v1+v2 適用 (bash internals = English、 narrative = Japanese、 Krug 三法則 / AI Slop / Trunk Test / Goodwill Reservoir 等の固有名詞は English-locked + 日本語 gloss)
+- **10 placeholder を `index.ts` で stub から wired に切替**: `DESIGN_METHODOLOGY` / `DESIGN_HARD_RULES` / `UX_PRINCIPLES` / `DESIGN_OUTSIDE_VOICES` / `DESIGN_REVIEW_LITE` / `DESIGN_SKETCH` / `DESIGN_SETUP` / `DESIGN_MOCKUP` / `DESIGN_SHOTGUN_LOOP` / `TASTE_PROFILE`
+
+### Changed
+
+- **8 SKILL.md に 10 placeholder が展開** — `design-consultation` / `design-html` / `design-review` / `design-shotgun` / `office-hours` / `plan-design-review` / `ship` に design methodology / hard rules / outside voices / sketch / mockup / shotgun loop / taste profile / UX principles が wire-in 経由で展開。 合計 52,099 行 → 53,726 行 (+1,627 行 / ~+16K tokens)
+- `DESIGN_OUTSIDE_VOICES` は Codex host で空展開、 Claude host のみ生成 (Codex が自己 invoke しない設計)
+
+---
+
 ## [0.3.6.3] — 2026-05-21
 
 ### Added

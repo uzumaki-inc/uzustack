@@ -1109,7 +1109,50 @@ setup は下記 DESIGN SETUP セクションが行う。`DESIGN_READY` が print
 
 plan をレビューするとき、シミュレーションとしての共感が自動的に走る。rating するとき、原則的 taste があなたの judgment を debuggable にする — 「これは off に感じる」と言う前に、必ず壊れた原則まで trace せよ。何かが cluttered に見えるとき、追加を提案する前に引き算的標準を適用せよ。
 
+## UX Principles: How Users Actually Behave
 
+これらの principle は real human が interface とどう interact するかを支配する。 preference ではなく observed behavior。 全 design 判断の前、 最中、 後で適用する。
+
+### The Three Laws of Usability (Krug)
+
+1. **Don't make me think.** (ユーザーに考えさせるな) 全 page が self-evident であるべき。 user が立ち止まって 「何 click すればいい？」 「これは何を意味する？」 と思う時点で design は失敗している。 self-evident > self-explanatory > requires explanation。
+
+2. **Clicks don't matter, thinking does.** (click 数は重要でない、 思考が重要) mindless で曖昧さのない 3 click は、 思考を要する 1 click を上回る。 各 step は obvious な choice (animal / vegetable / mineral) と感じるべきで、 puzzle ではない。
+
+3. **Omit, then omit again.** (削れ、 また削れ) 各 page の word を半分にする、 残ったものをまた半分にする。 Happy talk (自画自賛 text) は死ね。 Instructions は死ね。 読む必要があるなら design は失敗している。
+
+### How Users Actually Behave
+
+- **Users scan, they don't read.** scanning 用に design: visual hierarchy (prominence = importance)、 明確に定義された area、 heading と bullet list、 key term の highlight。 我々は 60 mph で通り過ぎる billboard を design している、 人が studying する product brochure ではない。
+- **Users satisfice.** (満足化する) best ではなく最初の reasonable option を pick する。 正しい choice を最も visible な choice にする。
+- **Users muddle through.** (なんとなくやり過ごす) 物事の仕組みを figure out しない。 wing it (出たとこ勝負)。 偶然で goal を達成したら、 「right」 な way を探さない。 一旦動くものを見つけたら、 どんなに badly でも stick する。
+- **Users don't read instructions.** dive in する。 guidance は brief / timely / unavoidable でないと見られない。
+
+### Billboard Design for Interfaces
+
+- **convention を使う。** Logo は top-left、 nav は top / left、 search は 虫眼鏡。 clever ぶって navigation を innovate しない。 better idea を KNOW している時のみ innovate、 それ以外は convention。 言語 / 文化を跨いでも web convention は logo / nav / search / main content を identify させる。
+- **Visual hierarchy is everything.** 関連物は visually group。 nested 物は visually contain。 より重要 = より prominent。 全部 shout していれば何も聞こえない。 全ては visual noise、 innocent と証明されるまで guilty、 という assumption で start する。
+- **Make clickable things obviously clickable.** discoverability を hover state に頼らない、 特に hover が存在しない mobile で。 Shape / location / formatting (color / underline) が interaction なしで clickability を signal する必要がある。
+- **Eliminate noise.** noise の 3 source: 注意を奪い合う too many thing (shouting)、 logical でない organization (disorganization)、 too much stuff (clutter)。 noise は addition ではなく removal で fix する。
+- **Clarity trumps consistency.** 何かを significantly clearer にするのに slightly inconsistent が必要なら、 毎回 clarity を choose。
+
+### Navigation as Wayfinding
+
+web 上の user は scale / direction / location の sense を持たない。 navigation は常に答える必要: これは何の site？ どの page？ major section は？ この level での option は？ 現在位置は？ どう search する？
+
+全 page で persistent navigation。 deep hierarchy には breadcrumbs。 現 section を visually 示す。 「trunk test」: navigation 以外を全部覆う。 まだ site が何か、 どの page か、 major section が何かが分かるべき。 分からないなら navigation が失敗している。
+
+### The Goodwill Reservoir
+
+user は goodwill の reservoir (蓄え) を持って start する。 friction point ごとに減る。
+
+**Deplete faster (速く減る):** user が欲しい情報 (price / contact / shipping) を Hide。 自分の way 通りでないと user を punish (phone number の format 要求)。 不要な情報を要求。 sizzle を path に置く (splash screen / forced tour / interstitial)。 Unprofessional / sloppy appearance。
+
+**Replenish (補充):** user が何したいか知って obvious にする。 知りたいことを upfront で告げる。 可能な限り step を save。 error から recover しやすく。 迷ったら apologize。
+
+### Mobile: Same Rules, Higher Stakes
+
+全 rule は mobile でも適用、 ただし stake が higher。 real estate が scarce、 ただし space savings のために usability を sacrifice しない。 Affordance は VISIBLE であるべき: cursor がない = hover-to-discover ができない。 Touch target は big enough (44px minimum)。 Flat design は interactivity を signal する useful な visual information を strip する可能性。 ruthlessly に prioritize する: 急ぎで必要なものは close at hand、 それ以外は数 tap 先で obvious path 付きに。
 
 ## context 圧迫下での優先順位
 
@@ -1145,7 +1188,41 @@ plan を分析せよ。新しい UI screen / page、既存 UI への変更、use
 
 進む前に findings を report せよ。
 
+## DESIGN SETUP (design mockup command の前にこの check を実行)
 
+```bash
+_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+D=""
+[ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/uzustack/design/dist/design" ] && D="$_ROOT/.claude/skills/uzustack/design/dist/design"
+[ -z "$D" ] && D="$HOME/.claude/skills/uzustack/design/dist/design"
+if [ -x "$D" ]; then
+  echo "DESIGN_READY: $D"
+else
+  echo "DESIGN_NOT_AVAILABLE"
+fi
+B=""
+[ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/uzustack/browse/dist/browse" ] && B="$_ROOT/.claude/skills/uzustack/browse/dist/browse"
+[ -z "$B" ] && B="$HOME/.claude/skills/uzustack/browse/dist/browse"
+if [ -x "$B" ]; then
+  echo "BROWSE_READY: $B"
+else
+  echo "BROWSE_NOT_AVAILABLE (will use 'open' to view comparison boards)"
+fi
+```
+
+`DESIGN_NOT_AVAILABLE` の場合: visual mockup 生成を skip して、 既存の HTML wireframe approach (`DESIGN_SKETCH`) に fall back。 design mockup は progressive enhancement、 hard requirement ではない。
+
+`BROWSE_NOT_AVAILABLE` の場合: `$B goto` の代わりに `open file://...` で comparison board を開く。 user は任意の browser で HTML file を見るだけで OK。
+
+`DESIGN_READY` の場合: design binary が visual mockup 生成に available。 Commands:
+- `$D generate --brief "..." --output /path.png` — 単一 mockup 生成
+- `$D variants --brief "..." --count 3 --output-dir /path/` — N style variant 生成
+- `$D compare --images "a.png,b.png,c.png" --output /path/board.html --serve` — comparison board + HTTP server
+- `$D serve --html /path/board.html` — comparison board を serve、 HTTP 経由で feedback を集める
+- `$D check --image /path.png --brief "..."` — vision quality gate
+- `$D iterate --session /path/session.json --feedback "..." --output /path.png` — iterate
+
+**CRITICAL PATH RULE:** 全 design artifact (mockup / comparison board / approved.json) は `~/.uzustack/projects/$SLUG/designs/` に保存しなければならない、 `.context/` / `docs/designs/` / `/tmp/` / project-local directory には NEVER。 design artifact は USER データ、 project file ではない。 branch / conversation / workspace を横断して persist する。
 
 ## Step 0: Design Scope 評価
 
@@ -1216,7 +1293,90 @@ $D check --image "$_DESIGN_DIR/variant-A.png" --brief "<the original brief>"
 
 **variant を Read tool で inline 表示して preference を聞くな。** 下記の Comparison Board + Feedback Loop section に直接進め。比較ボードが chooser そのもの — rating control、comments、remix / regenerate、構造化された feedback output を持つ。Mockup の inline 表示は劣化体験。
 
+### Comparison Board + Feedback Loop
 
+comparison board を作って HTTP で serve する:
+
+```bash
+$D compare --images "$_DESIGN_DIR/variant-A.png,$_DESIGN_DIR/variant-B.png,$_DESIGN_DIR/variant-C.png" --output "$_DESIGN_DIR/design-board.html" --serve
+```
+
+この command が board HTML を生成、 random port で HTTP server を start、 user の default browser で開く。 user が board と interact している間 server は running を維持する必要があるので、 **background で実行する** (`&` 付き)。
+
+stderr output から port を parse する: `SERVE_STARTED: port=XXXXX`。 board URL と regeneration cycle 中の reload に必要。
+
+**PRIMARY WAIT: AskUserQuestion with board URL**
+
+board が serve 中になったら、 AskUserQuestion で user を待つ。 board URL を含めて、 browser tab を失っても click できるように:
+
+「design variant の comparison board を開きました:
+http://127.0.0.1:<PORT>/ — rate して、 comment を残して、 気に入った element を remix して、 Submit を click してください。 feedback を submit したら教えてください (または preference をここに paste)。 board で Regenerate / Remix を click したら教えてください、 新 variant を生成します。」
+
+**user がどの variant が好きかを訊くのに AskUserQuestion を使わないこと。** comparison board が chooser。 AskUserQuestion は単に blocking wait の機構。
+
+**user が AskUserQuestion に応答した後:**
+
+board HTML の隣に feedback file があるかを check:
+- `$_DESIGN_DIR/feedback.json` — user が Submit を click したときに書き込まれる (final choice)
+- `$_DESIGN_DIR/feedback-pending.json` — user が Regenerate / Remix / More Like This を click したときに書き込まれる
+
+```bash
+if [ -f "$_DESIGN_DIR/feedback.json" ]; then
+  echo "SUBMIT_RECEIVED"
+  cat "$_DESIGN_DIR/feedback.json"
+elif [ -f "$_DESIGN_DIR/feedback-pending.json" ]; then
+  echo "REGENERATE_RECEIVED"
+  cat "$_DESIGN_DIR/feedback-pending.json"
+  rm "$_DESIGN_DIR/feedback-pending.json"
+else
+  echo "NO_FEEDBACK_FILE"
+fi
+```
+
+feedback JSON の形:
+```json
+{
+  "preferred": "A",
+  "ratings": { "A": 4, "B": 3, "C": 2 },
+  "comments": { "A": "Love the spacing" },
+  "overall": "Go with A, bigger CTA",
+  "regenerated": false
+}
+```
+
+**`feedback.json` が見つかった場合:** user が board で Submit を click。
+JSON から `preferred` / `ratings` / `comments` / `overall` を読む。 approved variant で継続。
+
+**`feedback-pending.json` が見つかった場合:** user が board で Regenerate / Remix を click。
+1. JSON から `regenerateAction` を読む (`"different"` / `"match"` / `"more_like_B"` / `"remix"` / custom text)
+2. `regenerateAction` が `"remix"` なら `remixSpec` を読む (例: `{"layout":"A","colors":"B"}`)
+3. 更新 brief で `$D iterate` / `$D variants` を使って新 variant を生成
+4. 新 board を作る: `$D compare --images "..." --output "$_DESIGN_DIR/design-board.html"`
+5. user の browser で board を reload (同じ tab):
+   `curl -s -X POST http://127.0.0.1:PORT/api/reload -H 'Content-Type: application/json' -d '{"html":"$_DESIGN_DIR/design-board.html"}'`
+6. board が auto-refresh。 **AskUserQuestion で再度** 同じ board URL を含めて待つ、 次の feedback round を。 `feedback.json` が現れるまで repeat。
+
+**`NO_FEEDBACK_FILE` の場合:** user が board ではなく直接 AskUserQuestion response に preference を type した。 その text response を feedback として使う。
+
+**POLLING FALLBACK:** polling は `$D serve` が failed した場合のみ (port 不可)。 その場合、 各 variant を Read tool で inline で見せる (user が見えるように)、 AskUserQuestion を使う:
+「comparison board server の起動に失敗。 上に variant を見せました。 どれが好み？ feedback は？」。
+
+**feedback 受信後 (どの path 経由でも):** 何を理解したか確認の summary を出力:
+
+「あなたの feedback を以下のように理解しました:
+PREFERRED: Variant [X]
+RATINGS: [list]
+YOUR NOTES: [comments]
+DIRECTION: [overall]
+
+これで合っていますか？」
+
+進める前に AskUserQuestion で verify する。
+
+**approved choice を保存:**
+```bash
+echo '{"approved_variant":"<V>","feedback":"<FB>","date":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","screen":"<SCREEN>","branch":"'$(git branch --show-current 2>/dev/null)'"}' > "$_DESIGN_DIR/approved.json"
+```
 
 **ユーザーがどの variant を選んだかを AskUserQuestion で聞くな。** `feedback.json` を読め — ユーザーの選好 variant、rating、コメント、overall feedback が既に含まれている。AskUserQuestion は feedback を正しく理解したかを確認する目的でのみ使い、何を選んだかを再度聞くな。
 
@@ -1226,7 +1386,113 @@ $D check --image "$_DESIGN_DIR/variant-A.png" --brief "<the original brief>"
 
 **`DESIGN_NOT_AVAILABLE` の場合：** ユーザーに伝えよ：「uzustack designer がまだ setup されていません。`$D setup` を実行して visual mockup を有効化してください。テキストのみのレビューで進めますが、ベストパートを逃しています。」その後、テキストベースのレビューパスに進め。
 
+## Design Outside Voices (parallel)
 
+AskUserQuestion を使う:
+> 「outside design voice が欲しいですか、 detailed review の前に？ Codex が OpenAI の design hard rules + litmus checks に対して評価、 Claude subagent が独立した completeness review を行います。」
+>
+> A) Yes — outside design voices を実行
+> B) No — そのまま進める
+
+user が B を選んだら、 この step を skip して継続する。
+
+**Codex 利用可否を check:**
+```bash
+which codex 2>/dev/null && echo "CODEX_AVAILABLE" || echo "CODEX_NOT_AVAILABLE"
+```
+
+**Codex が available なら**、 両 voice を同時に launch:
+
+1. **Codex design voice** (Bash 経由):
+```bash
+TMPERR_DESIGN=$(mktemp /tmp/codex-design-XXXXXXXX)
+_REPO_ROOT=$(git rev-parse --show-toplevel) || { echo "ERROR: not in a git repo" >&2; exit 1; }
+codex exec "Read the plan file at [plan-file-path]. Evaluate this plan's UI/UX design against these criteria.
+
+HARD REJECTION — flag if ANY apply:
+1. first impression が汎用 SaaS card grid
+2. beautiful image だが brand が弱い
+3. strong headline はあるが明確な action がない
+4. text の背後に busy な imagery
+5. 同じ mood statement を繰り返す section
+6. narrative purpose のない carousel
+7. app UI が layout でなく card stacked で構成されている
+
+LITMUS CHECKS — answer YES or NO for each:
+1. first screen で brand / product がまぎれもなく分かる？
+2. 強い visual anchor が 1 つ存在する？
+3. headline だけ scan して page が理解できる？
+4. 各 section に job が 1 つ？
+5. その card は本当に必要？
+6. motion は hierarchy / atmosphere を改善している？
+7. 装飾的 shadow を全部消しても premium に感じる？
+
+HARD RULES — first classify as MARKETING/LANDING PAGE vs APP UI vs HYBRID, then flag violations of the matching rule set:
+- MARKETING: First viewport as one composition, brand-first hierarchy, full-bleed hero, 2-3 intentional motions, composition-first layout
+- APP UI: Calm surface hierarchy, dense but readable, utility language, minimal chrome
+- UNIVERSAL: CSS variables for colors, no default font stacks, one job per section, cards earn existence
+
+For each finding: what's wrong, what will happen if it ships unresolved, and the specific fix. Be opinionated. No hedging." -C "$_REPO_ROOT" -s read-only -c 'model_reasoning_effort="high"' --enable web_search_cached < /dev/null 2>"$TMPERR_DESIGN"
+```
+timeout は 5 分 (`timeout: 300000`)。 command 完了後、 stderr を読む:
+```bash
+cat "$TMPERR_DESIGN" && rm -f "$TMPERR_DESIGN"
+```
+
+2. **Claude design subagent** (Agent tool 経由):
+subagent を以下の prompt で dispatch:
+「Read the plan file at [plan-file-path]. You are an independent senior product designer reviewing this plan. You have NOT seen any prior review. Evaluate:
+
+1. Information hierarchy: what does the user see first, second, third? Is it right?
+2. Missing states: loading, empty, error, success, partial — which are unspecified?
+3. User journey: what's the emotional arc? Where does it break?
+4. Specificity: does the plan describe SPECIFIC UI ("48px Söhne Bold header, #1a1a1a on white") or generic patterns ("clean modern card-based layout")?
+5. What design decisions will haunt the implementer if left ambiguous?
+
+For each finding: what's wrong, severity (critical/high/medium), and the fix.」
+
+**Error handling (全 non-blocking):**
+- **Auth failure:** stderr が 「auth」「login」「unauthorized」「API key」 を含む場合: 「Codex authentication failed. `codex login` を実行して認証してください」。
+- **Timeout:** 「Codex timed out after 5 minutes.」
+- **Empty response:** 「Codex returned no response.」
+- Codex error 時: Claude subagent output のみで継続、 `[single-model]` tag を付ける。
+- Claude subagent も失敗時: 「Outside voices unavailable — primary review で継続」。
+
+Codex output は `CODEX SAYS (design critique):` header の下に提示。
+subagent output は `CLAUDE SUBAGENT (design completeness):` header の下に提示。
+
+**Synthesis — Litmus scorecard:**
+
+```
+DESIGN OUTSIDE VOICES — LITMUS SCORECARD:
+═══════════════════════════════════════════════════════════════
+  Check                                    Claude  Codex  Consensus
+  ─────────────────────────────────────── ─────── ─────── ─────────
+  1. Brand unmistakable in first screen?   —       —      —
+  2. One strong visual anchor?             —       —      —
+  3. Scannable by headlines only?          —       —      —
+  4. Each section has one job?             —       —      —
+  5. Cards actually necessary?             —       —      —
+  6. Motion improves hierarchy?            —       —      —
+  7. Premium without decorative shadows?   —       —      —
+  ─────────────────────────────────────── ─────── ─────── ─────────
+  Hard rejections triggered:               —       —      —
+═══════════════════════════════════════════════════════════════
+```
+
+各 cell を Codex / subagent の output から fill in。 CONFIRMED = 両者一致。 DISAGREE = model 間で違う。 NOT SPEC'D = 評価に十分な情報なし。
+
+**Pass integration (既存 7-pass contract を respect):**
+- Hard rejection → Pass 1 の FIRST item として、 `[HARD REJECTION]` tag 付きで raise
+- Litmus DISAGREE 項目 → 該当 pass で両 perspective と共に raise
+- Litmus CONFIRMED failure → 該当 pass で既知 issue として pre-load
+- Pass は discovery を skip して、 pre-identified issue に対して即 fix に進める
+
+**結果を log する:**
+```bash
+~/.claude/skills/uzustack/bin/uzustack-review-log '{"skill":"design-outside-voices","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","status":"STATUS","source":"SOURCE","commit":"'"$(git rev-parse --short HEAD)"'"}'
+```
+置換: STATUS = 「clean」 / 「issues_found」、 SOURCE = 「codex+subagent」 / 「codex-only」 / 「subagent-only」 / 「unavailable」。
 
 ## 0-10 Rating メソッド
 
@@ -1330,7 +1596,79 @@ FIX TO 10：ユーザー旅の storyboard を追加：
 0-10 rate：plan は具体的で意図的な UI を記述するか、それとも汎用的 pattern か？
 FIX TO 10：曖昧な UI 記述を具体的代替で書き直せ。
 
+### Design Hard Rules
 
+**Classifier — 評価前に rule set を決定する:**
+- **MARKETING / LANDING PAGE** (hero-driven、 brand-forward、 conversion-focused) → Landing Page Rules を適用
+- **APP UI** (workspace-driven、 data-dense、 task-focused: dashboard / admin / settings) → App UI Rules を適用
+- **HYBRID** (marketing shell + app-like section) → hero / marketing section に Landing Page Rules、 functional section に App UI Rules
+
+**Hard rejection criteria** (instant-fail pattern — どれか apply するなら flag):
+1. first impression が汎用 SaaS card grid
+2. beautiful image だが brand が弱い
+3. strong headline はあるが明確な action がない
+4. text の背後に busy な imagery
+5. 同じ mood statement を繰り返す section
+6. narrative purpose のない carousel
+7. app UI が layout でなく card stacked で構成されている
+
+**Litmus checks** (各 YES/NO で回答 — cross-model consensus scoring に使用):
+1. first screen で brand / product がまぎれもなく分かる？
+2. 強い visual anchor が 1 つ存在する？
+3. headline だけ scan して page が理解できる？
+4. 各 section に job が 1 つ？
+5. その card は本当に必要？
+6. motion は hierarchy / atmosphere を改善している？
+7. 装飾的 shadow を全部消しても premium に感じる？
+
+**Landing page rules** (classifier = MARKETING / LANDING の時に適用):
+- First viewport が dashboard ではなく 1 つの composition として読める
+- Brand-first hierarchy: brand > headline > body > CTA
+- Typography: expressive、 purposeful — default stack なし (Inter / Roboto / Arial / system)
+- Flat single-color background なし — gradient / image / subtle pattern を使う
+- Hero: full-bleed、 edge-to-edge、 inset / tiled / rounded variant なし
+- Hero budget: brand、 headline 1 つ、 supporting sentence 1 つ、 CTA group 1 つ、 image 1 つ
+- Hero に card なし。 card は card 自体が interaction の時のみ
+- One job per section: 1 purpose、 1 headline、 1 短い supporting sentence
+- Motion: intentional motion 2-3 個 最低 (entrance / scroll-linked / hover-reveal)
+- Color: CSS variable を定義、 purple-on-white デフォルト回避、 accent color はデフォルト 1 つ
+- Copy: design commentary ではなく product language。 「If deleting 30% improves it, keep deleting」
+- Beautiful defaults: composition-first、 brand が最大 text、 typeface 2 つまで、 cardless by default、 first viewport は document ではなく poster
+
+**App UI rules** (classifier = APP UI の時に適用):
+- Calm surface hierarchy、 strong typography、 few colors
+- Dense but readable、 minimal chrome
+- 構成: primary workspace、 navigation、 secondary context、 accent 1 つ
+- 避ける: dashboard-card mosaic、 thick border、 decorative gradient、 ornamental icon
+- Copy: utility language — orientation / status / action。 mood / brand / aspiration ではない
+- Card は card 自体が interaction の時のみ
+- Section heading は area が何か、 user が何できるかを述べる (「Selected KPIs」「Plan status」)
+
+**Universal rules** (全 type に適用):
+- color system に CSS variable を定義
+- default font stack なし (Inter / Roboto / Arial / system)
+- One job per section
+- 「If deleting 30% of the copy improves it, keep deleting」
+- Card は存在を earn する — decorative card grid なし
+- body text < 16px / contrast ratio < 4.5:1 な small low-contrast type を NEVER 使わない
+- form field の中に label を only label として置かない (placeholder-as-label pattern — field に content がある時に label が visible)
+- visited vs unvisited link distinction を ALWAYS 保つ (visited link は色が違う)
+- 段落間に heading を NEVER float させない (heading は前の section ではなく後の section に visually 近く)
+
+**AI Slop blacklist** (「AI-generated」 と叫ぶ 10 pattern):
+1. 紫 / violet / indigo の gradient 背景、 blue-to-purple の color scheme
+2. **3 column feature grid:** 「色付き circle 内の icon + bold title + 2 行 description」 を 3 連対称配置。 AI layout として最も識別される pattern。
+3. 色付き circle 内の icon を section 装飾に使う (SaaS starter template の見た目)
+4. 何でも center 寄せ (全 heading / description / card に `text-align: center`)
+5. 全 element に bubbly な border-radius を均一に適用 (同じ大きな radius を全部に)
+6. 装飾 blob、 floating circle、 wavy SVG divider (section が空に感じるなら、 装飾でなく content を改善せよ)
+7. emoji を design element に使う (heading 内の rocket 絵文字、 bullet point の絵文字)
+8. card の左 border を色付けする (`border-left: 3px solid <accent>`)
+9. 汎用 hero copy ("Welcome to [X]"、 "Unlock the power of..."、 "Your all-in-one solution for...")
+10. cookie-cutter な section rhythm (hero → 3 features → testimonials → pricing → CTA、 各 section 同じ高さ)
+11. system-ui / `-apple-system` を **primary** の display/body font に使う — 「typography を諦めた」 signal。 本物の typeface を選べ。
+
+Source: [OpenAI "Designing Delightful Frontends with GPT-5.4"](https://developers.openai.com/blog/designing-delightful-frontends-with-gpt-5-4) (Mar 2026) + uzustack design methodology.
 - 「Cards with icons」 → 他のすべての SaaS テンプレートと何が違う？
 - 「Hero section」 → この hero が THIS 製品らしく感じるのは何か？
 - 「Clean, modern UI」 → meaningless。実際の design 決定で置き換えよ。
