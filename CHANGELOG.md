@@ -6,6 +6,21 @@ uzustack の release notes。フォーマットは [Keep a Changelog](https://ke
 
 ---
 
+## [0.3.6.3] — 2026-05-21
+
+### Added
+
+- **中型 resolvers 8 file を port** — upstream gstack の `scripts/resolvers/` 配下から `composition.ts` / `constants.ts` / `confidence.ts` / `browse.ts` / `codex-helpers.ts` / `dx.ts` / `gbrain.ts` / `make-pdf.ts` を翻訳して配置 (PR-D3 / Refs #176)。 9 placeholder を `index.ts` で stub から wired に切替: `CONFIDENCE_CALIBRATION` / `INVOKE_SKILL` / `DX_FRAMEWORK` / `GBRAIN_CONTEXT_LOAD` / `GBRAIN_SAVE_RESULTS` / `MAKE_PDF_SETUP` / `COMMAND_REFERENCE` / `SNAPSHOT_FLAGS` / `BROWSE_SETUP`
+- **`composition.ts` の DEFAULT_SKIPS を uzustack preamble の日本語化済 heading に同期** — `Completeness Principle — Boil the Lake` → `完全性の原則 — 一晩でやり切る（Boil the Lake）`、 `Search Before Building` → `作る前に探す（Search Before Building）`、 `Contributor Mode` → `リポジトリ所有権 — 気づいたら声を上げる`、 `Step 0: Detect platform and base branch` → `Step 0: platform と base branch を検出` の 4 件置換。 INVOKE_SKILL hard-match を uzustack の actual heading に揃え、 sub-skill 起動時の section 重複出力を防止
+- **`browse.ts` の data 依存を pragmatic に解決** — `COMMAND_DESCRIPTIONS` は upstream の pure data export を import、 `SNAPSHOT_FLAGS` は upstream `snapshot.ts` が `import * as Diff from 'diff'` (uzustack 未インストール) を経由するため local inline copy で対応。 月次 subtree pull 時の手動 drift 確認を file 冒頭 comment に明記
+
+### Changed
+
+- **12 SKILL.md に 9 placeholder が展開** — `cso` / `design-consultation` / `design-html` / `design-review` / `devex-review` / `land-and-deploy` / `office-hours` / `plan-ceo-review` / `plan-devex-review` / `plan-eng-review` / `review` / `ship` に composition / confidence / dx / gbrain / make-pdf / browse 系 placeholder が wire-in 経由で展開。 合計 51,661 行 → 52,099 行 (+438 行 / ~+4K tokens)
+- `GBRAIN_CONTEXT_LOAD` / `GBRAIN_SAVE_RESULTS` は claude host の `suppressedResolvers` で抑制されるため Claude host では空展開、 Phase 4+ で他 host を有効化した際に activate される (= 資産先行配置)
+
+---
+
 ## [0.3.6.2] — 2026-05-21
 
 ### Added
