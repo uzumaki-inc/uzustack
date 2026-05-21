@@ -1055,7 +1055,61 @@ git remote get-url origin 2>/dev/null
 
 ---
 
+## Prerequisite Skill Offer
 
+上記 design doc check が "No design doc found" を print した場合、 続行前に prerequisite skill を offer する。
+
+AskUserQuestion で user に告げる:
+
+> "No design doc found for this branch. `/office-hours` produces a structured problem
+> statement, premise challenge, and explored alternatives — it gives this review much
+> sharper input to work with. Takes about 10 minutes. The design doc is per-feature,
+> not per-product — it captures the thinking behind this specific change."
+
+Options:
+- A) Run /office-hours now (we'll pick up the review right after)
+- B) Skip — proceed with standard review
+
+skip 選択時: "No worries — standard review. If you ever want sharper input, try
+/office-hours first next time." 通常通り続行。 同 session 内で再 offer しない。
+
+A 選択時:
+
+告げる: "Running /office-hours inline. Once the design doc is ready, I'll pick up
+the review right where we left off."
+
+Read tool で `/office-hours` skill file (`~/.claude/skills/uzustack/office-hours/SKILL.md`) を読む。
+
+**読めない場合:** 「Could not load /office-hours — skipping.」 と告げて skip、 続行する。
+
+その instruction を上から下まで実行する。 ただし以下 section は **skip** する (parent skill 側で処理済):
+- Preamble (run first)
+- AskUserQuestion Format
+- 完全性の原則 — 一晩でやり切る（Boil the Lake）
+- 作る前に探す（Search Before Building）
+- リポジトリ所有権 — 気づいたら声を上げる
+- Completion Status Protocol
+- Telemetry (run last)
+- Step 0: platform と base branch を検出
+- Review Readiness Dashboard
+- Plan File Review Report
+- Prerequisite Skill Offer
+- Plan Status Footer
+
+それ以外の section は full depth で実行する。 loaded skill の instruction が完了したら、 次の step に進む。
+
+/office-hours 完了後、 design doc check を再実行:
+```bash
+setopt +o nomatch 2>/dev/null || true  # zsh compat
+SLUG=$(~/.claude/skills/uzustack/browse/bin/remote-slug 2>/dev/null || basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null | tr '/' '-' || echo 'no-branch')
+DESIGN=$(ls -t ~/.uzustack/projects/$SLUG/*-$BRANCH-design-*.md 2>/dev/null | head -1)
+[ -z "$DESIGN" ] && DESIGN=$(ls -t ~/.uzustack/projects/$SLUG/*-design-*.md 2>/dev/null | head -1)
+[ -n "$DESIGN" ] && echo "Design doc found: $DESIGN" || echo "No design doc found"
+```
+
+design doc が見つかれば read して review を続行。
+無ければ (user が cancel した可能性)、 standard review で続行。
 
 # /autoplan — Auto-Review Pipeline
 

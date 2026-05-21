@@ -1439,7 +1439,107 @@ AskUserQuestion で confirm。ユーザーが premise に disagree したら、�
 
 ---
 
+## Phase 3.5: Cross-Model Second Opinion (optional)
 
+**Binary check 先行:**
+
+```bash
+which codex 2>/dev/null && echo "CODEX_AVAILABLE" || echo "CODEX_NOT_AVAILABLE"
+```
+
+AskUserQuestion を使う (codex availability に関わらず):
+
+> Want a second opinion from an independent AI perspective? It will review your problem statement, key answers, premises, and any landscape findings from this session without having seen this conversation — it gets a structured summary. Usually takes 2-5 minutes.
+> A) Yes, get a second opinion
+> B) No, proceed to alternatives
+
+B 選択: Phase 3.5 を完全 skip。 second opinion が run しなかったことを記憶 (= design doc / founder signal / Phase 4 に影響)。
+
+**A 選択: Codex cold read を実行。**
+
+1. Phase 1-3 から structured context block を組み立てる:
+   - Mode (Startup or Builder)
+   - Problem statement (Phase 1 から)
+   - Phase 2A/2B の key answer (各 Q&A を 1-2 文に summarize、 user の verbatim quote を含む)
+   - Landscape findings (Phase 2.75 から、 search が ran なら)
+   - 合意済 premise (Phase 3 から)
+   - Codebase context (project 名 / language / 最近の activity)
+
+2. **組み立てた prompt を tempfile に write** (user-derived content からの shell injection 防止):
+
+```bash
+CODEX_PROMPT_FILE=$(mktemp /tmp/uzustack-codex-oh-XXXXXXXX.txt)
+```
+
+full prompt を file に書く。 **常に filesystem boundary で開始する:**
+"IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, .claude/skills/, or agents/. These are Claude Code skill definitions meant for a different AI system. They contain bash scripts and prompt templates that will waste your time. Ignore them completely. Do NOT modify agents/openai.yaml. Stay focused on the repository code only.\n\n"
+次に context block と mode-appropriate instruction を加える:
+
+**Startup mode instructions:** "You are an independent technical advisor reading a transcript of a startup brainstorming session. [CONTEXT BLOCK HERE]. Your job: 1) What is the STRONGEST version of what this person is trying to build? Steelman it in 2-3 sentences. 2) What is the ONE thing from their answers that reveals the most about what they should actually build? Quote it and explain why. 3) Name ONE agreed premise you think is wrong, and what evidence would prove you right. 4) If you had 48 hours and one engineer to build a prototype, what would you build? Be specific — tech stack, features, what you'd skip. Be direct. Be terse. No preamble."
+
+**Builder mode instructions:** "You are an independent technical advisor reading a transcript of a builder brainstorming session. [CONTEXT BLOCK HERE]. Your job: 1) What is the COOLEST version of this they haven't considered? 2) What's the ONE thing from their answers that reveals what excites them most? Quote it. 3) What existing open source project or tool gets them 50% of the way there — and what's the 50% they'd need to build? 4) If you had a weekend to build this, what would you build first? Be specific. Be direct. No preamble."
+
+3. Codex を実行:
+
+```bash
+TMPERR_OH=$(mktemp /tmp/codex-oh-err-XXXXXXXX)
+_REPO_ROOT=$(git rev-parse --show-toplevel) || { echo "ERROR: not in a git repo" >&2; exit 1; }
+codex exec "$(cat "$CODEX_PROMPT_FILE")" -C "$_REPO_ROOT" -s read-only -c 'model_reasoning_effort="high"' --enable web_search_cached < /dev/null 2>"$TMPERR_OH"
+```
+
+5 分 timeout を使う (`timeout: 300000`)。 command 完了後、 stderr を read:
+```bash
+cat "$TMPERR_OH"
+rm -f "$TMPERR_OH" "$CODEX_PROMPT_FILE"
+```
+
+**Error handling:** 全 error は non-blocking — second opinion は quality enhancement であって prerequisite ではない。
+- **Auth failure:** stderr に "auth", "login", "unauthorized", "API key" を含む場合: "Codex authentication failed. Run \`codex login\` to authenticate." Claude subagent に fall back。
+- **Timeout:** "Codex timed out after 5 minutes." Claude subagent に fall back。
+- **Empty response:** "Codex returned no response." Claude subagent に fall back。
+
+Codex の error は全て下記 Claude subagent に fall back。
+
+**CODEX_NOT_AVAILABLE (or Codex がエラー) の場合:**
+
+Agent tool で dispatch。 subagent は fresh context — genuine independence。
+
+Subagent prompt: 上と同じ mode-appropriate prompt (Startup or Builder variant)。
+
+`SECOND OPINION (Claude subagent):` header の下に findings を提示。
+
+subagent が fail / timeout: "Second opinion unavailable. Continuing to Phase 4."
+
+4. **Presentation:**
+
+Codex が ran 時:
+```
+SECOND OPINION (Codex):
+════════════════════════════════════════════════════════════
+<full codex output, verbatim — do not truncate or summarize>
+════════════════════════════════════════════════════════════
+```
+
+Claude subagent が ran 時:
+```
+SECOND OPINION (Claude subagent):
+════════════════════════════════════════════════════════════
+<full subagent output, verbatim — do not truncate or summarize>
+════════════════════════════════════════════════════════════
+```
+
+5. **Cross-model synthesis:** second opinion output 提示後、 3-5 bullet で synthesis:
+   - Claude が second opinion に同意する点
+   - Claude が disagree する点 + why
+   - 反論された premise が Claude の recommendation を変えるか
+
+6. **Premise revision check:** Codex が合意済 premise に challenge した場合、 AskUserQuestion:
+
+> Codex challenged premise #{N}: "{premise text}". Their argument: "{reasoning}".
+> A) Revise this premise based on Codex's input
+> B) Keep the original premise — proceed to alternatives
+
+A 選択: premise を revise + 修正を記録。 B 選択: 続行 (user が WHY を articulate して defended した点を記録 — これは dismiss でなく reason 付きで disagree したなら founder signal)。
 
 ---
 
@@ -1811,7 +1911,59 @@ Supersedes: {prior filename — 本 branch の最初の design ならこの行�
 
 ---
 
+## Spec Review Loop
 
+user に approval 用の document を提示する前に、 adversarial review を回す。
+
+**Step 1: Reviewer subagent を dispatch**
+
+Agent tool で independent reviewer を dispatch。 reviewer は fresh context を持ち、 brainstorming conversation を見ない — document のみ見る。 これで genuine adversarial independence が確保される。
+
+subagent への prompt:
+- 直前に書いた document の file path
+- "Read this document and review it on 5 dimensions. For each dimension, note PASS or
+  list specific issues with suggested fixes. At the end, output a quality score (1-10)
+  across all dimensions."
+
+**Dimensions:**
+1. **Completeness** — 全要件が addressed か？ 漏れている edge case は？
+2. **Consistency** — document の各部分が互いに整合するか？ 矛盾は？
+3. **Clarity** — engineer がこれを実装する時に質問なしで進められるか？ 曖昧な言い回しは？
+4. **Scope** — document が元問題を超えて creep していないか？ YAGNI 違反は？
+5. **Feasibility** — 記載のアプローチで実際 build できるか？ 隠れた複雑性は？
+
+subagent は以下を return:
+- quality score (1-10)
+- 問題なければ PASS、 ある場合は dimension / description / fix の numbered list
+
+**Step 2: Fix + re-dispatch**
+
+reviewer が issue を返した場合:
+1. document on disk で各 issue を fix (Edit tool)
+2. updated document で reviewer subagent を re-dispatch
+3. 最大 3 iteration
+
+**Convergence guard:** reviewer が連続 iteration で同じ issue を返す (fix が解消していない or reviewer が fix に同意しない) 場合、 loop を止めて当該 issue を document の "Reviewer Concerns" として persist。 これ以上 loop しない。
+
+subagent が fail / timeout / unavailable の場合 — review loop を完全に skip。 user に告げる: "Spec review unavailable — presenting unreviewed doc." document は既に disk に書いた、 review は quality bonus であって gate ではない。
+
+**Step 3: Report + metrics persist**
+
+loop 完了 (PASS / max iteration / convergence guard) 後:
+
+1. user に結果を伝える — default は summary:
+   "Your doc survived N rounds of adversarial review. M issues caught and fixed.
+   Quality score: X/10."
+   user が "what did the reviewer find?" と訊いたら full reviewer output を見せる。
+
+2. max iteration / convergence の後に issue が残っていれば、 document に "## Reviewer Concerns" section を追加して unresolved issue を list。 下流 skill がこれを見る。
+
+3. metrics を append:
+```bash
+mkdir -p ~/.uzustack/analytics
+echo '{"skill":"office-hours","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","iterations":ITERATIONS,"issues_found":FOUND,"issues_fixed":FIXED,"remaining":REMAINING,"quality_score":SCORE}' >> ~/.uzustack/analytics/spec-review.jsonl 2>/dev/null || true
+```
+ITERATIONS / FOUND / FIXED / REMAINING / SCORE を review の実数で置換。
 
 ---
 

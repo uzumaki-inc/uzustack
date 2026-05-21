@@ -1157,7 +1157,61 @@ HANDOFF=$(ls -t ~/.uzustack/projects/$SLUG/*-$BRANCH-ceo-handoff-*.md 2>/dev/nul
 
 ユーザーに伝える：「前回の経営者レビューセッションの引き継ぎノートを見つけた。その context を使って、止まったところから再開する。」
 
+## Prerequisite Skill Offer
 
+上記 design doc check が "No design doc found" を print した場合、 続行前に prerequisite skill を offer する。
+
+AskUserQuestion で user に告げる:
+
+> "No design doc found for this branch. `/office-hours` produces a structured problem
+> statement, premise challenge, and explored alternatives — it gives this review much
+> sharper input to work with. Takes about 10 minutes. The design doc is per-feature,
+> not per-product — it captures the thinking behind this specific change."
+
+Options:
+- A) Run /office-hours now (we'll pick up the review right after)
+- B) Skip — proceed with standard review
+
+skip 選択時: "No worries — standard review. If you ever want sharper input, try
+/office-hours first next time." 通常通り続行。 同 session 内で再 offer しない。
+
+A 選択時:
+
+告げる: "Running /office-hours inline. Once the design doc is ready, I'll pick up
+the review right where we left off."
+
+Read tool で `/office-hours` skill file (`~/.claude/skills/uzustack/office-hours/SKILL.md`) を読む。
+
+**読めない場合:** 「Could not load /office-hours — skipping.」 と告げて skip、 続行する。
+
+その instruction を上から下まで実行する。 ただし以下 section は **skip** する (parent skill 側で処理済):
+- Preamble (run first)
+- AskUserQuestion Format
+- 完全性の原則 — 一晩でやり切る（Boil the Lake）
+- 作る前に探す（Search Before Building）
+- リポジトリ所有権 — 気づいたら声を上げる
+- Completion Status Protocol
+- Telemetry (run last)
+- Step 0: platform と base branch を検出
+- Review Readiness Dashboard
+- Plan File Review Report
+- Prerequisite Skill Offer
+- Plan Status Footer
+
+それ以外の section は full depth で実行する。 loaded skill の instruction が完了したら、 次の step に進む。
+
+/office-hours 完了後、 design doc check を再実行:
+```bash
+setopt +o nomatch 2>/dev/null || true  # zsh compat
+SLUG=$(~/.claude/skills/uzustack/browse/bin/remote-slug 2>/dev/null || basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null | tr '/' '-' || echo 'no-branch')
+DESIGN=$(ls -t ~/.uzustack/projects/$SLUG/*-$BRANCH-design-*.md 2>/dev/null | head -1)
+[ -z "$DESIGN" ] && DESIGN=$(ls -t ~/.uzustack/projects/$SLUG/*-design-*.md 2>/dev/null | head -1)
+[ -n "$DESIGN" ] && echo "Design doc found: $DESIGN" || echo "No design doc found"
+```
+
+design doc が見つかれば read して review を続行。
+無ければ (user が cancel した可能性)、 standard review で続行。
 
 **セッション中の検出：** Step 0A（前提 challenge）の間、ユーザーが問題を articulate できない、問題定義を変え続ける、「I'm not sure」と答える、明らかに review ではなく explore している場合 — `/office-hours` を提案する：
 
@@ -1411,7 +1465,59 @@ Repo: {owner/repo}
 
 経営者プラン書き込み後、その上で spec review ループを走らせる：
 
+## Spec Review Loop
 
+user に approval 用の document を提示する前に、 adversarial review を回す。
+
+**Step 1: Reviewer subagent を dispatch**
+
+Agent tool で independent reviewer を dispatch。 reviewer は fresh context を持ち、 brainstorming conversation を見ない — document のみ見る。 これで genuine adversarial independence が確保される。
+
+subagent への prompt:
+- 直前に書いた document の file path
+- "Read this document and review it on 5 dimensions. For each dimension, note PASS or
+  list specific issues with suggested fixes. At the end, output a quality score (1-10)
+  across all dimensions."
+
+**Dimensions:**
+1. **Completeness** — 全要件が addressed か？ 漏れている edge case は？
+2. **Consistency** — document の各部分が互いに整合するか？ 矛盾は？
+3. **Clarity** — engineer がこれを実装する時に質問なしで進められるか？ 曖昧な言い回しは？
+4. **Scope** — document が元問題を超えて creep していないか？ YAGNI 違反は？
+5. **Feasibility** — 記載のアプローチで実際 build できるか？ 隠れた複雑性は？
+
+subagent は以下を return:
+- quality score (1-10)
+- 問題なければ PASS、 ある場合は dimension / description / fix の numbered list
+
+**Step 2: Fix + re-dispatch**
+
+reviewer が issue を返した場合:
+1. document on disk で各 issue を fix (Edit tool)
+2. updated document で reviewer subagent を re-dispatch
+3. 最大 3 iteration
+
+**Convergence guard:** reviewer が連続 iteration で同じ issue を返す (fix が解消していない or reviewer が fix に同意しない) 場合、 loop を止めて当該 issue を document の "Reviewer Concerns" として persist。 これ以上 loop しない。
+
+subagent が fail / timeout / unavailable の場合 — review loop を完全に skip。 user に告げる: "Spec review unavailable — presenting unreviewed doc." document は既に disk に書いた、 review は quality bonus であって gate ではない。
+
+**Step 3: Report + metrics persist**
+
+loop 完了 (PASS / max iteration / convergence guard) 後:
+
+1. user に結果を伝える — default は summary:
+   "Your doc survived N rounds of adversarial review. M issues caught and fixed.
+   Quality score: X/10."
+   user が "what did the reviewer find?" と訊いたら full reviewer output を見せる。
+
+2. max iteration / convergence の後に issue が残っていれば、 document に "## Reviewer Concerns" section を追加して unresolved issue を list。 下流 skill がこれを見る。
+
+3. metrics を append:
+```bash
+mkdir -p ~/.uzustack/analytics
+echo '{"skill":"plan-ceo-review","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","iterations":ITERATIONS,"issues_found":FOUND,"issues_fixed":FIXED,"remaining":REMAINING,"quality_score":SCORE}' >> ~/.uzustack/analytics/spec-review.jsonl 2>/dev/null || true
+```
+ITERATIONS / FOUND / FIXED / REMAINING / SCORE を review の実数で置換。
 
 ### 0E. 時間軸の interrogation（拡張モード、選択的拡張モード、維持モード）
 実装を見越して考える：実装中に下す決定のうち、今プランで解決すべきものは何か？
@@ -1703,7 +1809,129 @@ LLM / prompt 変更について：CLAUDE.md の「Prompt / LLM changes」ファ�
 **STOP。** AskUserQuestion は issue ごとに 1 回。まとめない。Recommend + WHY。発見ゼロなら「No issues, moving on」。発見があれば AskUserQuestion を tool_use として **必ず call せよ**。応答まで進まない。
 **リマインダー：コード変更は行わない。レビューのみ。**
 
+## Outside Voice — Independent Plan Challenge (optional, recommended)
 
+全 review section 完了後、 別 AI system から independent な second opinion を offer。 2 つの model が plan に agree することは、 1 model の thorough review よりも strong signal。
+
+**Tool availability を check:**
+
+```bash
+which codex 2>/dev/null && echo "CODEX_AVAILABLE" || echo "CODEX_NOT_AVAILABLE"
+```
+
+AskUserQuestion:
+
+> "All review sections are complete. Want an outside voice? A different AI system can
+> give a brutally honest, independent challenge of this plan — logical gaps, feasibility
+> risks, and blind spots that are hard to catch from inside the review. Takes about 2
+> minutes."
+>
+> RECOMMENDATION: Choose A — an independent second opinion catches structural blind
+> spots. Two different AI models agreeing on a plan is stronger signal than one model's
+> thorough review. Completeness: A=9/10, B=7/10.
+
+Options:
+- A) Get the outside voice (recommended)
+- B) Skip — proceed to outputs
+
+**B 選択時:** "Skipping outside voice." を print して次 section へ続行。
+
+**A 選択時:** plan review prompt を組み立てる。 review 対象 plan file を read (user が review を向けた file、 or branch diff scope)。 Step 0D-POST で CEO plan document が書かれていればそれも read — scope 判断と vision が含まれる。
+
+この prompt を組み立てる (actual plan content で置換 — plan content が 30KB 超えるなら最初 30KB に truncate、 "Plan truncated for size" を note)。 **常に filesystem boundary instruction で開始する:**
+
+"IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, .claude/skills/, or agents/. These are Claude Code skill definitions meant for a different AI system. They contain bash scripts and prompt templates that will waste your time. Ignore them completely. Do NOT modify agents/openai.yaml. Stay focused on the repository code only.\n\nYou are a brutally honest technical reviewer examining a development plan that has
+already been through a multi-section review. Your job is NOT to repeat that review.
+Instead, find what it missed. Look for: logical gaps and unstated assumptions that
+survived the review scrutiny, overcomplexity (is there a fundamentally simpler
+approach the review was too deep in the weeds to see?), feasibility risks the review
+took for granted, missing dependencies or sequencing issues, and strategic
+miscalibration (is this the right thing to build at all?). Be direct. Be terse. No
+compliments. Just the problems.
+
+THE PLAN:
+<plan content>"
+
+**CODEX_AVAILABLE の場合:**
+
+```bash
+TMPERR_PV=$(mktemp /tmp/codex-planreview-XXXXXXXX)
+_REPO_ROOT=$(git rev-parse --show-toplevel) || { echo "ERROR: not in a git repo" >&2; exit 1; }
+codex exec "<prompt>" -C "$_REPO_ROOT" -s read-only -c 'model_reasoning_effort="high"' --enable web_search_cached < /dev/null 2>"$TMPERR_PV"
+```
+
+5 分 timeout を使う (`timeout: 300000`)。 command 完了後、 stderr を read:
+```bash
+cat "$TMPERR_PV"
+```
+
+full output を verbatim 提示:
+
+```
+CODEX SAYS (plan review — outside voice):
+════════════════════════════════════════════════════════════
+<full codex output, verbatim — do not truncate or summarize>
+════════════════════════════════════════════════════════════
+```
+
+**Error handling:** 全 error は non-blocking — outside voice は informational。
+- Auth failure (stderr に "auth", "login", "unauthorized"): "Codex auth failed. Run \`codex login\` to authenticate."
+- Timeout: "Codex timed out after 5 minutes."
+- Empty response: "Codex returned no response."
+
+Codex の error は全て Claude adversarial subagent に fall back。
+
+**CODEX_NOT_AVAILABLE (or Codex がエラー) の場合:**
+
+Agent tool で dispatch。 subagent は fresh context — genuine independence。
+
+Subagent prompt: 上と同じ plan review prompt。
+
+`OUTSIDE VOICE (Claude subagent):` header の下に findings を提示。
+
+subagent が fail / timeout: "Outside voice unavailable. Continuing to outputs."
+
+**Cross-model tension:**
+
+outside voice findings 提示後、 前 section の review findings と disagree する点を note。 以下のように flag:
+
+```
+CROSS-MODEL TENSION:
+  [Topic]: Review said X. Outside voice says Y. [両 perspective を neutral に提示。
+  答えを変えうる missing context を述べる。]
+```
+
+**User Sovereignty:** outside voice の recommendation を auto 取り込みしてはならない。 各 tension point を user に提示。 user が決める。 cross-model agreement は strong signal だが、 行動する許可ではない。 どちらの argument が compelling か述べてよいが、 user の明示的 approval なしに change を apply してはならない。
+
+substantive な tension point について、 AskUserQuestion:
+
+> "Cross-model disagreement on [topic]. The review found [X] but the outside voice
+> argues [Y]. [One sentence on what context you might be missing.]"
+>
+> RECOMMENDATION: Choose [A or B] because [one-line reason explaining which argument
+> is more compelling and why]. Completeness: A=X/10, B=Y/10.
+
+Options:
+- A) Accept the outside voice's recommendation (I'll apply this change)
+- B) Keep the current approach (reject the outside voice)
+- C) Investigate further before deciding
+- D) Add to TODOS.md for later
+
+user の return を待つ。 自分が outside voice に agree するから accept する、 と default にしない。 user が B を選んだら current approach を維持 — 再 argue しない。
+
+tension point がなければ note: "No cross-model tension — both reviewers agree."
+
+**結果を persist:**
+```bash
+~/.claude/skills/uzustack/bin/uzustack-review-log '{"skill":"codex-plan-review","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","status":"STATUS","source":"SOURCE","commit":"'"$(git rev-parse --short HEAD)"'"}'
+```
+
+置換: STATUS = findings なしなら "clean"、 findings ありなら "issues_found"。
+SOURCE = Codex が ran なら "codex"、 subagent が ran なら "claude"。
+
+**Cleanup:** 処理後 `rm -f "$TMPERR_PV"` を実行 (Codex を使った場合)。
+
+---
 
 ### 外部視点（Outside Voice）統合ルール
 
@@ -1845,9 +2073,118 @@ rm -f ~/.uzustack/projects/$SLUG/*-$BRANCH-ceo-handoff-*.md 2>/dev/null || true
 - **scope_deferred**：scope decision から TODOS.md に defer された item の数（HOLD / REDUCTION では 0）
 - **COMMIT**：`git rev-parse --short HEAD` の出力
 
+## Review Readiness Dashboard
 
+review 完了後、 review log と config を read して dashboard を表示する。
 
+```bash
+~/.claude/skills/uzustack/bin/uzustack-review-read
+```
 
+output を parse する。 各 skill (plan-ceo-review / plan-eng-review / review / plan-design-review / design-review-lite / adversarial-review / codex-review / codex-plan-review) について最新 entry を find。 timestamp が 7 日より古い entry は無視。 Eng Review 行は `review` (diff scope の pre-landing review) と `plan-eng-review` (plan 段階 architecture review) のうち最新を表示。 status に "(DIFF)" / "(PLAN)" を append して区別。 Adversarial 行は `adversarial-review` (新 auto-scaled) と `codex-review` (legacy) のうち最新を表示。 Design Review は `plan-design-review` (full visual audit) と `design-review-lite` (code-level check) のうち最新を表示。 status に "(FULL)" / "(LITE)" を append。 Outside Voice 行は最新の `codex-plan-review` entry を表示 — これが /plan-ceo-review と /plan-eng-review 双方からの outside voice を capture する。
+
+**Source attribution:** skill の最新 entry に \`"via"\` field があれば、 括弧で status label に append する。 例: `plan-eng-review` が `via:"autoplan"` を持つ場合 "CLEAR (PLAN via /autoplan)" と表示。 `review` が `via:"ship"` を持つ場合 "CLEAR (DIFF via /ship)" と表示。 `via` field なしの entry は従来通り "CLEAR (PLAN)" / "CLEAR (DIFF)" と表示。
+
+Note: `autoplan-voices` / `design-outside-voices` entry は audit-trail only (cross-model consensus analysis 用の forensic data)。 dashboard に表示されず、 どの consumer も check しない。
+
+表示:
+
+```
++====================================================================+
+|                    REVIEW READINESS DASHBOARD                       |
++====================================================================+
+| Review          | Runs | Last Run            | Status    | Required |
+|-----------------|------|---------------------|-----------|----------|
+| Eng Review      |  1   | 2026-03-16 15:00    | CLEAR     | YES      |
+| CEO Review      |  0   | —                   | —         | no       |
+| Design Review   |  0   | —                   | —         | no       |
+| Adversarial     |  0   | —                   | —         | no       |
+| Outside Voice   |  0   | —                   | —         | no       |
++--------------------------------------------------------------------+
+| VERDICT: CLEARED — Eng Review passed                                |
++====================================================================+
+```
+
+**Review tier:**
+- **Eng Review (default で required):** ship を gate する唯一の review。 architecture / code 品質 / test / performance を cover。 \`uzustack-config set skip_eng_review true\` で global に無効化可能 ("don't bother me" setting)。
+- **CEO Review (optional):** judgment で判断。 大きな product / business 変更、 新規 user-facing 機能、 scope 判断には推奨。 bug fix / refactor / infra / cleanup は skip。
+- **Design Review (optional):** judgment で判断。 UI / UX 変更には推奨。 backend only / infra / prompt only 変更は skip。
+- **Adversarial Review (automatic):** 全 review で常時 on。 全 diff に対して Claude adversarial subagent + Codex adversarial challenge の両方を実行。 大型 diff (200+ lines) は追加で Codex structured review + P1 gate も実行。 設定不要。
+- **Outside Voice (optional):** 別 AI model からの independent plan review。 /plan-ceo-review / /plan-eng-review で全 review section 完了後に offer。 Codex 不在時は Claude subagent に fall back。 ship を gate しない。
+
+**Verdict logic:**
+- **CLEARED**: Eng Review が `review` か `plan-eng-review` から 7 日以内に >= 1 entry、 status "clean" (または \`skip_eng_review\` が `true`)
+- **NOT CLEARED**: Eng Review が missing / stale (>7 日) / open issues あり
+- CEO / Design / Codex review は context として表示するが、 ship を block しない
+- \`skip_eng_review\` config が `true` の場合、 Eng Review は "SKIPPED (global)" 表示、 verdict は CLEARED
+
+**Staleness detection:** dashboard 表示後、 既存 review が stale な可能性を check:
+- bash output の \`---HEAD---\` section を parse して current HEAD commit hash を取得
+- \`commit\` field を持つ各 review entry: current HEAD と比較。 異なる場合、 経過 commit 数を count: \`git rev-list --count STORED_COMMIT..HEAD\`。 表示: "Note: {skill} review from {date} may be stale — {N} commits since review"
+- \`commit\` field なし entry (legacy entry): "Note: {skill} review from {date} has no commit tracking — consider re-running for accurate staleness detection"
+- 全 review が current HEAD と一致なら staleness note 表示なし
+
+## Plan File Review Report
+
+conversation output に Review Readiness Dashboard を表示した後、 **plan file 自体** にも update する。
+plan を読む者全員に review status を見せるため。
+
+### plan file を detect
+
+1. 本 conversation に active な plan file があるかを check (host が plan file path を system message で提供 — conversation context の plan file 参照を look up)。
+2. なければ silent skip — plan mode でない review 実行もある。
+
+### report を生成
+
+上 step で取得済の Review Readiness Dashboard 出力を read。 各 JSONL entry を parse。 skill ごとに log する field が違う:
+
+- **plan-ceo-review**: \`status\`, \`unresolved\`, \`critical_gaps\`, \`mode\`, \`scope_proposed\`, \`scope_accepted\`, \`scope_deferred\`, \`commit\`
+  → Findings: "{scope_proposed} proposals, {scope_accepted} accepted, {scope_deferred} deferred"
+  → scope field が 0 or missing (HOLD/REDUCTION mode): "mode: {mode}, {critical_gaps} critical gaps"
+- **plan-eng-review**: \`status\`, \`unresolved\`, \`critical_gaps\`, \`issues_found\`, \`mode\`, \`commit\`
+  → Findings: "{issues_found} issues, {critical_gaps} critical gaps"
+- **plan-design-review**: \`status\`, \`initial_score\`, \`overall_score\`, \`unresolved\`, \`decisions_made\`, \`commit\`
+  → Findings: "score: {initial_score}/10 → {overall_score}/10, {decisions_made} decisions"
+- **plan-devex-review**: \`status\`, \`initial_score\`, \`overall_score\`, \`product_type\`, \`tthw_current\`, \`tthw_target\`, \`mode\`, \`persona\`, \`competitive_tier\`, \`unresolved\`, \`commit\`
+  → Findings: "score: {initial_score}/10 → {overall_score}/10, TTHW: {tthw_current} → {tthw_target}"
+- **devex-review**: \`status\`, \`overall_score\`, \`product_type\`, \`tthw_measured\`, \`dimensions_tested\`, \`dimensions_inferred\`, \`boomerang\`, \`commit\`
+  → Findings: "score: {overall_score}/10, TTHW: {tthw_measured}, {dimensions_tested} tested/{dimensions_inferred} inferred"
+- **codex-review**: \`status\`, \`gate\`, \`findings\`, \`findings_fixed\`
+  → Findings: "{findings} findings, {findings_fixed}/{findings} fixed"
+
+Findings column に必要な全 field は JSONL entry に存在する。
+今 review の場合は Completion Summary から richer な詳細を使ってよい。 過去 review の場合は JSONL field を直接使う — 必要な data はすべて揃っている。
+
+以下 markdown table を生成:
+
+\`\`\`markdown
+## UZUSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | \`/plan-ceo-review\` | Scope & strategy | {runs} | {status} | {findings} |
+| Codex Review | \`/codex review\` | Independent 2nd opinion | {runs} | {status} | {findings} |
+| Eng Review | \`/plan-eng-review\` | Architecture & tests (required) | {runs} | {status} | {findings} |
+| Design Review | \`/plan-design-review\` | UI/UX gaps | {runs} | {status} | {findings} |
+| DX Review | \`/plan-devex-review\` | Developer experience gaps | {runs} | {status} | {findings} |
+\`\`\`
+
+table の下、 以下 line を追加 (該当なし行は省略):
+
+- **CODEX:** (codex-review が ran 時のみ) — codex fix の 1 行 summary
+- **CROSS-MODEL:** (Claude + Codex 両 review がある時のみ) — overlap 分析
+- **UNRESOLVED:** 全 review 横断の unresolved 判断件数
+- **VERDICT:** CLEAR な review を list (例: "CEO + ENG CLEARED — ready to implement")。
+  Eng Review が CLEAR でない and not skipped globally なら "eng review required" を append。
+
+### plan file に write
+
+**PLAN MODE EXCEPTION — ALWAYS RUN:** これは plan file への write、 plan mode で edit 許可されている唯一の file。 plan file review report は plan の living status の一部。
+
+- plan file 内を \`## UZUSTACK REVIEW REPORT\` section で **anywhere** 検索 (end とは限らない — 後で content が追加されている可能性)。
+- 見つかったら、 Edit tool で **置換** する。 \`## UZUSTACK REVIEW REPORT\` から次の \`## \` heading まで、 or end of file までを match。 report section の後ろに追加された content を preserve するため (= eat しない)。 Edit が fail した場合 (e.g., concurrent edit が content を変えた)、 plan file を re-read して 1 回 retry。
+- section が存在しない場合、 plan file の end に **append**。
+- 必ず plan file の最後の section に置く。 mid-file で見つかったら move する: 旧位置を削除して end に append。
 
 ## 次のステップ — レビューチェイン
 

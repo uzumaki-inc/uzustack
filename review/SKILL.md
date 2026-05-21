@@ -1068,9 +1068,213 @@ git remote get-url origin 2>/dev/null
 
 ---
 
+## Step 1.5: Scope Drift Detection
 
+code 品質 review 前に check: **要求されたものを build したか — 過不足なく？**
 
+1. `TODOS.md` を read (存在すれば)。 PR description を read (`gh pr view --json body --jq .body 2>/dev/null || true`)。
+   commit message を read (`git log origin/<base>..HEAD --oneline`)。
+   **PR 不存在時:** stated intent は commit message + TODOS.md に依存 — /review が /ship 前に走るのが普通なので、 これが典型 case。
+2. **stated intent** を identify — この branch が達成すべきだったことは何か？
+3. `git diff origin/<base>...HEAD --stat` を実行、 changed file を stated intent と比較。
 
+4. skepticism を持って evaluate (前 step / 隣 section から plan completion 結果があれば組み込む):
+
+   **SCOPE CREEP 検出:**
+   - stated intent と関係ない file が変わっている
+   - plan に書かれていない新機能 / refactor
+   - "while I was in there..." 系の blast radius 拡大変更
+
+   **MISSING REQUIREMENTS 検出:**
+   - TODOS.md / PR description の要件が diff で addressed されていない
+   - stated requirement に対する test coverage gap
+   - partial implementation (start したが finish していない)
+
+5. Output (main review 開始前):
+   \`\`\`
+   Scope Check: [CLEAN / DRIFT DETECTED / REQUIREMENTS MISSING]
+   Intent: <1 行 summary of what was requested>
+   Delivered: <1 行 summary of what the diff actually does>
+   [If drift: list each out-of-scope change]
+   [If missing: list each unaddressed requirement]
+   \`\`\`
+
+6. これは **INFORMATIONAL** — review を block しない。 次 step へ。
+
+---
+
+### Plan File Discovery
+
+1. **Conversation context (primary):** 本 conversation に active な plan file があるかを check。 host agent の system message が plan mode 中の plan file path を含む。 見つかれば直接使う — 最も reliable signal。
+
+2. **Content-based search (fallback):** conversation context に plan file 参照がない場合、 content で search:
+
+```bash
+setopt +o nomatch 2>/dev/null || true  # zsh compat
+BRANCH=$(git branch --show-current 2>/dev/null | tr '/' '-')
+REPO=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)")
+# ~/.uzustack/projects/ lookup 用の project slug を計算
+_PLAN_SLUG=$(git remote get-url origin 2>/dev/null | sed 's|.*[:/]\([^/]*/[^/]*\)\.git$|\1|;s|.*[:/]\([^/]*/[^/]*\)$|\1|' | tr '/' '-' | tr -cd 'a-zA-Z0-9._-') || true
+_PLAN_SLUG="${_PLAN_SLUG:-$(basename "$PWD" | tr -cd 'a-zA-Z0-9._-')}"
+# 一般的な plan file location を search (project design 優先、 次に personal/local)
+for PLAN_DIR in "$HOME/.uzustack/projects/$_PLAN_SLUG" "$HOME/.claude/plans" "$HOME/.codex/plans" ".uzustack/plans"; do
+  [ -d "$PLAN_DIR" ] || continue
+  PLAN=$(ls -t "$PLAN_DIR"/*.md 2>/dev/null | xargs grep -l "$BRANCH" 2>/dev/null | head -1)
+  [ -z "$PLAN" ] && PLAN=$(ls -t "$PLAN_DIR"/*.md 2>/dev/null | xargs grep -l "$REPO" 2>/dev/null | head -1)
+  [ -z "$PLAN" ] && PLAN=$(find "$PLAN_DIR" -name '*.md' -mmin -1440 -maxdepth 1 2>/dev/null | xargs ls -t 2>/dev/null | head -1)
+  [ -n "$PLAN" ] && break
+done
+[ -n "$PLAN" ] && echo "PLAN_FILE: $PLAN" || echo "NO_PLAN_FILE"
+```
+
+3. **Validation:** content-based search で plan file が見つかった (conversation context でない) 場合、 最初 20 行を read して current branch の作業と関係するかを verify。 別 project / feature の file に見えるなら "no plan file found" 扱い。
+
+**Error handling:**
+- plan file 不在 → "No plan file detected — skipping." で skip。
+- plan file 見つかったが unreadable (permission / encoding) → "Plan file found but unreadable — skipping." で skip。
+
+### Actionable Item Extraction
+
+plan file を read。 全 actionable item を extract — 作業として記述されている全てのもの。 look for:
+
+- **Checkbox item:** `- [ ] ...` or `- [x] ...`
+- 実装 heading 下の **numbered step**: "1. Create ...", "2. Add ...", "3. Modify ..."
+- **Imperative statement:** "Add X to Y", "Create a Z service", "Modify the W controller"
+- **File-level specification:** "New file: path/to/file.ts", "Modify path/to/existing.rb"
+- **Test requirement:** "Test that X", "Add test for Y", "Verify Z"
+- **Data model 変更:** "Add column X to table Y", "Create migration for Z"
+
+**Ignore:**
+- Context / Background section (`## Context`, `## Background`, `## Problem`)
+- Question / open item (?, "TBD", "TODO: decide" mark)
+- Review report section (`## UZUSTACK REVIEW REPORT`)
+- 明示的 defer item ("Future:", "Out of scope:", "NOT in scope:", "P2:", "P3:", "P4:")
+- CEO Review Decision section (これは choice の記録、 work item でない)
+
+**Cap:** 最大 50 item を extract。 plan に more あれば note: "Showing top 50 of N plan items — full list in plan file."
+
+**No items found:** plan に extractable な actionable item がなければ skip: "Plan file contains no actionable items — skipping completion audit."
+
+各 item について note:
+- item の text (verbatim or 簡潔 summary)
+- category: CODE | TEST | MIGRATION | CONFIG | DOCS
+
+### Cross-Reference Against Diff
+
+`git diff origin/<base>...HEAD` + `git log origin/<base>..HEAD --oneline` を実行して何が実装されたか把握。
+
+extract 済の各 plan item について diff を check して classify:
+
+- **DONE** — diff にこの item が実装された明確な evidence。 changed file を cite。
+- **PARTIAL** — diff に向けて work が一部あるが incomplete (e.g., model はあるが controller missing、 function はあるが edge case 未対応)。
+- **NOT DONE** — diff に evidence なし。
+- **CHANGED** — plan と違う方法で実装、 同じ goal は達成。 差分を note。
+
+**DONE は保守的に** — diff に明確な evidence を要求。 file が touch されただけでは insufficient、 記述された functionality が present であること。
+**CHANGED は寛容に** — goal が違う手段で達成されているならそれは addressed。
+
+### Output Format
+
+```
+PLAN COMPLETION AUDIT
+═══════════════════════════════
+Plan: {plan file path}
+
+## Implementation Items
+  [DONE]      Create UserService — src/services/user_service.rb (+142 lines)
+  [PARTIAL]   Add validation — model validates but missing controller checks
+  [NOT DONE]  Add caching layer — no cache-related changes in diff
+  [CHANGED]   "Redis queue" → implemented with Sidekiq instead
+
+## Test Items
+  [DONE]      Unit tests for UserService — test/services/user_service_test.rb
+  [NOT DONE]  E2E test for signup flow
+
+## Migration Items
+  [DONE]      Create users table — db/migrate/20240315_create_users.rb
+
+─────────────────────────────────
+COMPLETION: 4/7 DONE, 1 PARTIAL, 1 NOT DONE, 1 CHANGED
+─────────────────────────────────
+```
+
+### Fallback Intent Sources (plan file 不在時)
+
+plan file が detect できない場合、 以下の secondary intent source を使う:
+
+1. **Commit message:** `git log origin/<base>..HEAD --oneline` を実行。 judgment で real intent を extract:
+   - actionable verb ("add", "implement", "fix", "create", "remove", "update") を含む commit は intent signal
+   - noise を skip: "WIP", "tmp", "squash", "merge", "chore", "typo", "fixup"
+   - literal message でなく、 commit の背後 intent を extract
+2. **TODOS.md:** 存在すれば、 この branch / 最近の date 関連の item を check
+3. **PR description:** `gh pr view --json body -q .body 2>/dev/null` で intent context
+
+**Fallback source 使用時:** 同じ Cross-Reference classification (DONE/PARTIAL/NOT DONE/CHANGED) を best-effort matching で適用。 fallback-source の item は plan-file item より confidence 低い旨を note。
+
+### Investigation Depth
+
+PARTIAL / NOT DONE 各 item について WHY を調査:
+
+1. `git log origin/<base>..HEAD --oneline` で work が start / attempt / revert された commit を check
+2. 代わりに何が build されたかを understand するために code を read
+3. 以下の likely reason から決定:
+   - **Scope cut** — intentional removal の evidence (revert commit / removed TODO)
+   - **Context exhaustion** — work が start したが midway で止まった (partial implementation / follow-up commit なし)
+   - **Misunderstood requirement** — 何か build されたが plan の記述と match しない
+   - **Blocked by dependency** — plan item が unavailable な何かに依存
+   - **Genuinely forgotten** — 何の attempt も evidence なし
+
+各 discrepancy への output:
+```
+DISCREPANCY: {PARTIAL|NOT_DONE} | {plan item} | {what was actually delivered}
+INVESTIGATION: {likely reason with evidence from git log / code}
+IMPACT: {HIGH|MEDIUM|LOW} — {what breaks or degrades if this stays undelivered}
+```
+
+### Learnings Logging (plan-file discrepancy のみ)
+
+**plan file から sourced された discrepancy に限り** (commit message / TODOS.md でなく)、 future session が同 pattern を知るために learning を log:
+
+```bash
+~/.claude/skills/uzustack/bin/uzustack-learnings-log '{
+  "type": "pitfall",
+  "key": "plan-delivery-gap-KEBAB_SUMMARY",
+  "insight": "Planned X but delivered Y because Z",
+  "confidence": 8,
+  "source": "observed",
+  "files": ["PLAN_FILE_PATH"]
+}'
+```
+
+KEBAB_SUMMARY を gap の kebab-case summary に置換、 actual value を fill。
+
+**commit-message derived / TODOS.md derived な discrepancy は learning に log しない。** review output 上は informational だが durable memory には noisy すぎる。
+
+### Integration with Scope Drift Detection
+
+plan completion 結果は既存 Scope Drift Detection を augment。 plan file が見つかった場合:
+
+- **NOT DONE item** は scope drift report の **MISSING REQUIREMENTS** の追加 evidence になる。
+- **plan item に match しない diff の item** は **SCOPE CREEP** detection の evidence になる。
+- **HIGH-impact discrepancy** は AskUserQuestion を trigger:
+  - investigation findings を表示
+  - Options: A) Stop and implement missing items, B) Ship anyway + create P1 TODOs, C) Intentionally dropped
+
+これは **INFORMATIONAL**、 ただし HIGH-impact discrepancy が見つかれば AskUserQuestion 経由で gate する。
+
+scope drift output に plan file context を追加:
+
+```
+Scope Check: [CLEAN / DRIFT DETECTED / REQUIREMENTS MISSING]
+Intent: <from plan file — 1 行 summary>
+Plan: <plan file path>
+Delivered: <1 行 summary of what the diff actually does>
+Plan items: N DONE, M PARTIAL, K NOT DONE
+[If NOT DONE: list each missing item with investigation]
+[If scope creep: list each out-of-scope change not in the plan]
+```
+
+**plan file 不在:** commit message + TODOS.md を fallback source として使う (上記参照)。 intent source 一切なしの場合、 skip: "No intent sources detected — skipping completion audit."
 
 ## Step 2: checklist を読む
 
@@ -1215,7 +1419,207 @@ checklist 指定の出力形式に従う。suppressions を尊重する — 「D
 
 ---
 
+## Step 4.5: Review Army — Specialist Dispatch
 
+### Stack + scope を detect
+
+```bash
+source <(~/.claude/skills/uzustack/bin/uzustack-diff-scope <base> 2>/dev/null) || true
+# specialist context のために stack を detect
+STACK=""
+[ -f Gemfile ] && STACK="${STACK}ruby "
+[ -f package.json ] && STACK="${STACK}node "
+[ -f requirements.txt ] || [ -f pyproject.toml ] && STACK="${STACK}python "
+[ -f go.mod ] && STACK="${STACK}go "
+[ -f Cargo.toml ] && STACK="${STACK}rust "
+echo "STACK: ${STACK:-unknown}"
+DIFF_INS=$(git diff origin/<base> --stat | tail -1 | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo "0")
+DIFF_DEL=$(git diff origin/<base> --stat | tail -1 | grep -oE '[0-9]+ deletion' | grep -oE '[0-9]+' || echo "0")
+DIFF_LINES=$((DIFF_INS + DIFF_DEL))
+echo "DIFF_LINES: $DIFF_LINES"
+# specialist test stub 生成のために test framework を detect
+TEST_FW=""
+{ [ -f jest.config.ts ] || [ -f jest.config.js ]; } && TEST_FW="jest"
+[ -f vitest.config.ts ] && TEST_FW="vitest"
+{ [ -f spec/spec_helper.rb ] || [ -f .rspec ]; } && TEST_FW="rspec"
+{ [ -f pytest.ini ] || [ -f conftest.py ]; } && TEST_FW="pytest"
+[ -f go.mod ] && TEST_FW="go-test"
+echo "TEST_FW: ${TEST_FW:-unknown}"
+```
+
+### specialist hit rate を read (adaptive gating)
+
+```bash
+~/.claude/skills/uzustack/bin/uzustack-specialist-stats 2>/dev/null || true
+```
+
+### specialist を select
+
+上記 scope signal に基づいて、 dispatch する specialist を select。
+
+**Always-on (50+ changed line の全 review で dispatch):**
+1. **Testing** — `~/.claude/skills/uzustack/review/specialists/testing.md` を read
+2. **Maintainability** — `~/.claude/skills/uzustack/review/specialists/maintainability.md` を read
+
+**DIFF_LINES < 50 の場合:** specialist を全 skip。 Print: "Small diff ($DIFF_LINES lines) — specialists skipped." Step 5 に続行。
+
+**Conditional (matching scope signal が true なら dispatch):**
+3. **Security** — SCOPE_AUTH=true、 OR SCOPE_BACKEND=true AND DIFF_LINES > 100。 `~/.claude/skills/uzustack/review/specialists/security.md` を read
+4. **Performance** — SCOPE_BACKEND=true OR SCOPE_FRONTEND=true。 `~/.claude/skills/uzustack/review/specialists/performance.md` を read
+5. **Data Migration** — SCOPE_MIGRATIONS=true。 `~/.claude/skills/uzustack/review/specialists/data-migration.md` を read
+6. **API Contract** — SCOPE_API=true。 `~/.claude/skills/uzustack/review/specialists/api-contract.md` を read
+7. **Design** — SCOPE_FRONTEND=true。 既存 design review checklist `~/.claude/skills/uzustack/review/design-checklist.md` を使う
+
+### Adaptive gating
+
+scope-based selection の後、 specialist hit rate に基づいて adaptive gating を apply:
+
+scope gating を通過した各 conditional specialist について、 上の `uzustack-specialist-stats` output を check:
+- `[GATE_CANDIDATE]` tag (10+ dispatch で 0 findings): skip。 Print: "[specialist] auto-gated (0 findings in N reviews)."
+- `[NEVER_GATE]` tag: hit rate に関わらず常に dispatch。 Security + data-migration は insurance policy specialist — silent でも run すべき。
+
+**Force flag:** user の prompt に `--security`, `--performance`, `--testing`, `--maintainability`, `--data-migration`, `--api-contract`, `--design`, or `--all-specialists` が含まれる場合、 gating に関わらず該当 specialist を force-include。
+
+どの specialist が selected / gated / skipped されたか note。 selection を print:
+"Dispatching N specialists: [names]. Skipped: [names] (scope not detected). Gated: [names] (0 findings in N+ reviews)."
+
+---
+
+### specialist を並列 dispatch
+
+各 selected specialist について、 Agent tool で independent subagent を起動。
+**選択した全 specialist を 1 message で起動** (複数 Agent tool call) して並列 run。
+各 subagent は fresh context — prior review bias なし。
+
+**各 specialist subagent prompt:**
+
+各 specialist の prompt を組み立てる。 prompt は以下を含む:
+
+1. specialist の checklist content (上の step で file を既に read 済)
+2. Stack context: "This is a {STACK} project."
+3. この domain の past learnings (あれば):
+
+```bash
+~/.claude/skills/uzustack/bin/uzustack-learnings-search --type pitfall --query "{specialist domain}" --limit 5 2>/dev/null || true
+```
+
+learnings が見つかれば含める: "Past learnings for this domain: {learnings}"
+
+4. Instructions:
+
+"You are a specialist code reviewer. Read the checklist below, then run
+`git diff origin/<base>` to get the full diff. Apply the checklist against the diff.
+
+For each finding, output a JSON object on its own line:
+{\"severity\":\"CRITICAL|INFORMATIONAL\",\"confidence\":N,\"path\":\"file\",\"line\":N,\"category\":\"category\",\"summary\":\"description\",\"fix\":\"recommended fix\",\"fingerprint\":\"path:line:category\",\"specialist\":\"name\"}
+
+Required fields: severity, confidence, path, category, summary, specialist.
+Optional: line, fix, fingerprint, evidence, test_stub.
+
+If you can write a test that would catch this issue, include it in the `test_stub` field.
+Use the detected test framework ({TEST_FW}). Write a minimal skeleton — describe/it/test
+blocks with clear intent. Skip test_stub for architectural or design-only findings.
+
+If no findings: output `NO FINDINGS` and nothing else.
+Do not output anything else — no preamble, no summary, no commentary.
+
+Stack context: {STACK}
+Past learnings: {learnings or 'none'}
+
+CHECKLIST:
+{checklist content}"
+
+**Subagent configuration:**
+- `subagent_type: "general-purpose"` を使う
+- `run_in_background` を使わない — 全 specialist が merge 前に complete する必要
+- specialist subagent が fail / timeout した場合、 failure を log して successful specialist の結果で続行。 specialist は additive — partial result でも no result より良い。
+
+---
+
+### Step 4.6: Findings を collect + merge
+
+全 specialist subagent 完了後、 各 output を collect。
+
+**Findings を parse:**
+各 specialist の output について:
+1. output が "NO FINDINGS" — skip、 この specialist は何も見つけなかった
+2. それ以外、 各 line を JSON object として parse。 valid JSON でない line を skip。
+3. 全 parsed findings を 1 list に collect、 specialist 名 で tag。
+
+**Fingerprint + dedup:**
+各 finding について fingerprint を compute:
+- `fingerprint` field 存在: それを使う
+- なければ: `{path}:{line}:{category}` (line あり) or `{path}:{category}`
+
+fingerprint で findings を group。 同 fingerprint を share する findings について:
+- 最高 confidence score の finding を keep
+- tag する: "MULTI-SPECIALIST CONFIRMED ({specialist1} + {specialist2})"
+- confidence を +1 boost (cap 10)
+- 確認した specialist を output で note
+
+**Confidence gate を apply:**
+- Confidence 7+: findings output に normally 表示
+- Confidence 5-6: caveat 付きで表示 "Medium confidence — verify this is actually an issue"
+- Confidence 3-4: appendix に移動 (main findings から suppress)
+- Confidence 1-2: 完全 suppress
+
+**PR Quality Score を compute:**
+merge 後、 quality score を compute:
+`quality_score = max(0, 10 - (critical_count * 2 + informational_count * 0.5))`
+Cap 10。 最後の review result に log。
+
+**Merged findings を output:**
+merged findings を current review と同 format で提示:
+
+```
+SPECIALIST REVIEW: N findings (X critical, Y informational) from Z specialists
+
+[各 finding を order で: CRITICAL 先、 次 INFORMATIONAL、 confidence 降順]
+[SEVERITY] (confidence: N/10, specialist: name) path:line — summary
+  Fix: recommended fix
+  [MULTI-SPECIALIST CONFIRMED の場合: confirmation note 表示]
+
+PR Quality Score: X/10
+```
+
+これらの findings は the CRITICAL pass findings from Step 4 と並んで Step 5 Fix-First に流れる。
+Fix-First heuristic は identically 適用 — specialist findings は同じ AUTO-FIX vs ASK classification に従う。
+
+**Per-specialist stats を compile:**
+findings merge 後、 the review-log entry in Step 5.8 用に `specialists` object を compile。
+各 specialist (testing / maintainability / security / performance / data-migration / api-contract / design / red-team) について:
+- dispatched: `{"dispatched": true, "findings": N, "critical": N, "informational": N}`
+- scope で skipped: `{"dispatched": false, "reason": "scope"}`
+- gating で skipped: `{"dispatched": false, "reason": "gated"}`
+- not applicable (e.g., red-team 未起動): object から omit
+
+Design specialist も含める、 specialist schema file でなく `design-checklist.md` を使う場合も。
+これらの stats を覚えておく — Step 5.8 の review-log entry で必要。
+
+---
+
+### Red Team dispatch (conditional)
+
+**Activation:** DIFF_LINES > 200 OR 任意の specialist が CRITICAL finding を produce した場合のみ。
+
+activated なら、 Agent tool で 1 つ追加 subagent を dispatch (foreground、 background でない)。
+
+Red Team subagent は以下を receive:
+1. `~/.claude/skills/uzustack/review/specialists/red-team.md` から red-team checklist
+2. Step 4.6 で merge 済の specialist findings (既に catch されたものを知らせる)
+3. git diff command
+
+Prompt: "You are a red team reviewer. The code has already been reviewed by N specialists
+who found the following issues: {merged findings summary}. Your job is to find what they
+MISSED. Read the checklist, run `git diff origin/<base>`, and look for gaps.
+Output findings as JSON objects (same schema as the specialists). Focus on cross-cutting
+concerns, integration boundary issues, and failure modes that specialist checklists
+don't cover."
+
+Red Team が追加 issue を見つけたら、 Step 5 Fix-First 前に findings list に merge。 Red Team findings は `"specialist":"red-team"` で tag。
+
+Red Team が NO FINDINGS を return: note "Red Team review: no additional issues found."
+Red Team subagent が fail / timeout: silent skip して続行。
 
 ---
 
@@ -1223,7 +1627,39 @@ checklist 指定の出力形式に従う。suppressions を尊重する — 「D
 
 **全 finding に action — critical だけではない。**
 
+### Step 5.0: Cross-review finding dedup
 
+findings を classify 前に、 同 branch の prior review で user が skip した findings がないかを check。
+
+```bash
+~/.claude/skills/uzustack/bin/uzustack-review-read
+```
+
+output を parse: `---CONFIG---` 前の line のみが JSONL entry (output には `---CONFIG---` と `---HEAD---` footer section も含まれるが JSONL でない — ignore)。
+
+`findings` array を持つ各 JSONL entry について:
+1. `action: "skipped"` の全 fingerprint を collect
+2. その entry の `commit` field を note
+
+skipped fingerprint が存在する場合、 当該 review 以降の changed file list を取得:
+
+```bash
+git diff --name-only <prior-review-commit> HEAD
+```
+
+現在の各 finding (Step 4 critical pass + Step 4.5-4.6 specialist 両方から) について check:
+- fingerprint が以前 skipped finding と match するか？
+- finding の file path が changed-files set に NOT in か？
+
+両方 true なら finding を suppress。 intentionally skipped で、 該当 code が変わっていない。
+
+Print: "Suppressed N findings from prior reviews (previously skipped by user)"
+
+**`skipped` finding のみ suppress — `fixed` / `auto-fixed` は決して suppress しない** (regression する可能性、 再 check すべき)。
+
+prior review 不在 / `findings` array を持つ entry なしの場合、 silent skip。
+
+summary header を出力: `Pre-Landing Review: N issues (X critical, Y informational)`
 
 ### Step 5a: 各 finding を分類
 
@@ -1331,7 +1767,130 @@ doc file が存在しなければ、本 step を silent に skip。
 
 ---
 
+## Step 5.7: Adversarial review (always-on)
 
+全 diff は Claude + Codex から adversarial review を受ける。 LOC は risk の proxy でない — 5 行の auth 変更が critical な場合もある。
+
+**diff size + tool availability を detect:**
+
+```bash
+DIFF_INS=$(git diff origin/<base> --stat | tail -1 | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo "0")
+DIFF_DEL=$(git diff origin/<base> --stat | tail -1 | grep -oE '[0-9]+ deletion' | grep -oE '[0-9]+' || echo "0")
+DIFF_TOTAL=$((DIFF_INS + DIFF_DEL))
+which codex 2>/dev/null && echo "CODEX_AVAILABLE" || echo "CODEX_NOT_AVAILABLE"
+# Legacy opt-out — Codex pass のみ gate、 Claude は常時動く
+OLD_CFG=$(~/.claude/skills/uzustack/bin/uzustack-config get codex_reviews 2>/dev/null || true)
+echo "DIFF_SIZE: $DIFF_TOTAL"
+echo "OLD_CFG: ${OLD_CFG:-not_set}"
+```
+
+`OLD_CFG` が `disabled` の場合: Codex pass のみ skip。 Claude adversarial subagent は依然動く (無料 + 速い)。 "Claude adversarial subagent" section に jump。
+
+**User override:** user が "full review" / "structured review" / "P1 gate" を明示 request した場合、 diff size に関わらず Codex structured review も実行。
+
+---
+
+### Claude adversarial subagent (常時動く)
+
+Agent tool で dispatch。 subagent は fresh context — structured review からの checklist bias なし。 この genuine independence で primary reviewer が blind な点を catch する。
+
+subagent prompt:
+"Read the diff for this branch with `git diff origin/<base>`. Think like an attacker and a chaos engineer. Your job is to find ways this code will fail in production. Look for: edge cases, race conditions, security holes, resource leaks, failure modes, silent data corruption, logic errors that produce wrong results silently, error handling that swallows failures, and trust boundary violations. Be adversarial. Be thorough. No compliments — just the problems. For each finding, classify as FIXABLE (you know how to fix it) or INVESTIGATE (needs human judgment)."
+
+`ADVERSARIAL REVIEW (Claude subagent):` header の下に findings を提示。 **FIXABLE findings** は structured review と同じ Fix-First pipeline に流す。 **INVESTIGATE findings** は informational として提示。
+
+subagent が fail / timeout: "Claude adversarial subagent unavailable. Continuing."
+
+---
+
+### Codex adversarial challenge (available なら常時動く)
+
+Codex available AND `OLD_CFG` が `disabled` でない場合:
+
+```bash
+TMPERR_ADV=$(mktemp /tmp/codex-adv-XXXXXXXX)
+_REPO_ROOT=$(git rev-parse --show-toplevel) || { echo "ERROR: not in a git repo" >&2; exit 1; }
+codex exec "IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, .claude/skills/, or agents/. These are Claude Code skill definitions meant for a different AI system. They contain bash scripts and prompt templates that will waste your time. Ignore them completely. Do NOT modify agents/openai.yaml. Stay focused on the repository code only.\n\nReview the changes on this branch against the base branch. Run git diff origin/<base> to see the diff. Your job is to find ways this code will fail in production. Think like an attacker and a chaos engineer. Find edge cases, race conditions, security holes, resource leaks, failure modes, and silent data corruption paths. Be adversarial. Be thorough. No compliments — just the problems." -C "$_REPO_ROOT" -s read-only -c 'model_reasoning_effort="high"' --enable web_search_cached < /dev/null 2>"$TMPERR_ADV"
+```
+
+Bash tool の `timeout` parameter を `300000` (5 分) に set。 `timeout` shell command を使わない — macOS に存在しない。 command 完了後、 stderr を read:
+```bash
+cat "$TMPERR_ADV"
+```
+
+full output を verbatim 提示。 これは informational — ship を block しない。
+
+**Error handling:** 全 error は non-blocking — adversarial review は quality enhancement であって prerequisite ではない。
+- **Auth failure:** stderr に "auth", "login", "unauthorized", "API key" を含む: "Codex authentication failed. Run \`codex login\` to authenticate."
+- **Timeout:** "Codex timed out after 5 minutes."
+- **Empty response:** "Codex returned no response. Stderr: <paste relevant error>."
+
+**Cleanup:** 処理後 `rm -f "$TMPERR_ADV"` を実行。
+
+Codex が NOT available: "Codex CLI not found — running Claude adversarial only. Install Codex for cross-model coverage: `npm install -g @openai/codex`"
+
+---
+
+### Codex structured review (大型 diff のみ、 200+ lines)
+
+`DIFF_TOTAL >= 200` AND Codex available AND `OLD_CFG` が `disabled` でない場合:
+
+```bash
+TMPERR=$(mktemp /tmp/codex-review-XXXXXXXX)
+_REPO_ROOT=$(git rev-parse --show-toplevel) || { echo "ERROR: not in a git repo" >&2; exit 1; }
+cd "$_REPO_ROOT"
+codex review "IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, .claude/skills/, or agents/. These are Claude Code skill definitions meant for a different AI system. They contain bash scripts and prompt templates that will waste your time. Ignore them completely. Do NOT modify agents/openai.yaml. Stay focused on the repository code only.\n\nReview the diff against the base branch." --base <base> -c 'model_reasoning_effort="high"' --enable web_search_cached < /dev/null 2>"$TMPERR"
+```
+
+Bash tool の `timeout` parameter を `300000` (5 分) に set。 `timeout` shell command を使わない — macOS に存在しない。 `CODEX SAYS (code review):` header の下に output を提示。
+`[P1]` marker を check: 見つかれば `GATE: FAIL`、 なければ `GATE: PASS`。
+
+GATE が FAIL の場合、 AskUserQuestion:
+```
+Codex found N critical issues in the diff.
+
+A) Investigate and fix now (recommended)
+B) Continue — review will still complete
+```
+
+A: findings に対応。 `codex review` を再実行して verify。
+
+stderr を error 用に read (Codex adversarial と同じ error handling)。
+
+stderr 後: `rm -f "$TMPERR"`
+
+`DIFF_TOTAL < 200`: section を silent skip。 小型 diff には Claude + Codex adversarial pass で sufficient coverage。
+
+---
+
+### review 結果を persist
+
+全 pass 完了後、 persist:
+```bash
+~/.claude/skills/uzustack/bin/uzustack-review-log '{"skill":"adversarial-review","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","status":"STATUS","source":"SOURCE","tier":"always","gate":"GATE","commit":"'"$(git rev-parse --short HEAD)"'"}'
+```
+置換: STATUS = 全 pass で findings なしなら "clean"、 1 つでも findings ありなら "issues_found"。 SOURCE = Codex が ran なら "both"、 Claude subagent のみなら "claude"。 GATE = Codex structured review の gate 結果 ("pass"/"fail")、 diff < 200 なら "skipped"、 Codex 不在なら "informational"。 全 pass fail なら persist しない。
+
+---
+
+### Cross-model synthesis
+
+全 pass 完了後、 全 source 横断で findings を synthesize:
+
+```
+ADVERSARIAL REVIEW SYNTHESIS (always-on, N lines):
+════════════════════════════════════════════════════════════
+  High confidence (found by multiple sources): [>1 pass で agree した findings]
+  Unique to Claude structured review: [前 step から]
+  Unique to Claude adversarial: [subagent から]
+  Unique to Codex: [codex adversarial / code review が ran なら]
+  Models used: Claude structured ✓  Claude adversarial ✓/✗  Codex ✓/✗
+════════════════════════════════════════════════════════════
+```
+
+High-confidence findings (複数 source で agree) は fix priority high。
+
+---
 
 ## Step 5.8: Eng Review 結果を永続化
 

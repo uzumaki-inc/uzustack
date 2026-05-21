@@ -1106,7 +1106,56 @@ git remote get-url origin 2>/dev/null
 
 4. review readiness を check：
 
+## Review Readiness Dashboard
 
+review 完了後、 review log と config を read して dashboard を表示する。
+
+```bash
+~/.claude/skills/uzustack/bin/uzustack-review-read
+```
+
+output を parse する。 各 skill (plan-ceo-review / plan-eng-review / review / plan-design-review / design-review-lite / adversarial-review / codex-review / codex-plan-review) について最新 entry を find。 timestamp が 7 日より古い entry は無視。 Eng Review 行は `review` (diff scope の pre-landing review) と `plan-eng-review` (plan 段階 architecture review) のうち最新を表示。 status に "(DIFF)" / "(PLAN)" を append して区別。 Adversarial 行は `adversarial-review` (新 auto-scaled) と `codex-review` (legacy) のうち最新を表示。 Design Review は `plan-design-review` (full visual audit) と `design-review-lite` (code-level check) のうち最新を表示。 status に "(FULL)" / "(LITE)" を append。 Outside Voice 行は最新の `codex-plan-review` entry を表示 — これが /plan-ceo-review と /plan-eng-review 双方からの outside voice を capture する。
+
+**Source attribution:** skill の最新 entry に \`"via"\` field があれば、 括弧で status label に append する。 例: `plan-eng-review` が `via:"autoplan"` を持つ場合 "CLEAR (PLAN via /autoplan)" と表示。 `review` が `via:"ship"` を持つ場合 "CLEAR (DIFF via /ship)" と表示。 `via` field なしの entry は従来通り "CLEAR (PLAN)" / "CLEAR (DIFF)" と表示。
+
+Note: `autoplan-voices` / `design-outside-voices` entry は audit-trail only (cross-model consensus analysis 用の forensic data)。 dashboard に表示されず、 どの consumer も check しない。
+
+表示:
+
+```
++====================================================================+
+|                    REVIEW READINESS DASHBOARD                       |
++====================================================================+
+| Review          | Runs | Last Run            | Status    | Required |
+|-----------------|------|---------------------|-----------|----------|
+| Eng Review      |  1   | 2026-03-16 15:00    | CLEAR     | YES      |
+| CEO Review      |  0   | —                   | —         | no       |
+| Design Review   |  0   | —                   | —         | no       |
+| Adversarial     |  0   | —                   | —         | no       |
+| Outside Voice   |  0   | —                   | —         | no       |
++--------------------------------------------------------------------+
+| VERDICT: CLEARED — Eng Review passed                                |
++====================================================================+
+```
+
+**Review tier:**
+- **Eng Review (default で required):** ship を gate する唯一の review。 architecture / code 品質 / test / performance を cover。 \`uzustack-config set skip_eng_review true\` で global に無効化可能 ("don't bother me" setting)。
+- **CEO Review (optional):** judgment で判断。 大きな product / business 変更、 新規 user-facing 機能、 scope 判断には推奨。 bug fix / refactor / infra / cleanup は skip。
+- **Design Review (optional):** judgment で判断。 UI / UX 変更には推奨。 backend only / infra / prompt only 変更は skip。
+- **Adversarial Review (automatic):** 全 review で常時 on。 全 diff に対して Claude adversarial subagent + Codex adversarial challenge の両方を実行。 大型 diff (200+ lines) は追加で Codex structured review + P1 gate も実行。 設定不要。
+- **Outside Voice (optional):** 別 AI model からの independent plan review。 /plan-ceo-review / /plan-eng-review で全 review section 完了後に offer。 Codex 不在時は Claude subagent に fall back。 ship を gate しない。
+
+**Verdict logic:**
+- **CLEARED**: Eng Review が `review` か `plan-eng-review` から 7 日以内に >= 1 entry、 status "clean" (または \`skip_eng_review\` が `true`)
+- **NOT CLEARED**: Eng Review が missing / stale (>7 日) / open issues あり
+- CEO / Design / Codex review は context として表示するが、 ship を block しない
+- \`skip_eng_review\` config が `true` の場合、 Eng Review は "SKIPPED (global)" 表示、 verdict は CLEARED
+
+**Staleness detection:** dashboard 表示後、 既存 review が stale な可能性を check:
+- bash output の \`---HEAD---\` section を parse して current HEAD commit hash を取得
+- \`commit\` field を持つ各 review entry: current HEAD と比較。 異なる場合、 経過 commit 数を count: \`git rev-list --count STORED_COMMIT..HEAD\`。 表示: "Note: {skill} review from {date} may be stale — {N} commits since review"
+- \`commit\` field なし entry (legacy entry): "Note: {skill} review from {date} has no commit tracking — consider re-running for accurate staleness detection"
+- 全 review が current HEAD と一致なら staleness note 表示なし
 
 Eng Review が「CLEAR」でない場合：
 
@@ -1165,7 +1214,159 @@ git fetch origin <base> && git merge origin/<base> --no-edit
 
 ## Step 4: Test Framework Bootstrap
 
+## Test Framework Bootstrap
 
+**既存 test framework + project runtime を detect:**
+
+```bash
+setopt +o nomatch 2>/dev/null || true  # zsh compat
+# Project runtime を detect
+[ -f Gemfile ] && echo "RUNTIME:ruby"
+[ -f package.json ] && echo "RUNTIME:node"
+[ -f requirements.txt ] || [ -f pyproject.toml ] && echo "RUNTIME:python"
+[ -f go.mod ] && echo "RUNTIME:go"
+[ -f Cargo.toml ] && echo "RUNTIME:rust"
+[ -f composer.json ] && echo "RUNTIME:php"
+[ -f mix.exs ] && echo "RUNTIME:elixir"
+# Sub-framework を detect
+[ -f Gemfile ] && grep -q "rails" Gemfile 2>/dev/null && echo "FRAMEWORK:rails"
+[ -f package.json ] && grep -q '"next"' package.json 2>/dev/null && echo "FRAMEWORK:nextjs"
+# 既存 test infrastructure を check
+ls jest.config.* vitest.config.* playwright.config.* .rspec pytest.ini pyproject.toml phpunit.xml 2>/dev/null
+ls -d test/ tests/ spec/ __tests__/ cypress/ e2e/ 2>/dev/null
+# Opt-out marker を check
+[ -f .uzustack/no-test-bootstrap ] && echo "BOOTSTRAP_DECLINED"
+```
+
+**Test framework が detect された場合** (config file or test directory あり):
+Print "Test framework detected: {name} ({N} existing tests). Skipping bootstrap."
+既存 test file を 2-3 個 read して convention を learn (naming / import / assertion style / setup pattern)。
+Phase 8e.5 or Step 7 で使うため convention を prose context として保持。 **bootstrap の残 step を skip。**
+
+**BOOTSTRAP_DECLINED が出た場合:** Print "Test bootstrap previously declined — skipping." **bootstrap の残 step を skip。**
+
+**Runtime が detect できない場合** (config file 不在): AskUserQuestion:
+"I couldn't detect your project's language. What runtime are you using?"
+Options: A) Node.js/TypeScript B) Ruby/Rails C) Python D) Go E) Rust F) PHP G) Elixir H) This project doesn't need tests.
+H 選択 → `.uzustack/no-test-bootstrap` を write、 test なしで続行。
+
+**Runtime detect 済 + test framework なしの場合 — bootstrap:**
+
+### B2. Best practice を research
+
+WebSearch で detect 済 runtime の current best practice を find:
+- `"[runtime] best test framework 2025 2026"`
+- `"[framework A] vs [framework B] comparison"`
+
+WebSearch が unavailable なら、 以下の built-in knowledge table を使う:
+
+| Runtime | Primary recommendation | Alternative |
+|---------|----------------------|-------------|
+| Ruby/Rails | minitest + fixtures + capybara | rspec + factory_bot + shoulda-matchers |
+| Node.js | vitest + @testing-library | jest + @testing-library |
+| Next.js | vitest + @testing-library/react + playwright | jest + cypress |
+| Python | pytest + pytest-cov | unittest |
+| Go | stdlib testing + testify | stdlib only |
+| Rust | cargo test (built-in) + mockall | — |
+| PHP | phpunit + mockery | pest |
+| Elixir | ExUnit (built-in) + ex_machina | — |
+
+### B3. Framework selection
+
+AskUserQuestion:
+"I detected this is a [Runtime/Framework] project with no test framework. I researched current best practices. Here are the options:
+A) [Primary] — [rationale]. Includes: [packages]. Supports: unit, integration, smoke, e2e
+B) [Alternative] — [rationale]. Includes: [packages]
+C) Skip — don't set up testing right now
+RECOMMENDATION: Choose A because [reason based on project context]"
+
+C 選択 → `.uzustack/no-test-bootstrap` を write。 user に告げる: "If you change your mind later, delete `.uzustack/no-test-bootstrap` and re-run." test なしで続行。
+
+複数 runtime が detect された場合 (monorepo) → どの runtime を最初に setup するか ask、 両方を sequential に setup する option も提示。
+
+### B4. Install + configure
+
+1. 選んだ package を install (npm/bun/gem/pip/etc.)
+2. minimal config file を作成
+3. directory 構造を作成 (test/ / spec/ / etc.)
+4. setup が動くことを verify するため project code に match する example test を 1 つ作成
+
+package install が fail → 1 回 debug。 依然 fail → `git checkout -- package.json package-lock.json` で revert (runtime 相当の cmd)。 user に warn して test なしで続行。
+
+### B4.5. 最初の real test
+
+既存 code に対する real test を 3-5 個 generate:
+
+1. **最近 changed file を find:** `git log --since=30.days --name-only --format="" | sort | uniq -c | sort -rn | head -10`
+2. **risk で prioritize:** Error handler > 条件分岐ありの business logic > API endpoint > pure function
+3. **各 file:** meaningful assertion で real behavior を test。 `expect(x).toBeDefined()` は禁止 — code が DOES 何をするかを test。
+4. 各 test を run。 pass → keep。 fail → 1 回 fix。 依然 fail → silent delete。
+5. 最低 1 test、 上限 5。
+
+test file で secret / API key / credential を import しない。 環境変数 or test fixture を使う。
+
+### B5. Verify
+
+```bash
+# full test suite を run して全 動作 を確認
+{detected test command}
+```
+
+test が fail → 1 回 debug。 依然 fail → 全 bootstrap 変更を revert して user に warn。
+
+### B5.5. CI/CD pipeline
+
+```bash
+# CI provider を check
+ls -d .github/ 2>/dev/null && echo "CI:github"
+ls .gitlab-ci.yml .circleci/ bitrise.yml 2>/dev/null
+```
+
+`.github/` 存在 (or CI 未検出 — default で GitHub Actions):
+`.github/workflows/test.yml` を作成、 以下を含める:
+- `runs-on: ubuntu-latest`
+- runtime 用の適切な setup action (setup-node / setup-ruby / setup-python 等)
+- B5 で verify 済の test command
+- Trigger: push + pull_request
+
+GitHub 以外の CI を detect → CI 生成を skip、 note: "Detected {provider} — CI pipeline generation supports GitHub Actions only. Add test step to your existing pipeline manually."
+
+### B6. TESTING.md を作成
+
+最初 check: TESTING.md 既存 → read して update / append、 上書きしない。 既存 content を destroy しない。
+
+TESTING.md に以下を write:
+- Philosophy: "100% test coverage は great vibe coding (= AI と勘で書く実装スタイル) の key — テストがあれば速く動き、 勘を信じ、 自信を持って ship できる。 テストなしの vibe coding は yolo coding に過ぎない。 テストがあれば、 それは superpower。"
+- framework 名 + version
+- test の動かし方 (B5 で verify 済の command)
+- Test layer: Unit test (what / where / when), Integration test, Smoke test, E2E test
+- Convention: file naming / assertion style / setup-teardown pattern
+
+### B7. CLAUDE.md を update
+
+最初 check: CLAUDE.md に既に `## Testing` section → skip。 重複させない。
+
+`## Testing` section を append:
+- Run command + test directory
+- TESTING.md への reference
+- Test expectation:
+  - 100% test coverage が goal — test は vibe coding を safe にする
+  - 新 function を書く時、 対応する test を書く
+  - bug を直す時、 regression test を書く
+  - error handling を追加する時、 その error を trigger する test を書く
+  - conditional (if/else / switch) を追加する時、 両 path の test を書く
+  - 既存 test を fail させる code を絶対 commit しない
+
+### B8. Commit
+
+```bash
+git status --porcelain
+```
+
+変更ありの場合のみ commit。 全 bootstrap file を stage (config / test directory / TESTING.md / CLAUDE.md / 作成済なら .github/workflows/test.yml):
+`git commit -m "chore: bootstrap test framework ({framework name})"`
+
+---
 
 ---
 
@@ -1367,7 +1568,241 @@ EVAL_JUDGE_TIER=full EVAL_VERBOSE=1 bin/test-lane --eval test/evals/<suite>_eval
 
 > You are running a ship-workflow test coverage audit. `git diff <base>...HEAD` を必要に応じて実行。Commit や push はしない — report のみ。
 >
-> 
+> 100% coverage が goal — untested path は bug が隠れる場所、 vibe coding が yolo coding に変わる場所。 plan されたものでなく、 diff から ACTUALLY coded されたものを evaluate する。
+
+### Test Framework Detection
+
+coverage 分析前に、 project の test framework を detect:
+
+1. **CLAUDE.md を read** — test command + framework 名を含む `## Testing` section を look for。 見つかれば authoritative source として使う。
+2. **CLAUDE.md に testing section なしなら auto-detect:**
+
+```bash
+setopt +o nomatch 2>/dev/null || true  # zsh compat
+# Project runtime を detect
+[ -f Gemfile ] && echo "RUNTIME:ruby"
+[ -f package.json ] && echo "RUNTIME:node"
+[ -f requirements.txt ] || [ -f pyproject.toml ] && echo "RUNTIME:python"
+[ -f go.mod ] && echo "RUNTIME:go"
+[ -f Cargo.toml ] && echo "RUNTIME:rust"
+# 既存 test infrastructure を check
+ls jest.config.* vitest.config.* playwright.config.* cypress.config.* .rspec pytest.ini phpunit.xml 2>/dev/null
+ls -d test/ tests/ spec/ __tests__/ cypress/ e2e/ 2>/dev/null
+```
+
+3. **framework が detect できない場合:** Test Framework Bootstrap step (Step 4) に fall through、 full setup が handled される。
+
+**0. Before/after test count:**
+
+```bash
+# 生成前の test file 数を count
+find . -name '*.test.*' -o -name '*.spec.*' -o -name '*_test.*' -o -name '*_spec.*' | grep -v node_modules | wc -l
+```
+
+PR body 用にこの数を store。
+
+**1. 変わった全 codepath を trace** `git diff origin/<base>...HEAD` で:
+
+各 changed file を read。 file ごとに data flow で trace — function を list するだけでなく、 execution を実際 follow:
+
+1. **diff を read。** 各 changed file について full file を read (diff hunk だけでなく) して context を理解。
+2. **Data flow を trace。** 各 entry point (route handler / exported function / event listener / component render) から始めて、 全 branch を data で follow:
+   - input はどこから来る？ (request params / props / database / API call)
+   - 何が transform する？ (validation / mapping / computation)
+   - どこへ行く？ (database write / API response / rendered output / side effect)
+   - 各 step で何が起きうる？ (null/undefined / invalid input / network failure / empty collection)
+3. **Execution を diagram 化。** 各 changed file について以下を示す ASCII diagram を draw:
+   - 追加 or 変更された全 function / method
+   - 全 conditional branch (if/else / switch / ternary / guard clause / early return)
+   - 全 error path (try/catch / rescue / error boundary / fallback)
+   - 他 function への全 call (trace 入る — それも untested branch を持つか？)
+   - 全 edge: null input なら？ empty array なら？ invalid type なら？
+
+これが critical step — input によって異なる実行をする全 line の map を build している。 この diagram の全 branch に test が要る。
+
+**2. user flow / interaction / error state を map:**
+
+code coverage だけでは不十分 — real user が changed code とどう interact するかを cover する必要。 各 changed feature について以下を思考:
+
+- **User flow:** どの sequence of action が user にこの code を触らせる？ full journey を map (e.g., "user clicks 'Pay' → form validates → API call → success/failure screen")。 journey の各 step に test が要る。
+- **Interaction edge case:** user が予想外の動作をしたら何が起きる？
+  - Double-click / rapid resubmit
+  - mid-operation で navigate away (back button / close tab / 他 link click)
+  - stale data で submit (page を 30 分開きっぱなし / session expired)
+  - Slow connection (API takes 10 秒 — user に何が見える？)
+  - Concurrent action (2 tab / 同じ form)
+- **User が見える error state:** code が handle する各 error について、 user は実際に何を experience する？
+  - clear な error message があるか silent failure か？
+  - user が recover できる (retry / 戻る / input fix) か stuck か？
+  - network なしなら？ API から 500 なら？ server から invalid data なら？
+- **Empty/zero/boundary state:** UI は zero result で何を見せる？ 10,000 result で？ 1 文字 input で？ max-length input で？
+
+これらを code branch と並べて diagram に追加。 test なしの user flow は test なしの if/else と同じ gap。
+
+**3. 各 branch を既存 test と照合:**
+
+diagram を branch 単位で go through — code path AND user flow 両方。 各 branch について exercise する test を search:
+- function `processPayment()` → `billing.test.ts`, `billing.spec.ts`, `test/billing_test.rb` を look for
+- if/else → true AND false 両 path を cover する test を look for
+- error handler → その specific error condition を trigger する test を look for
+- 自身に branch を持つ `helperFn()` への call → その branch にも test が要る
+- user flow → journey を walk through する integration / E2E test を look for
+- interaction edge case → 予想外 action を simulate する test を look for
+
+Quality scoring rubric:
+- ★★★  behavior + edge case + error path を test
+- ★★   correct behavior、 happy path のみ test
+- ★    smoke test / existence check / trivial assertion (e.g., "it renders", "it doesn't throw")
+
+### E2E Test Decision Matrix
+
+各 branch を check 時、 unit test と E2E / integration test のどちらが適切かも判定:
+
+**E2E を RECOMMEND (diagram で [→E2E] mark):**
+- 3+ component/service にまたがる common user flow (e.g., signup → verify email → first login)
+- mock が real failure を隠す integration point (e.g., API → queue → worker → DB)
+- Auth / payment / data destruction flow — unit test だけに信を置くには too important
+
+**EVAL を RECOMMEND (diagram で [→EVAL] mark):**
+- quality eval が要る critical LLM call (e.g., prompt 変更 → output が quality bar を満たすか test)
+- prompt template / system instruction / tool definition の変更
+
+**UNIT TEST で STICK:**
+- input/output が明確な pure function
+- side effect なしの internal helper
+- 単一 function の edge case (null input / empty array)
+- customer-facing でない obscure / rare flow
+
+### REGRESSION RULE (mandatory)
+
+**IRON RULE:** coverage audit が REGRESSION を identify (= 以前動いていた code が diff で broken) した場合、 regression test を 即座に書く。 AskUserQuestion なし。 skip なし。 regression は何かが壊れた証拠なので highest-priority test。
+
+regression は以下のとき:
+- diff が既存 behavior を modify (新 code でない)
+- 既存 test suite (あれば) が changed path を cover していない
+- 変更が既存 caller に新 failure mode を introduce
+
+ある変更が regression かどうか uncertain なら、 test を書く側に err on the side of。
+
+Format: `test: regression test for {what broke}` で commit
+
+**4. ASCII coverage diagram を output:**
+
+code path + user flow 両方を同 diagram に。 E2E worthy + eval worthy path を mark:
+
+```
+CODE PATHS                                            USER FLOWS
+[+] src/services/billing.ts                           [+] Payment checkout
+  ├── processPayment()                                  ├── [★★★ TESTED] Complete purchase — checkout.e2e.ts:15
+  │   ├── [★★★ TESTED] happy + declined + timeout      ├── [GAP] [→E2E] Double-click submit
+  │   ├── [GAP]         Network timeout                 └── [GAP]        Navigate away mid-payment
+  │   └── [GAP]         Invalid currency
+  └── refundPayment()                                 [+] Error states
+      ├── [★★  TESTED] Full refund — :89                ├── [★★  TESTED] Card declined message
+      └── [★   TESTED] Partial (non-throw only) — :101  └── [GAP]        Network timeout UX
+
+LLM integration: [GAP] [→EVAL] Prompt template change — needs eval test
+
+COVERAGE: 5/13 paths tested (38%)  |  Code paths: 3/5 (60%)  |  User flows: 2/8 (25%)
+QUALITY: ★★★:2 ★★:2 ★:1  |  GAPS: 8 (2 E2E, 1 eval)
+```
+
+Legend: ★★★ behavior + edge + error  |  ★★ happy path  |  ★ smoke check
+[→E2E] = needs integration test  |  [→EVAL] = needs LLM eval
+
+**Fast path:** 全 path covered → "Step 7: All new code paths have test coverage ✓" 続行。
+
+**5. Uncovered path に test を generate:**
+
+test framework が detect 済 (or Step 4 で bootstrap 済) なら:
+- error handler + edge case を priority 先 (happy path は既存 test されている可能性 high)
+- 既存 test file を 2-3 個 read して convention を exact に match
+- unit test を generate。 external dependency (DB / API / Redis) を全 mock。
+- [→E2E] mark path: project の E2E framework (Playwright / Cypress / Capybara 等) で integration/E2E test を generate
+- [→EVAL] mark path: project の eval framework で eval test を generate、 なければ manual eval として flag
+- specific uncovered path を real assertion で exercise する test を write
+- 各 test を run。 pass → `test: coverage for {feature}` で commit
+- fail → 1 回 fix。 依然 fail → revert、 diagram に gap として note。
+
+Caps: 30 code path max / 20 test generated max (code + user flow 合計) / 2 分 per-test exploration cap。
+
+test framework なし AND user が bootstrap declined → diagram only、 generation なし。 Note: "Test generation skipped — no test framework configured."
+
+**Diff が test-only changes:** Step 7 完全 skip: "No new application code paths to audit."
+
+**6. After-count + coverage summary:**
+
+```bash
+# 生成後の test file 数を count
+find . -name '*.test.*' -o -name '*.spec.*' -o -name '*_test.*' -o -name '*_spec.*' | grep -v node_modules | wc -l
+```
+
+PR body: `Tests: {before} → {after} (+{delta} new)`
+Coverage line: `Test Coverage Audit: N new code paths. M covered (X%). K tests generated, J committed.`
+
+**7. Coverage gate:**
+
+続行前に CLAUDE.md で `## Test Coverage` section の `Minimum:` + `Target:` field を check。 見つかればその % を使う。 なければ default: Minimum = 60%, Target = 80%。
+
+substep 4 diagram の coverage % (`COVERAGE: X/Y (Z%)` line) を使う:
+
+- **>= target:** Pass。 "Coverage gate: PASS ({X}%)." 続行。
+- **>= minimum, < target:** AskUserQuestion:
+  - "AI-assessed coverage is {X}%. {N} code paths are untested. Target is {target}%."
+  - RECOMMENDATION: untested code path は production bug が隠れる場所だから A を選ぶ。
+  - Options:
+    A) Generate more tests for remaining gaps (recommended)
+    B) Ship anyway — I accept the coverage risk
+    C) These paths don't need tests — mark as intentionally uncovered
+  - A: substep 5 (test 生成) に loop back、 remaining gap を target。 2 pass 後依然 target 未満なら updated 数字で AskUserQuestion を再提示。 最大 2 生成 pass。
+  - B: 続行。 PR body に含める: "Coverage gate: {X}% — user accepted risk."
+  - C: 続行。 PR body に含める: "Coverage gate: {X}% — {N} paths intentionally uncovered."
+
+- **< minimum:** AskUserQuestion:
+  - "AI-assessed coverage is critically low ({X}%). {N} of {M} code paths have no tests. Minimum threshold is {minimum}%."
+  - RECOMMENDATION: {minimum}% 未満は tested より untested code が多いから A を選ぶ。
+  - Options:
+    A) Generate tests for remaining gaps (recommended)
+    B) Override — ship with low coverage (I understand the risk)
+  - A: substep 5 に loop back。 最大 2 pass。 2 pass 後依然 minimum 未満なら override choice を再提示。
+  - B: 続行。 PR body に含める: "Coverage gate: OVERRIDDEN at {X}%."
+
+**Coverage percentage 判定不能:** coverage diagram が明確な numeric % を produce しない (ambiguous output / parse error) 場合、 **gate を skip**: "Coverage gate: could not determine percentage — skipping." 0% に default にせず、 block しない。
+
+**Test-only diff:** gate を skip (既存 fast-path と同じ)。
+
+**100% coverage:** "Coverage gate: PASS (100%)." 続行。
+
+### Test Plan Artifact
+
+coverage diagram 生成後、 `/qa` / `/qa-only` が consume できるよう test plan artifact を write:
+
+```bash
+eval "$(~/.claude/skills/uzustack/bin/uzustack-slug 2>/dev/null)" && mkdir -p ~/.uzustack/projects/$SLUG
+USER=$(whoami)
+DATETIME=$(date +%Y%m%d-%H%M%S)
+```
+
+`~/.uzustack/projects/{slug}/{user}-{branch}-ship-test-plan-{datetime}.md` に write:
+
+```markdown
+# Test Plan
+Generated by /ship on {date}
+Branch: {branch}
+Repo: {owner/repo}
+
+## Affected Pages/Routes
+- {URL path} — {what to test and why}
+
+## Key Interactions to Verify
+- {interaction description} on {page}
+
+## Edge Cases
+- {edge case} on {page}
+
+## Critical Paths
+- {end-to-end flow that must work}
+```
 >
 > 分析後、response の **最終行** に単一 JSON object を出力（その後にテキストなし）：
 > `{"coverage_pct":N,"gaps":N,"diagram":"<full markdown coverage diagram for PR body>","tests_added":["path",...]}`
@@ -1391,7 +1826,122 @@ EVAL_JUDGE_TIER=full EVAL_VERBOSE=1 bin/test-lane --eval test/evals/<suite>_eval
 
 > You are running a ship-workflow plan completion audit. The base branch is `<base>`. `git diff <base>...HEAD` で何が ship されたか確認。Commit や push はしない — report のみ。
 >
-> 
+> ### Plan File Discovery
+
+1. **Conversation context (primary):** 本 conversation に active な plan file があるかを check。 host agent の system message が plan mode 中の plan file path を含む。 見つかれば直接使う — 最も reliable signal。
+
+2. **Content-based search (fallback):** conversation context に plan file 参照がない場合、 content で search:
+
+```bash
+setopt +o nomatch 2>/dev/null || true  # zsh compat
+BRANCH=$(git branch --show-current 2>/dev/null | tr '/' '-')
+REPO=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)")
+# ~/.uzustack/projects/ lookup 用の project slug を計算
+_PLAN_SLUG=$(git remote get-url origin 2>/dev/null | sed 's|.*[:/]\([^/]*/[^/]*\)\.git$|\1|;s|.*[:/]\([^/]*/[^/]*\)$|\1|' | tr '/' '-' | tr -cd 'a-zA-Z0-9._-') || true
+_PLAN_SLUG="${_PLAN_SLUG:-$(basename "$PWD" | tr -cd 'a-zA-Z0-9._-')}"
+# 一般的な plan file location を search (project design 優先、 次に personal/local)
+for PLAN_DIR in "$HOME/.uzustack/projects/$_PLAN_SLUG" "$HOME/.claude/plans" "$HOME/.codex/plans" ".uzustack/plans"; do
+  [ -d "$PLAN_DIR" ] || continue
+  PLAN=$(ls -t "$PLAN_DIR"/*.md 2>/dev/null | xargs grep -l "$BRANCH" 2>/dev/null | head -1)
+  [ -z "$PLAN" ] && PLAN=$(ls -t "$PLAN_DIR"/*.md 2>/dev/null | xargs grep -l "$REPO" 2>/dev/null | head -1)
+  [ -z "$PLAN" ] && PLAN=$(find "$PLAN_DIR" -name '*.md' -mmin -1440 -maxdepth 1 2>/dev/null | xargs ls -t 2>/dev/null | head -1)
+  [ -n "$PLAN" ] && break
+done
+[ -n "$PLAN" ] && echo "PLAN_FILE: $PLAN" || echo "NO_PLAN_FILE"
+```
+
+3. **Validation:** content-based search で plan file が見つかった (conversation context でない) 場合、 最初 20 行を read して current branch の作業と関係するかを verify。 別 project / feature の file に見えるなら "no plan file found" 扱い。
+
+**Error handling:**
+- plan file 不在 → "No plan file detected — skipping." で skip。
+- plan file 見つかったが unreadable (permission / encoding) → "Plan file found but unreadable — skipping." で skip。
+
+### Actionable Item Extraction
+
+plan file を read。 全 actionable item を extract — 作業として記述されている全てのもの。 look for:
+
+- **Checkbox item:** `- [ ] ...` or `- [x] ...`
+- 実装 heading 下の **numbered step**: "1. Create ...", "2. Add ...", "3. Modify ..."
+- **Imperative statement:** "Add X to Y", "Create a Z service", "Modify the W controller"
+- **File-level specification:** "New file: path/to/file.ts", "Modify path/to/existing.rb"
+- **Test requirement:** "Test that X", "Add test for Y", "Verify Z"
+- **Data model 変更:** "Add column X to table Y", "Create migration for Z"
+
+**Ignore:**
+- Context / Background section (`## Context`, `## Background`, `## Problem`)
+- Question / open item (?, "TBD", "TODO: decide" mark)
+- Review report section (`## UZUSTACK REVIEW REPORT`)
+- 明示的 defer item ("Future:", "Out of scope:", "NOT in scope:", "P2:", "P3:", "P4:")
+- CEO Review Decision section (これは choice の記録、 work item でない)
+
+**Cap:** 最大 50 item を extract。 plan に more あれば note: "Showing top 50 of N plan items — full list in plan file."
+
+**No items found:** plan に extractable な actionable item がなければ skip: "Plan file contains no actionable items — skipping completion audit."
+
+各 item について note:
+- item の text (verbatim or 簡潔 summary)
+- category: CODE | TEST | MIGRATION | CONFIG | DOCS
+
+### Cross-Reference Against Diff
+
+`git diff origin/<base>...HEAD` + `git log origin/<base>..HEAD --oneline` を実行して何が実装されたか把握。
+
+extract 済の各 plan item について diff を check して classify:
+
+- **DONE** — diff にこの item が実装された明確な evidence。 changed file を cite。
+- **PARTIAL** — diff に向けて work が一部あるが incomplete (e.g., model はあるが controller missing、 function はあるが edge case 未対応)。
+- **NOT DONE** — diff に evidence なし。
+- **CHANGED** — plan と違う方法で実装、 同じ goal は達成。 差分を note。
+
+**DONE は保守的に** — diff に明確な evidence を要求。 file が touch されただけでは insufficient、 記述された functionality が present であること。
+**CHANGED は寛容に** — goal が違う手段で達成されているならそれは addressed。
+
+### Output Format
+
+```
+PLAN COMPLETION AUDIT
+═══════════════════════════════
+Plan: {plan file path}
+
+## Implementation Items
+  [DONE]      Create UserService — src/services/user_service.rb (+142 lines)
+  [PARTIAL]   Add validation — model validates but missing controller checks
+  [NOT DONE]  Add caching layer — no cache-related changes in diff
+  [CHANGED]   "Redis queue" → implemented with Sidekiq instead
+
+## Test Items
+  [DONE]      Unit tests for UserService — test/services/user_service_test.rb
+  [NOT DONE]  E2E test for signup flow
+
+## Migration Items
+  [DONE]      Create users table — db/migrate/20240315_create_users.rb
+
+─────────────────────────────────
+COMPLETION: 4/7 DONE, 1 PARTIAL, 1 NOT DONE, 1 CHANGED
+─────────────────────────────────
+```
+
+### Gate Logic
+
+completion checklist 生成後:
+
+- **全 DONE or CHANGED:** Pass。 "Plan completion: PASS — all items addressed." 続行。
+- **PARTIAL のみ (NOT DONE なし):** PR body に note して続行。 block しない。
+- **NOT DONE item あり:** AskUserQuestion:
+  - 上の completion checklist を表示
+  - "{N} items from the plan are NOT DONE. These were part of the original plan but are missing from the implementation."
+  - RECOMMENDATION: item 数と severity に依存。 1-2 minor item (docs / config) なら B 推奨。 core functionality が missing なら A 推奨。
+  - Options:
+    A) Stop — implement the missing items before shipping
+    B) Ship anyway — defer these to a follow-up (will create P1 TODOs in Step 5.5)
+    C) These items were intentionally dropped — remove from scope
+  - A: STOP。 user に missing item を list。
+  - B: 続行。 NOT DONE 各 item について Step 5.5 で "Deferred from plan: {plan file path}" の P1 TODO を作成。
+  - C: 続行。 PR body に note: "Plan items intentionally dropped: {list}."
+
+**plan file 不在:** 完全 skip。 "No plan file detected — skipping plan completion audit."
+
+**PR body に含める (Step 8):** `## Plan Completion` section に checklist summary を追加。
 >
 > 分析後、response の **最終行** に単一 JSON object を出力：
 > `{"total_items":N,"done":N,"changed":N,"deferred":N,"summary":"<markdown checklist for PR body>"}`
@@ -1407,7 +1957,63 @@ EVAL_JUDGE_TIER=full EVAL_VERBOSE=1 bin/test-lane --eval test/evals/<suite>_eval
 
 ---
 
+## Step 8.1: Plan Verification
 
+plan の testing / verification step を `/qa-only` skill で自動 verify する。
+
+### 1. Verification section の有無を check
+
+Step 8 で discovery 済の plan file から verification section を look for。 以下の heading を match: `## Verification`, `## Test plan`, `## Testing`, `## How to test`, `## Manual testing`、 or verification 風 item (URL / 視覚 check / interaction test) を含む section。
+
+**verification section 不在時:** "No verification steps found in plan — skipping auto-verification." で skip。
+**Step 8 で plan file が見つからなかった場合:** skip (既に handled)。
+
+### 2. Running dev server を check
+
+browse-based verification を invoke 前に、 dev server が reachable かを check:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}' http://localhost:3000 2>/dev/null || \
+curl -s -o /dev/null -w '%{http_code}' http://localhost:8080 2>/dev/null || \
+curl -s -o /dev/null -w '%{http_code}' http://localhost:5173 2>/dev/null || \
+curl -s -o /dev/null -w '%{http_code}' http://localhost:4000 2>/dev/null || echo "NO_SERVER"
+```
+
+**NO_SERVER:** "No dev server detected — skipping plan verification. Run /qa separately after deploying." で skip。
+
+### 3. /qa-only を inline invoke
+
+`/qa-only` skill を disk から read:
+
+```bash
+cat ${CLAUDE_SKILL_DIR}/../qa-only/SKILL.md
+```
+
+**unreadable:** "Could not load /qa-only — skipping plan verification." で skip。
+
+以下 modification を加えて /qa-only workflow に従う:
+- **preamble は skip** (/ship で既に handled)
+- **plan の verification section を primary test input として使う** — 各 verification item を test case として扱う
+- **detected dev server URL** を base URL として使う
+- **Fix loop は skip** — これは /ship 中の report-only verification
+- **plan の verification item で cap** — general site QA に拡大しない
+
+### 4. Gate logic
+
+- **全 verification item PASS:** silent 続行。 "Plan verification: PASS."
+- **どれか FAIL:** AskUserQuestion:
+  - screenshot evidence 付きで failure を表示
+  - RECOMMENDATION: failure が broken functionality を示すなら A。 cosmetic のみなら B。
+  - Options:
+    A) Fix the failures before shipping (recommended for functional issues)
+    B) Ship anyway — known issues (acceptable for cosmetic issues)
+- **verification section なし / server なし / unreadable skill:** skip (non-blocking)。
+
+### 5. PR body に含める
+
+PR body (Step 19) に `## Verification Results` section を追加:
+- verification が ran: 結果 summary (N PASS, M FAIL, K SKIPPED)
+- skip 時: skip 理由 (no plan / no server / no verification section)
 
 ## 過去の学習
 
@@ -1448,7 +2054,40 @@ B の場合: `~/.claude/skills/uzustack/bin/uzustack-config set cross_project_le
 蓄積の可視化が目的。uzustack がコードベースについて賢くなっていく過程を
 ユーザーが実感できるようにする。
 
+## Step 8.2: Scope Drift Detection
 
+code 品質 review 前に check: **要求されたものを build したか — 過不足なく？**
+
+1. `TODOS.md` を read (存在すれば)。 PR description を read (`gh pr view --json body --jq .body 2>/dev/null || true`)。
+   commit message を read (`git log origin/<base>..HEAD --oneline`)。
+   **PR 不存在時:** stated intent は commit message + TODOS.md に依存 — /review が /ship 前に走るのが普通なので、 これが典型 case。
+2. **stated intent** を identify — この branch が達成すべきだったことは何か？
+3. `git diff origin/<base>...HEAD --stat` を実行、 changed file を stated intent と比較。
+
+4. skepticism を持って evaluate (前 step / 隣 section から plan completion 結果があれば組み込む):
+
+   **SCOPE CREEP 検出:**
+   - stated intent と関係ない file が変わっている
+   - plan に書かれていない新機能 / refactor
+   - "while I was in there..." 系の blast radius 拡大変更
+
+   **MISSING REQUIREMENTS 検出:**
+   - TODOS.md / PR description の要件が diff で addressed されていない
+   - stated requirement に対する test coverage gap
+   - partial implementation (start したが finish していない)
+
+5. Output (main review 開始前):
+   \`\`\`
+   Scope Check: [CLEAN / DRIFT DETECTED / REQUIREMENTS MISSING]
+   Intent: <1 行 summary of what was requested>
+   Delivered: <1 行 summary of what the diff actually does>
+   [If drift: list each out-of-scope change]
+   [If missing: list each unaddressed requirement]
+   \`\`\`
+
+6. これは **INFORMATIONAL** — review を block しない。 次 step へ。
+
+---
 
 ---
 
@@ -1544,9 +2183,241 @@ Codex output は `CODEX (design):` header の下に提示、 上の checklist fi
 
    Design findings は code review findings と並んで含める。下記の Fix-First flow に従う。
 
+## Step 9.1: Review Army — Specialist Dispatch
 
+### Stack + scope を detect
 
+```bash
+source <(~/.claude/skills/uzustack/bin/uzustack-diff-scope <base> 2>/dev/null) || true
+# specialist context のために stack を detect
+STACK=""
+[ -f Gemfile ] && STACK="${STACK}ruby "
+[ -f package.json ] && STACK="${STACK}node "
+[ -f requirements.txt ] || [ -f pyproject.toml ] && STACK="${STACK}python "
+[ -f go.mod ] && STACK="${STACK}go "
+[ -f Cargo.toml ] && STACK="${STACK}rust "
+echo "STACK: ${STACK:-unknown}"
+DIFF_INS=$(git diff origin/<base> --stat | tail -1 | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo "0")
+DIFF_DEL=$(git diff origin/<base> --stat | tail -1 | grep -oE '[0-9]+ deletion' | grep -oE '[0-9]+' || echo "0")
+DIFF_LINES=$((DIFF_INS + DIFF_DEL))
+echo "DIFF_LINES: $DIFF_LINES"
+# specialist test stub 生成のために test framework を detect
+TEST_FW=""
+{ [ -f jest.config.ts ] || [ -f jest.config.js ]; } && TEST_FW="jest"
+[ -f vitest.config.ts ] && TEST_FW="vitest"
+{ [ -f spec/spec_helper.rb ] || [ -f .rspec ]; } && TEST_FW="rspec"
+{ [ -f pytest.ini ] || [ -f conftest.py ]; } && TEST_FW="pytest"
+[ -f go.mod ] && TEST_FW="go-test"
+echo "TEST_FW: ${TEST_FW:-unknown}"
+```
 
+### specialist hit rate を read (adaptive gating)
+
+```bash
+~/.claude/skills/uzustack/bin/uzustack-specialist-stats 2>/dev/null || true
+```
+
+### specialist を select
+
+上記 scope signal に基づいて、 dispatch する specialist を select。
+
+**Always-on (50+ changed line の全 review で dispatch):**
+1. **Testing** — `~/.claude/skills/uzustack/review/specialists/testing.md` を read
+2. **Maintainability** — `~/.claude/skills/uzustack/review/specialists/maintainability.md` を read
+
+**DIFF_LINES < 50 の場合:** specialist を全 skip。 Print: "Small diff ($DIFF_LINES lines) — specialists skipped." the Fix-First flow (item 4) に続行。
+
+**Conditional (matching scope signal が true なら dispatch):**
+3. **Security** — SCOPE_AUTH=true、 OR SCOPE_BACKEND=true AND DIFF_LINES > 100。 `~/.claude/skills/uzustack/review/specialists/security.md` を read
+4. **Performance** — SCOPE_BACKEND=true OR SCOPE_FRONTEND=true。 `~/.claude/skills/uzustack/review/specialists/performance.md` を read
+5. **Data Migration** — SCOPE_MIGRATIONS=true。 `~/.claude/skills/uzustack/review/specialists/data-migration.md` を read
+6. **API Contract** — SCOPE_API=true。 `~/.claude/skills/uzustack/review/specialists/api-contract.md` を read
+7. **Design** — SCOPE_FRONTEND=true。 既存 design review checklist `~/.claude/skills/uzustack/review/design-checklist.md` を使う
+
+### Adaptive gating
+
+scope-based selection の後、 specialist hit rate に基づいて adaptive gating を apply:
+
+scope gating を通過した各 conditional specialist について、 上の `uzustack-specialist-stats` output を check:
+- `[GATE_CANDIDATE]` tag (10+ dispatch で 0 findings): skip。 Print: "[specialist] auto-gated (0 findings in N reviews)."
+- `[NEVER_GATE]` tag: hit rate に関わらず常に dispatch。 Security + data-migration は insurance policy specialist — silent でも run すべき。
+
+**Force flag:** user の prompt に `--security`, `--performance`, `--testing`, `--maintainability`, `--data-migration`, `--api-contract`, `--design`, or `--all-specialists` が含まれる場合、 gating に関わらず該当 specialist を force-include。
+
+どの specialist が selected / gated / skipped されたか note。 selection を print:
+"Dispatching N specialists: [names]. Skipped: [names] (scope not detected). Gated: [names] (0 findings in N+ reviews)."
+
+---
+
+### specialist を並列 dispatch
+
+各 selected specialist について、 Agent tool で independent subagent を起動。
+**選択した全 specialist を 1 message で起動** (複数 Agent tool call) して並列 run。
+各 subagent は fresh context — prior review bias なし。
+
+**各 specialist subagent prompt:**
+
+各 specialist の prompt を組み立てる。 prompt は以下を含む:
+
+1. specialist の checklist content (上の step で file を既に read 済)
+2. Stack context: "This is a {STACK} project."
+3. この domain の past learnings (あれば):
+
+```bash
+~/.claude/skills/uzustack/bin/uzustack-learnings-search --type pitfall --query "{specialist domain}" --limit 5 2>/dev/null || true
+```
+
+learnings が見つかれば含める: "Past learnings for this domain: {learnings}"
+
+4. Instructions:
+
+"You are a specialist code reviewer. Read the checklist below, then run
+`git diff origin/<base>` to get the full diff. Apply the checklist against the diff.
+
+For each finding, output a JSON object on its own line:
+{\"severity\":\"CRITICAL|INFORMATIONAL\",\"confidence\":N,\"path\":\"file\",\"line\":N,\"category\":\"category\",\"summary\":\"description\",\"fix\":\"recommended fix\",\"fingerprint\":\"path:line:category\",\"specialist\":\"name\"}
+
+Required fields: severity, confidence, path, category, summary, specialist.
+Optional: line, fix, fingerprint, evidence, test_stub.
+
+If you can write a test that would catch this issue, include it in the `test_stub` field.
+Use the detected test framework ({TEST_FW}). Write a minimal skeleton — describe/it/test
+blocks with clear intent. Skip test_stub for architectural or design-only findings.
+
+If no findings: output `NO FINDINGS` and nothing else.
+Do not output anything else — no preamble, no summary, no commentary.
+
+Stack context: {STACK}
+Past learnings: {learnings or 'none'}
+
+CHECKLIST:
+{checklist content}"
+
+**Subagent configuration:**
+- `subagent_type: "general-purpose"` を使う
+- `run_in_background` を使わない — 全 specialist が merge 前に complete する必要
+- specialist subagent が fail / timeout した場合、 failure を log して successful specialist の結果で続行。 specialist は additive — partial result でも no result より良い。
+
+---
+
+### Step 9.2: Findings を collect + merge
+
+全 specialist subagent 完了後、 各 output を collect。
+
+**Findings を parse:**
+各 specialist の output について:
+1. output が "NO FINDINGS" — skip、 この specialist は何も見つけなかった
+2. それ以外、 各 line を JSON object として parse。 valid JSON でない line を skip。
+3. 全 parsed findings を 1 list に collect、 specialist 名 で tag。
+
+**Fingerprint + dedup:**
+各 finding について fingerprint を compute:
+- `fingerprint` field 存在: それを使う
+- なければ: `{path}:{line}:{category}` (line あり) or `{path}:{category}`
+
+fingerprint で findings を group。 同 fingerprint を share する findings について:
+- 最高 confidence score の finding を keep
+- tag する: "MULTI-SPECIALIST CONFIRMED ({specialist1} + {specialist2})"
+- confidence を +1 boost (cap 10)
+- 確認した specialist を output で note
+
+**Confidence gate を apply:**
+- Confidence 7+: findings output に normally 表示
+- Confidence 5-6: caveat 付きで表示 "Medium confidence — verify this is actually an issue"
+- Confidence 3-4: appendix に移動 (main findings から suppress)
+- Confidence 1-2: 完全 suppress
+
+**PR Quality Score を compute:**
+merge 後、 quality score を compute:
+`quality_score = max(0, 10 - (critical_count * 2 + informational_count * 0.5))`
+Cap 10。 最後の review result に log。
+
+**Merged findings を output:**
+merged findings を current review と同 format で提示:
+
+```
+SPECIALIST REVIEW: N findings (X critical, Y informational) from Z specialists
+
+[各 finding を order で: CRITICAL 先、 次 INFORMATIONAL、 confidence 降順]
+[SEVERITY] (confidence: N/10, specialist: name) path:line — summary
+  Fix: recommended fix
+  [MULTI-SPECIALIST CONFIRMED の場合: confirmation note 表示]
+
+PR Quality Score: X/10
+```
+
+これらの findings は the checklist pass (Step 9) と並んで the Fix-First flow (item 4) に流れる。
+Fix-First heuristic は identically 適用 — specialist findings は同じ AUTO-FIX vs ASK classification に従う。
+
+**Per-specialist stats を compile:**
+findings merge 後、 the review-log persist 用に `specialists` object を compile。
+各 specialist (testing / maintainability / security / performance / data-migration / api-contract / design / red-team) について:
+- dispatched: `{"dispatched": true, "findings": N, "critical": N, "informational": N}`
+- scope で skipped: `{"dispatched": false, "reason": "scope"}`
+- gating で skipped: `{"dispatched": false, "reason": "gated"}`
+- not applicable (e.g., red-team 未起動): object から omit
+
+Design specialist も含める、 specialist schema file でなく `design-checklist.md` を使う場合も。
+これらの stats を覚えておく — Step 5.8 の review-log entry で必要。
+
+---
+
+### Red Team dispatch (conditional)
+
+**Activation:** DIFF_LINES > 200 OR 任意の specialist が CRITICAL finding を produce した場合のみ。
+
+activated なら、 Agent tool で 1 つ追加 subagent を dispatch (foreground、 background でない)。
+
+Red Team subagent は以下を receive:
+1. `~/.claude/skills/uzustack/review/specialists/red-team.md` から red-team checklist
+2. Step 9.2 で merge 済の specialist findings (既に catch されたものを知らせる)
+3. git diff command
+
+Prompt: "You are a red team reviewer. The code has already been reviewed by N specialists
+who found the following issues: {merged findings summary}. Your job is to find what they
+MISSED. Read the checklist, run `git diff origin/<base>`, and look for gaps.
+Output findings as JSON objects (same schema as the specialists). Focus on cross-cutting
+concerns, integration boundary issues, and failure modes that specialist checklists
+don't cover."
+
+Red Team が追加 issue を見つけたら、 the Fix-First flow (item 4) 前に findings list に merge。 Red Team findings は `"specialist":"red-team"` で tag。
+
+Red Team が NO FINDINGS を return: note "Red Team review: no additional issues found."
+Red Team subagent が fail / timeout: silent skip して続行。
+
+### Step 9.3: Cross-review finding dedup
+
+findings を classify 前に、 同 branch の prior review で user が skip した findings がないかを check。
+
+```bash
+~/.claude/skills/uzustack/bin/uzustack-review-read
+```
+
+output を parse: `---CONFIG---` 前の line のみが JSONL entry (output には `---CONFIG---` と `---HEAD---` footer section も含まれるが JSONL でない — ignore)。
+
+`findings` array を持つ各 JSONL entry について:
+1. `action: "skipped"` の全 fingerprint を collect
+2. その entry の `commit` field を note
+
+skipped fingerprint が存在する場合、 当該 review 以降の changed file list を取得:
+
+```bash
+git diff --name-only <prior-review-commit> HEAD
+```
+
+現在の各 finding (checklist pass (Step 9) + specialist review (Step 9.1-9.2) 両方から) について check:
+- fingerprint が以前 skipped finding と match するか？
+- finding の file path が changed-files set に NOT in か？
+
+両方 true なら finding を suppress。 intentionally skipped で、 該当 code が変わっていない。
+
+Print: "Suppressed N findings from prior reviews (previously skipped by user)"
+
+**`skipped` finding のみ suppress — `fixed` / `auto-fixed` は決して suppress しない** (regression する可能性、 再 check すべき)。
+
+prior review 不在 / `findings` array を持つ entry なしの場合、 silent skip。
+
+summary header を出力: `Pre-Landing Review: N issues (X critical, Y informational)`
 
 4. **checklist pass と specialist review（Step 9.1-9.2）の各 finding を AUTO-FIX または ASK に分類** — checklist.md の Fix-First Heuristic に従う。Critical は ASK 寄り、informational は AUTO-FIX 寄り。
 
@@ -1630,7 +2501,130 @@ review output を保存 — Step 19 で PR body に入る。
 
 ---
 
+## Step 11: Adversarial review (always-on)
 
+全 diff は Claude + Codex から adversarial review を受ける。 LOC は risk の proxy でない — 5 行の auth 変更が critical な場合もある。
+
+**diff size + tool availability を detect:**
+
+```bash
+DIFF_INS=$(git diff origin/<base> --stat | tail -1 | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo "0")
+DIFF_DEL=$(git diff origin/<base> --stat | tail -1 | grep -oE '[0-9]+ deletion' | grep -oE '[0-9]+' || echo "0")
+DIFF_TOTAL=$((DIFF_INS + DIFF_DEL))
+which codex 2>/dev/null && echo "CODEX_AVAILABLE" || echo "CODEX_NOT_AVAILABLE"
+# Legacy opt-out — Codex pass のみ gate、 Claude は常時動く
+OLD_CFG=$(~/.claude/skills/uzustack/bin/uzustack-config get codex_reviews 2>/dev/null || true)
+echo "DIFF_SIZE: $DIFF_TOTAL"
+echo "OLD_CFG: ${OLD_CFG:-not_set}"
+```
+
+`OLD_CFG` が `disabled` の場合: Codex pass のみ skip。 Claude adversarial subagent は依然動く (無料 + 速い)。 "Claude adversarial subagent" section に jump。
+
+**User override:** user が "full review" / "structured review" / "P1 gate" を明示 request した場合、 diff size に関わらず Codex structured review も実行。
+
+---
+
+### Claude adversarial subagent (常時動く)
+
+Agent tool で dispatch。 subagent は fresh context — structured review からの checklist bias なし。 この genuine independence で primary reviewer が blind な点を catch する。
+
+subagent prompt:
+"Read the diff for this branch with `git diff origin/<base>`. Think like an attacker and a chaos engineer. Your job is to find ways this code will fail in production. Look for: edge cases, race conditions, security holes, resource leaks, failure modes, silent data corruption, logic errors that produce wrong results silently, error handling that swallows failures, and trust boundary violations. Be adversarial. Be thorough. No compliments — just the problems. For each finding, classify as FIXABLE (you know how to fix it) or INVESTIGATE (needs human judgment)."
+
+`ADVERSARIAL REVIEW (Claude subagent):` header の下に findings を提示。 **FIXABLE findings** は structured review と同じ Fix-First pipeline に流す。 **INVESTIGATE findings** は informational として提示。
+
+subagent が fail / timeout: "Claude adversarial subagent unavailable. Continuing."
+
+---
+
+### Codex adversarial challenge (available なら常時動く)
+
+Codex available AND `OLD_CFG` が `disabled` でない場合:
+
+```bash
+TMPERR_ADV=$(mktemp /tmp/codex-adv-XXXXXXXX)
+_REPO_ROOT=$(git rev-parse --show-toplevel) || { echo "ERROR: not in a git repo" >&2; exit 1; }
+codex exec "IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, .claude/skills/, or agents/. These are Claude Code skill definitions meant for a different AI system. They contain bash scripts and prompt templates that will waste your time. Ignore them completely. Do NOT modify agents/openai.yaml. Stay focused on the repository code only.\n\nReview the changes on this branch against the base branch. Run git diff origin/<base> to see the diff. Your job is to find ways this code will fail in production. Think like an attacker and a chaos engineer. Find edge cases, race conditions, security holes, resource leaks, failure modes, and silent data corruption paths. Be adversarial. Be thorough. No compliments — just the problems." -C "$_REPO_ROOT" -s read-only -c 'model_reasoning_effort="high"' --enable web_search_cached < /dev/null 2>"$TMPERR_ADV"
+```
+
+Bash tool の `timeout` parameter を `300000` (5 分) に set。 `timeout` shell command を使わない — macOS に存在しない。 command 完了後、 stderr を read:
+```bash
+cat "$TMPERR_ADV"
+```
+
+full output を verbatim 提示。 これは informational — ship を block しない。
+
+**Error handling:** 全 error は non-blocking — adversarial review は quality enhancement であって prerequisite ではない。
+- **Auth failure:** stderr に "auth", "login", "unauthorized", "API key" を含む: "Codex authentication failed. Run \`codex login\` to authenticate."
+- **Timeout:** "Codex timed out after 5 minutes."
+- **Empty response:** "Codex returned no response. Stderr: <paste relevant error>."
+
+**Cleanup:** 処理後 `rm -f "$TMPERR_ADV"` を実行。
+
+Codex が NOT available: "Codex CLI not found — running Claude adversarial only. Install Codex for cross-model coverage: `npm install -g @openai/codex`"
+
+---
+
+### Codex structured review (大型 diff のみ、 200+ lines)
+
+`DIFF_TOTAL >= 200` AND Codex available AND `OLD_CFG` が `disabled` でない場合:
+
+```bash
+TMPERR=$(mktemp /tmp/codex-review-XXXXXXXX)
+_REPO_ROOT=$(git rev-parse --show-toplevel) || { echo "ERROR: not in a git repo" >&2; exit 1; }
+cd "$_REPO_ROOT"
+codex review "IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, .claude/skills/, or agents/. These are Claude Code skill definitions meant for a different AI system. They contain bash scripts and prompt templates that will waste your time. Ignore them completely. Do NOT modify agents/openai.yaml. Stay focused on the repository code only.\n\nReview the diff against the base branch." --base <base> -c 'model_reasoning_effort="high"' --enable web_search_cached < /dev/null 2>"$TMPERR"
+```
+
+Bash tool の `timeout` parameter を `300000` (5 分) に set。 `timeout` shell command を使わない — macOS に存在しない。 `CODEX SAYS (code review):` header の下に output を提示。
+`[P1]` marker を check: 見つかれば `GATE: FAIL`、 なければ `GATE: PASS`。
+
+GATE が FAIL の場合、 AskUserQuestion:
+```
+Codex found N critical issues in the diff.
+
+A) Investigate and fix now (recommended)
+B) Continue — review will still complete
+```
+
+A: findings に対応。 fix 後、 code が変わったので test を再実行 (Step 5)。 `codex review` を再実行して verify。
+
+stderr を error 用に read (Codex adversarial と同じ error handling)。
+
+stderr 後: `rm -f "$TMPERR"`
+
+`DIFF_TOTAL < 200`: section を silent skip。 小型 diff には Claude + Codex adversarial pass で sufficient coverage。
+
+---
+
+### review 結果を persist
+
+全 pass 完了後、 persist:
+```bash
+~/.claude/skills/uzustack/bin/uzustack-review-log '{"skill":"adversarial-review","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","status":"STATUS","source":"SOURCE","tier":"always","gate":"GATE","commit":"'"$(git rev-parse --short HEAD)"'"}'
+```
+置換: STATUS = 全 pass で findings なしなら "clean"、 1 つでも findings ありなら "issues_found"。 SOURCE = Codex が ran なら "both"、 Claude subagent のみなら "claude"。 GATE = Codex structured review の gate 結果 ("pass"/"fail")、 diff < 200 なら "skipped"、 Codex 不在なら "informational"。 全 pass fail なら persist しない。
+
+---
+
+### Cross-model synthesis
+
+全 pass 完了後、 全 source 横断で findings を synthesize:
+
+```
+ADVERSARIAL REVIEW SYNTHESIS (always-on, N lines):
+════════════════════════════════════════════════════════════
+  High confidence (found by multiple sources): [>1 pass で agree した findings]
+  Unique to Claude structured review: [前 step から]
+  Unique to Claude adversarial: [subagent から]
+  Unique to Codex: [codex adversarial / code review が ran なら]
+  Models used: Claude structured ✓  Claude adversarial ✓/✗  Codex ✓/✗
+════════════════════════════════════════════════════════════
+```
+
+High-confidence findings (複数 source で agree) は fix priority high。
+
+---
 
 ## 学習の記録
 

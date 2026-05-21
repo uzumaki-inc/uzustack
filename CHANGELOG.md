@@ -6,6 +6,26 @@ uzustack の release notes。フォーマットは [Keep a Changelog](https://ke
 
 ---
 
+## [0.3.6.5] — 2026-05-21
+
+### Added
+
+- **review / testing / review-army resolvers を port** — upstream gstack の `scripts/resolvers/review.ts` (1,021 行) + `testing.ts` (551 行) + `review-army.ts` (244 行) = 合計 1,816 行を翻訳して `scripts/resolvers/` 配下に配置 (PR-D4b / Closes #176)。 review.ts は 12 関数を export: `generateReviewDashboard` / `generatePlanFileReviewReport` / `generateSpecReviewLoop` / `generateBenefitsFrom` / `generateCodexSecondOpinion` / `generateScopeDrift` / `generateAdversarialStep` / `generateCodexPlanReview` / `generatePlanCompletionAuditShip` / `generatePlanCompletionAuditReview` / `generatePlanVerificationExec` / `generateCrossReviewDedup`。 testing.ts は inner helper 1 つから 3 mode 分岐で 4 関数: `generateTestBootstrap` / `generateTestCoverageAuditPlan` / `generateTestCoverageAuditShip` / `generateTestCoverageAuditReview`。 review-army.ts は host=codex で空展開する `generateReviewArmy` を 1 関数 export (4 内部 helper を join)。 voice 規約 v1+v2 適用 (bash internals + codex prompt + subagent prompt = English、 narrative = Japanese、 Fix-First / Outside Voice / Red Team / Review Army / NEVER_GATE / vibe coding / yolo coding / superpower 等の固有名詞は English-locked + 日本語 gloss)
+- **17 placeholder を `index.ts` で stub から wired に切替**: review.ts 系 12 件 (`BENEFITS_FROM` / `SPEC_REVIEW_LOOP` / `CODEX_PLAN_REVIEW` / `REVIEW_DASHBOARD` / `PLAN_FILE_REVIEW_REPORT` / `ADVERSARIAL_STEP` / `CROSS_REVIEW_DEDUP` / `PLAN_COMPLETION_AUDIT_REVIEW` / `SCOPE_DRIFT` / `CODEX_SECOND_OPINION` / `PLAN_COMPLETION_AUDIT_SHIP` / `PLAN_VERIFICATION_EXEC`) + testing.ts 系 4 件 (`TEST_BOOTSTRAP` / `TEST_COVERAGE_AUDIT_PLAN` / `TEST_COVERAGE_AUDIT_SHIP` / `TEST_COVERAGE_AUDIT_REVIEW`) + review-army.ts 1 件 (`REVIEW_ARMY`)
+- **TEST_COVERAGE_AUDIT_REVIEW の処遇確定 = wire** — upstream `_upstream/gstack/scripts/resolvers/index.ts:45` で `generateTestCoverageAuditReview` が wire 済 + `testing.ts:166` でコメントに「review: generates tests via Fix-First (ASK)」と仕様明記の upstream signal を確認、 uzustack でも wire 確定。 issue #176 out-of-scope の「upstream 呼出有無」 条件分岐は「呼出あり → wire」 で resolution
+
+### Changed
+
+- **多 SKILL.md に 17 placeholder が展開** — `autoplan` / `office-hours` / `plan-ceo-review` / `plan-design-review` / `plan-devex-review` / `plan-eng-review` / `review` / `ship` に review readiness dashboard / plan file review report / spec review loop / benefits-from prerequisite / codex second opinion / scope drift / adversarial step / codex plan review / plan completion audit / plan verification / cross-review dedup / test bootstrap / test coverage audit / review army が wire-in 経由で展開。 合計 53,726 行 → 56,996 行 (+3,270 行 / ~+35K tokens)
+- `CODEX_SECOND_OPINION` / `ADVERSARIAL_STEP` / `CODEX_PLAN_REVIEW` / `REVIEW_ARMY` は host=codex で空展開、 Claude host のみ生成 (Codex が自己 invoke しない設計の踏襲)
+- **第 4 voice 軸 (DEFAULT_SKIPS hard-match) は noop と判定** — uzustack 側 `{{INVOKE_SKILL:...}}` の direct 使用が 0 件 + upstream gstack の DEFAULT_SKIPS array も同 12 項目 (動的 step 番号付き heading の `Spec Review Loop` / `Outside Voice` / `Adversarial review` 等は upstream でも未登録) 確認、 PR-D4b で composition.ts の DEFAULT_SKIPS 更新は不要
+
+### Notes
+
+- issue #176 (preamble + resolvers 翻訳完遂) を Closes。 5 PR 直列 land 計画 (PR-D1 = preamble core / PR-D2 = utility / PR-D3 = 中型 resolvers / PR-D4a = design / PR-D4b = review + testing + review-army) を完遂
+
+---
+
 ## [0.3.6.4] — 2026-05-21
 
 ### Added

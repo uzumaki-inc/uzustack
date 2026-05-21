@@ -1802,9 +1802,118 @@ AskUserQuestion が unanswered なら、ここに note せよ。決して option
 - **decisions_made**：plan に追加された design 決定の数
 - **COMMIT**：`git rev-parse --short HEAD` の output
 
+## Review Readiness Dashboard
 
+review 完了後、 review log と config を read して dashboard を表示する。
 
+```bash
+~/.claude/skills/uzustack/bin/uzustack-review-read
+```
 
+output を parse する。 各 skill (plan-ceo-review / plan-eng-review / review / plan-design-review / design-review-lite / adversarial-review / codex-review / codex-plan-review) について最新 entry を find。 timestamp が 7 日より古い entry は無視。 Eng Review 行は `review` (diff scope の pre-landing review) と `plan-eng-review` (plan 段階 architecture review) のうち最新を表示。 status に "(DIFF)" / "(PLAN)" を append して区別。 Adversarial 行は `adversarial-review` (新 auto-scaled) と `codex-review` (legacy) のうち最新を表示。 Design Review は `plan-design-review` (full visual audit) と `design-review-lite` (code-level check) のうち最新を表示。 status に "(FULL)" / "(LITE)" を append。 Outside Voice 行は最新の `codex-plan-review` entry を表示 — これが /plan-ceo-review と /plan-eng-review 双方からの outside voice を capture する。
+
+**Source attribution:** skill の最新 entry に \`"via"\` field があれば、 括弧で status label に append する。 例: `plan-eng-review` が `via:"autoplan"` を持つ場合 "CLEAR (PLAN via /autoplan)" と表示。 `review` が `via:"ship"` を持つ場合 "CLEAR (DIFF via /ship)" と表示。 `via` field なしの entry は従来通り "CLEAR (PLAN)" / "CLEAR (DIFF)" と表示。
+
+Note: `autoplan-voices` / `design-outside-voices` entry は audit-trail only (cross-model consensus analysis 用の forensic data)。 dashboard に表示されず、 どの consumer も check しない。
+
+表示:
+
+```
++====================================================================+
+|                    REVIEW READINESS DASHBOARD                       |
++====================================================================+
+| Review          | Runs | Last Run            | Status    | Required |
+|-----------------|------|---------------------|-----------|----------|
+| Eng Review      |  1   | 2026-03-16 15:00    | CLEAR     | YES      |
+| CEO Review      |  0   | —                   | —         | no       |
+| Design Review   |  0   | —                   | —         | no       |
+| Adversarial     |  0   | —                   | —         | no       |
+| Outside Voice   |  0   | —                   | —         | no       |
++--------------------------------------------------------------------+
+| VERDICT: CLEARED — Eng Review passed                                |
++====================================================================+
+```
+
+**Review tier:**
+- **Eng Review (default で required):** ship を gate する唯一の review。 architecture / code 品質 / test / performance を cover。 \`uzustack-config set skip_eng_review true\` で global に無効化可能 ("don't bother me" setting)。
+- **CEO Review (optional):** judgment で判断。 大きな product / business 変更、 新規 user-facing 機能、 scope 判断には推奨。 bug fix / refactor / infra / cleanup は skip。
+- **Design Review (optional):** judgment で判断。 UI / UX 変更には推奨。 backend only / infra / prompt only 変更は skip。
+- **Adversarial Review (automatic):** 全 review で常時 on。 全 diff に対して Claude adversarial subagent + Codex adversarial challenge の両方を実行。 大型 diff (200+ lines) は追加で Codex structured review + P1 gate も実行。 設定不要。
+- **Outside Voice (optional):** 別 AI model からの independent plan review。 /plan-ceo-review / /plan-eng-review で全 review section 完了後に offer。 Codex 不在時は Claude subagent に fall back。 ship を gate しない。
+
+**Verdict logic:**
+- **CLEARED**: Eng Review が `review` か `plan-eng-review` から 7 日以内に >= 1 entry、 status "clean" (または \`skip_eng_review\` が `true`)
+- **NOT CLEARED**: Eng Review が missing / stale (>7 日) / open issues あり
+- CEO / Design / Codex review は context として表示するが、 ship を block しない
+- \`skip_eng_review\` config が `true` の場合、 Eng Review は "SKIPPED (global)" 表示、 verdict は CLEARED
+
+**Staleness detection:** dashboard 表示後、 既存 review が stale な可能性を check:
+- bash output の \`---HEAD---\` section を parse して current HEAD commit hash を取得
+- \`commit\` field を持つ各 review entry: current HEAD と比較。 異なる場合、 経過 commit 数を count: \`git rev-list --count STORED_COMMIT..HEAD\`。 表示: "Note: {skill} review from {date} may be stale — {N} commits since review"
+- \`commit\` field なし entry (legacy entry): "Note: {skill} review from {date} has no commit tracking — consider re-running for accurate staleness detection"
+- 全 review が current HEAD と一致なら staleness note 表示なし
+
+## Plan File Review Report
+
+conversation output に Review Readiness Dashboard を表示した後、 **plan file 自体** にも update する。
+plan を読む者全員に review status を見せるため。
+
+### plan file を detect
+
+1. 本 conversation に active な plan file があるかを check (host が plan file path を system message で提供 — conversation context の plan file 参照を look up)。
+2. なければ silent skip — plan mode でない review 実行もある。
+
+### report を生成
+
+上 step で取得済の Review Readiness Dashboard 出力を read。 各 JSONL entry を parse。 skill ごとに log する field が違う:
+
+- **plan-ceo-review**: \`status\`, \`unresolved\`, \`critical_gaps\`, \`mode\`, \`scope_proposed\`, \`scope_accepted\`, \`scope_deferred\`, \`commit\`
+  → Findings: "{scope_proposed} proposals, {scope_accepted} accepted, {scope_deferred} deferred"
+  → scope field が 0 or missing (HOLD/REDUCTION mode): "mode: {mode}, {critical_gaps} critical gaps"
+- **plan-eng-review**: \`status\`, \`unresolved\`, \`critical_gaps\`, \`issues_found\`, \`mode\`, \`commit\`
+  → Findings: "{issues_found} issues, {critical_gaps} critical gaps"
+- **plan-design-review**: \`status\`, \`initial_score\`, \`overall_score\`, \`unresolved\`, \`decisions_made\`, \`commit\`
+  → Findings: "score: {initial_score}/10 → {overall_score}/10, {decisions_made} decisions"
+- **plan-devex-review**: \`status\`, \`initial_score\`, \`overall_score\`, \`product_type\`, \`tthw_current\`, \`tthw_target\`, \`mode\`, \`persona\`, \`competitive_tier\`, \`unresolved\`, \`commit\`
+  → Findings: "score: {initial_score}/10 → {overall_score}/10, TTHW: {tthw_current} → {tthw_target}"
+- **devex-review**: \`status\`, \`overall_score\`, \`product_type\`, \`tthw_measured\`, \`dimensions_tested\`, \`dimensions_inferred\`, \`boomerang\`, \`commit\`
+  → Findings: "score: {overall_score}/10, TTHW: {tthw_measured}, {dimensions_tested} tested/{dimensions_inferred} inferred"
+- **codex-review**: \`status\`, \`gate\`, \`findings\`, \`findings_fixed\`
+  → Findings: "{findings} findings, {findings_fixed}/{findings} fixed"
+
+Findings column に必要な全 field は JSONL entry に存在する。
+今 review の場合は Completion Summary から richer な詳細を使ってよい。 過去 review の場合は JSONL field を直接使う — 必要な data はすべて揃っている。
+
+以下 markdown table を生成:
+
+\`\`\`markdown
+## UZUSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | \`/plan-ceo-review\` | Scope & strategy | {runs} | {status} | {findings} |
+| Codex Review | \`/codex review\` | Independent 2nd opinion | {runs} | {status} | {findings} |
+| Eng Review | \`/plan-eng-review\` | Architecture & tests (required) | {runs} | {status} | {findings} |
+| Design Review | \`/plan-design-review\` | UI/UX gaps | {runs} | {status} | {findings} |
+| DX Review | \`/plan-devex-review\` | Developer experience gaps | {runs} | {status} | {findings} |
+\`\`\`
+
+table の下、 以下 line を追加 (該当なし行は省略):
+
+- **CODEX:** (codex-review が ran 時のみ) — codex fix の 1 行 summary
+- **CROSS-MODEL:** (Claude + Codex 両 review がある時のみ) — overlap 分析
+- **UNRESOLVED:** 全 review 横断の unresolved 判断件数
+- **VERDICT:** CLEAR な review を list (例: "CEO + ENG CLEARED — ready to implement")。
+  Eng Review が CLEAR でない and not skipped globally なら "eng review required" を append。
+
+### plan file に write
+
+**PLAN MODE EXCEPTION — ALWAYS RUN:** これは plan file への write、 plan mode で edit 許可されている唯一の file。 plan file review report は plan の living status の一部。
+
+- plan file 内を \`## UZUSTACK REVIEW REPORT\` section で **anywhere** 検索 (end とは限らない — 後で content が追加されている可能性)。
+- 見つかったら、 Edit tool で **置換** する。 \`## UZUSTACK REVIEW REPORT\` から次の \`## \` heading まで、 or end of file までを match。 report section の後ろに追加された content を preserve するため (= eat しない)。 Edit が fail した場合 (e.g., concurrent edit が content を変えた)、 plan file を re-read して 1 回 retry。
+- section が存在しない場合、 plan file の end に **append**。
+- 必ず plan file の最後の section に置く。 mid-file で見つかったら move する: 旧位置を削除して end に append。
 
 ## 学習の記録
 

@@ -5,8 +5,8 @@
  * PR-D1: preamble core を wire (PREAMBLE / MODEL_OVERLAY / TEST_FAILURE_TRIAGE 等)
  * PR-D2: utility resolvers を wire (SLUG_EVAL / BASE_BRANCH_DETECT / QA_METHODOLOGY 等)
  * PR-D3: 中型 resolvers 8 file を wire (9 placeholder)
- * PR-D4a: design resolver を wire (本 PR、 10 placeholder)
- * PR-D4b で残 stub (review / testing / review-army) を wire。
+ * PR-D4a: design resolver を wire (10 placeholder)
+ * PR-D4b: review / testing / review-army を wire (本 PR、 17 placeholder)
  * 未登録 placeholder（{{BOGUS}} 等）は gen-skill-docs.ts 側が
  * "Unresolved placeholders" で fail-loud にする。
  */
@@ -43,6 +43,27 @@ import {
   generateDesignShotgunLoop,
   generateTasteProfile,
 } from './design';
+import {
+  generateReviewDashboard,
+  generatePlanFileReviewReport,
+  generateSpecReviewLoop,
+  generateBenefitsFrom,
+  generateCodexSecondOpinion,
+  generateScopeDrift,
+  generateAdversarialStep,
+  generateCodexPlanReview,
+  generatePlanCompletionAuditShip,
+  generatePlanCompletionAuditReview,
+  generatePlanVerificationExec,
+  generateCrossReviewDedup,
+} from './review';
+import {
+  generateTestBootstrap,
+  generateTestCoverageAuditPlan,
+  generateTestCoverageAuditShip,
+  generateTestCoverageAuditReview,
+} from './testing';
+import { generateReviewArmy } from './review-army';
 
 export const RESOLVERS: Record<string, ResolverFn> = {
   SLUG_SETUP: generateSlugSetup,
@@ -82,22 +103,25 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   DESIGN_MOCKUP: generateDesignMockup,
   DESIGN_SHOTGUN_LOOP: generateDesignShotgunLoop,
   TASTE_PROFILE: generateTasteProfile,
-  // --- 以下は後続 PR (D4b) で wire 予定 ---
-  BENEFITS_FROM: (_ctx, _args) => '',
-  SPEC_REVIEW_LOOP: (_ctx, _args) => '',
-  CODEX_PLAN_REVIEW: (_ctx, _args) => '',
-  REVIEW_DASHBOARD: (_ctx, _args) => '',
-  PLAN_FILE_REVIEW_REPORT: (_ctx, _args) => '',
-  ADVERSARIAL_STEP: (_ctx, _args) => '',
-  CROSS_REVIEW_DEDUP: (_ctx, _args) => '',
-  PLAN_COMPLETION_AUDIT_REVIEW: (_ctx, _args) => '',
-  REVIEW_ARMY: (_ctx, _args) => '',
-  SCOPE_DRIFT: (_ctx, _args) => '',
-  CODEX_SECOND_OPINION: (_ctx, _args) => '',
-  PLAN_COMPLETION_AUDIT_SHIP: (_ctx, _args) => '',
-  PLAN_VERIFICATION_EXEC: (_ctx, _args) => '',
-  TEST_BOOTSTRAP: (_ctx, _args) => '',
-  TEST_COVERAGE_AUDIT_PLAN: (_ctx, _args) => '',
-  TEST_COVERAGE_AUDIT_SHIP: (_ctx, _args) => '',
-  TEST_COVERAGE_AUDIT_REVIEW: (_ctx, _args) => '',
+  // --- PR-D4b: review / testing / review-army resolvers (本 PR、 17 placeholder) ---
+  // review.ts (12)
+  BENEFITS_FROM: generateBenefitsFrom,
+  SPEC_REVIEW_LOOP: generateSpecReviewLoop,
+  CODEX_PLAN_REVIEW: generateCodexPlanReview,
+  REVIEW_DASHBOARD: generateReviewDashboard,
+  PLAN_FILE_REVIEW_REPORT: generatePlanFileReviewReport,
+  ADVERSARIAL_STEP: generateAdversarialStep,
+  CROSS_REVIEW_DEDUP: generateCrossReviewDedup,
+  PLAN_COMPLETION_AUDIT_REVIEW: generatePlanCompletionAuditReview,
+  SCOPE_DRIFT: generateScopeDrift,
+  CODEX_SECOND_OPINION: generateCodexSecondOpinion,
+  PLAN_COMPLETION_AUDIT_SHIP: generatePlanCompletionAuditShip,
+  PLAN_VERIFICATION_EXEC: generatePlanVerificationExec,
+  // testing.ts (4)
+  TEST_BOOTSTRAP: generateTestBootstrap,
+  TEST_COVERAGE_AUDIT_PLAN: generateTestCoverageAuditPlan,
+  TEST_COVERAGE_AUDIT_SHIP: generateTestCoverageAuditShip,
+  TEST_COVERAGE_AUDIT_REVIEW: generateTestCoverageAuditReview,
+  // review-army.ts (1)
+  REVIEW_ARMY: generateReviewArmy,
 };

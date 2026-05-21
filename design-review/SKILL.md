@@ -1114,7 +1114,159 @@ fi
 
 **test framework を確認（必要なら bootstrap）：**
 
+## Test Framework Bootstrap
 
+**既存 test framework + project runtime を detect:**
+
+```bash
+setopt +o nomatch 2>/dev/null || true  # zsh compat
+# Project runtime を detect
+[ -f Gemfile ] && echo "RUNTIME:ruby"
+[ -f package.json ] && echo "RUNTIME:node"
+[ -f requirements.txt ] || [ -f pyproject.toml ] && echo "RUNTIME:python"
+[ -f go.mod ] && echo "RUNTIME:go"
+[ -f Cargo.toml ] && echo "RUNTIME:rust"
+[ -f composer.json ] && echo "RUNTIME:php"
+[ -f mix.exs ] && echo "RUNTIME:elixir"
+# Sub-framework を detect
+[ -f Gemfile ] && grep -q "rails" Gemfile 2>/dev/null && echo "FRAMEWORK:rails"
+[ -f package.json ] && grep -q '"next"' package.json 2>/dev/null && echo "FRAMEWORK:nextjs"
+# 既存 test infrastructure を check
+ls jest.config.* vitest.config.* playwright.config.* .rspec pytest.ini pyproject.toml phpunit.xml 2>/dev/null
+ls -d test/ tests/ spec/ __tests__/ cypress/ e2e/ 2>/dev/null
+# Opt-out marker を check
+[ -f .uzustack/no-test-bootstrap ] && echo "BOOTSTRAP_DECLINED"
+```
+
+**Test framework が detect された場合** (config file or test directory あり):
+Print "Test framework detected: {name} ({N} existing tests). Skipping bootstrap."
+既存 test file を 2-3 個 read して convention を learn (naming / import / assertion style / setup pattern)。
+Phase 8e.5 or Step 7 で使うため convention を prose context として保持。 **bootstrap の残 step を skip。**
+
+**BOOTSTRAP_DECLINED が出た場合:** Print "Test bootstrap previously declined — skipping." **bootstrap の残 step を skip。**
+
+**Runtime が detect できない場合** (config file 不在): AskUserQuestion:
+"I couldn't detect your project's language. What runtime are you using?"
+Options: A) Node.js/TypeScript B) Ruby/Rails C) Python D) Go E) Rust F) PHP G) Elixir H) This project doesn't need tests.
+H 選択 → `.uzustack/no-test-bootstrap` を write、 test なしで続行。
+
+**Runtime detect 済 + test framework なしの場合 — bootstrap:**
+
+### B2. Best practice を research
+
+WebSearch で detect 済 runtime の current best practice を find:
+- `"[runtime] best test framework 2025 2026"`
+- `"[framework A] vs [framework B] comparison"`
+
+WebSearch が unavailable なら、 以下の built-in knowledge table を使う:
+
+| Runtime | Primary recommendation | Alternative |
+|---------|----------------------|-------------|
+| Ruby/Rails | minitest + fixtures + capybara | rspec + factory_bot + shoulda-matchers |
+| Node.js | vitest + @testing-library | jest + @testing-library |
+| Next.js | vitest + @testing-library/react + playwright | jest + cypress |
+| Python | pytest + pytest-cov | unittest |
+| Go | stdlib testing + testify | stdlib only |
+| Rust | cargo test (built-in) + mockall | — |
+| PHP | phpunit + mockery | pest |
+| Elixir | ExUnit (built-in) + ex_machina | — |
+
+### B3. Framework selection
+
+AskUserQuestion:
+"I detected this is a [Runtime/Framework] project with no test framework. I researched current best practices. Here are the options:
+A) [Primary] — [rationale]. Includes: [packages]. Supports: unit, integration, smoke, e2e
+B) [Alternative] — [rationale]. Includes: [packages]
+C) Skip — don't set up testing right now
+RECOMMENDATION: Choose A because [reason based on project context]"
+
+C 選択 → `.uzustack/no-test-bootstrap` を write。 user に告げる: "If you change your mind later, delete `.uzustack/no-test-bootstrap` and re-run." test なしで続行。
+
+複数 runtime が detect された場合 (monorepo) → どの runtime を最初に setup するか ask、 両方を sequential に setup する option も提示。
+
+### B4. Install + configure
+
+1. 選んだ package を install (npm/bun/gem/pip/etc.)
+2. minimal config file を作成
+3. directory 構造を作成 (test/ / spec/ / etc.)
+4. setup が動くことを verify するため project code に match する example test を 1 つ作成
+
+package install が fail → 1 回 debug。 依然 fail → `git checkout -- package.json package-lock.json` で revert (runtime 相当の cmd)。 user に warn して test なしで続行。
+
+### B4.5. 最初の real test
+
+既存 code に対する real test を 3-5 個 generate:
+
+1. **最近 changed file を find:** `git log --since=30.days --name-only --format="" | sort | uniq -c | sort -rn | head -10`
+2. **risk で prioritize:** Error handler > 条件分岐ありの business logic > API endpoint > pure function
+3. **各 file:** meaningful assertion で real behavior を test。 `expect(x).toBeDefined()` は禁止 — code が DOES 何をするかを test。
+4. 各 test を run。 pass → keep。 fail → 1 回 fix。 依然 fail → silent delete。
+5. 最低 1 test、 上限 5。
+
+test file で secret / API key / credential を import しない。 環境変数 or test fixture を使う。
+
+### B5. Verify
+
+```bash
+# full test suite を run して全 動作 を確認
+{detected test command}
+```
+
+test が fail → 1 回 debug。 依然 fail → 全 bootstrap 変更を revert して user に warn。
+
+### B5.5. CI/CD pipeline
+
+```bash
+# CI provider を check
+ls -d .github/ 2>/dev/null && echo "CI:github"
+ls .gitlab-ci.yml .circleci/ bitrise.yml 2>/dev/null
+```
+
+`.github/` 存在 (or CI 未検出 — default で GitHub Actions):
+`.github/workflows/test.yml` を作成、 以下を含める:
+- `runs-on: ubuntu-latest`
+- runtime 用の適切な setup action (setup-node / setup-ruby / setup-python 等)
+- B5 で verify 済の test command
+- Trigger: push + pull_request
+
+GitHub 以外の CI を detect → CI 生成を skip、 note: "Detected {provider} — CI pipeline generation supports GitHub Actions only. Add test step to your existing pipeline manually."
+
+### B6. TESTING.md を作成
+
+最初 check: TESTING.md 既存 → read して update / append、 上書きしない。 既存 content を destroy しない。
+
+TESTING.md に以下を write:
+- Philosophy: "100% test coverage は great vibe coding (= AI と勘で書く実装スタイル) の key — テストがあれば速く動き、 勘を信じ、 自信を持って ship できる。 テストなしの vibe coding は yolo coding に過ぎない。 テストがあれば、 それは superpower。"
+- framework 名 + version
+- test の動かし方 (B5 で verify 済の command)
+- Test layer: Unit test (what / where / when), Integration test, Smoke test, E2E test
+- Convention: file naming / assertion style / setup-teardown pattern
+
+### B7. CLAUDE.md を update
+
+最初 check: CLAUDE.md に既に `## Testing` section → skip。 重複させない。
+
+`## Testing` section を append:
+- Run command + test directory
+- TESTING.md への reference
+- Test expectation:
+  - 100% test coverage が goal — test は vibe coding を safe にする
+  - 新 function を書く時、 対応する test を書く
+  - bug を直す時、 regression test を書く
+  - error handling を追加する時、 その error を trigger する test を書く
+  - conditional (if/else / switch) を追加する時、 両 path の test を書く
+  - 既存 test を fail させる code を絶対 commit しない
+
+### B8. Commit
+
+```bash
+git status --porcelain
+```
+
+変更ありの場合のみ commit。 全 bootstrap file を stage (config / test directory / TESTING.md / CLAUDE.md / 作成済なら .github/workflows/test.yml):
+`git commit -m "chore: bootstrap test framework ({framework name})"`
+
+---
 
 **uzustack designer を探す（optional — target mockup 生成を可能にする）：**
 
