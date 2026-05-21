@@ -1010,7 +1010,44 @@ Design/DX Review）をすべてゼロで追記し、verdict は "NO REVIEWS YET 
 
 PLAN MODE EXCEPTION — always allowed (it's the plan file).
 
+## Step 0: platform と base branch を検出
 
+まず git remote URL から git hosting platform を判別する：
+
+```bash
+git remote get-url origin 2>/dev/null
+```
+
+- URL に "github.com" が含まれる → platform は **GitHub**
+- URL に "gitlab" が含まれる → platform は **GitLab**
+- それ以外: CLI 利用可否を確認：
+  - `gh auth status 2>/dev/null` 成功 → platform は **GitHub** (GitHub Enterprise も含む)
+  - `glab auth status 2>/dev/null` 成功 → platform は **GitLab** (self-hosted も含む)
+  - どちらも不可 → **unknown** (git ネイティブコマンドのみ使用)
+
+この PR/MR が target する branch、または PR/MR が無ければ repo の default branch を判定する。
+結果を以降の全 step で "the base branch" として使う。
+
+**GitHub の場合:**
+1. `gh pr view --json baseRefName -q .baseRefName` — 成功すればそれを使う
+2. `gh repo view --json defaultBranchRef -q .defaultBranchRef.name` — 成功すればそれを使う
+
+**GitLab の場合:**
+1. `glab mr view -F json 2>/dev/null` を実行して `target_branch` field を抽出 — 成功すればそれを使う
+2. `glab repo view -F json 2>/dev/null` を実行して `default_branch` field を抽出 — 成功すればそれを使う
+
+**Git ネイティブ fallback (platform が unknown、または CLI が失敗した場合):**
+1. `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'`
+2. それが失敗: `git rev-parse --verify origin/main 2>/dev/null` → `main` を使う
+3. それが失敗: `git rev-parse --verify origin/master 2>/dev/null` → `master` を使う
+
+全て失敗したら `main` に fallback する。
+
+検出された base branch 名を print する。 以降の `git diff` / `git log` /
+`git fetch` / `git merge` および PR/MR 作成コマンドでは、 指示文中の
+"the base branch" や `<default>` を検出した branch 名に置換して使う。
+
+---
 
 # /claude — Claude による外部視点（Outside Voice）
 
