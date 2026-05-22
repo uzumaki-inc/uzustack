@@ -26,6 +26,18 @@ triggers:
   - なぜ壊れたか
   - 根本原因分析
   - このエラーを調査して
+hooks:
+  PreToolUse:
+    - matcher: "Edit"
+      hooks:
+        - type: command
+          command: "bash $CLAUDE_PROJECT_DIR/.claude/skills/freeze/bin/check-freeze.sh"
+          statusMessage: "デバッグ scope の境界をチェック中..."
+    - matcher: "Write"
+      hooks:
+        - type: command
+          command: "bash $CLAUDE_PROJECT_DIR/.claude/skills/freeze/bin/check-freeze.sh"
+          statusMessage: "デバッグ scope の境界をチェック中..."
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->

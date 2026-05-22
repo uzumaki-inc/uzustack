@@ -6,6 +6,25 @@ uzustack の release notes。フォーマットは [Keep a Changelog](https://ke
 
 ---
 
+## [0.3.6.6] — 2026-05-22
+
+### Added
+
+- **`investigate` skill に hooks block を復活** — upstream `_upstream/gstack/investigate/SKILL.md.tmpl` の `hooks: PreToolUse (Edit + Write → freeze/bin/check-freeze.sh、 debug scope boundary check)` が uzustack 翻訳版で完全消失していた (= 翻訳漏れ) を発見、 復活。 PR #24 で確立した path 規律 (`$CLAUDE_PROJECT_DIR/.claude/skills/<name>/bin/...`) を踏襲。 statusMessage は voice 規約 v1 の English-locked + Japanese gloss pattern で「デバッグ scope の境界をチェック中...」 と翻案 (upstream の mechanism + framing 分離 signal を carry-through)
+- **`docs/uzustack/hook-verification.md` を新規追加** — 4 hook 持ち skill (careful / freeze / guard / investigate) の static audit + functional simulation 結果を集約、 Phase 5 `_upstream-sync/` 設計への申し送り 3 件 (hooks path 翻案 transform / statusMessage voice 翻案規律 / hook output format migration transform 候補) を doc 末尾に記録
+
+### Fixed
+
+- **`freeze/bin/check-freeze.sh` の hook output を新 format に migrate** — 旧 format (`{"permissionDecision":"deny","message":"..."}`) は現行 Claude Code に無視される format で、 freeze hook が silent に block 失敗していた可能性。 `hookSpecificOutput.hookEventName: "PreToolUse"` で wrap + `message` field → `permissionDecisionReason` に置換 + escape pattern (`sed 's/"/\\"/g'`) を `FILE_PATH` / `FREEZE_DIR` 両変数にも適用。 careful/bin/check-careful.sh (PR #24 で先行 migrate 済) と format 完全一致
+
+### Notes
+
+- issue #166 (hook 機構の発動経路の検証 = Phase 4 多 skill 連鎖) を Closes。 Phase 4 cluster epic #152 の最後の残課題、 本 PR で close することで Phase 4 cluster の hooks 機構整合性が確定 (release bundle PR で MINOR bump = Phase 4 完遂宣言の候補)
+- upstream gstack 側の check-freeze.sh は旧 format のままだが、 uzustack の check-careful.sh が PR #24 で既に先行 migrate していたため、 本 PR は内部不整合の解消 (= 既に divergence してる状態の収束) であり upstream tech debt 観測リスト規律の例外条件 (「uzustack が先行 fix 済」 case) に該当
+- upstream tech debt 観測リスト追加 2 件: `_resolve_path()` の fail-silent (path 不存在時 unresolved fallback) + JSON escape の不完全性 (`sed 's/"/\\"/g'` は backslash / 制御文字未対応)
+
+---
+
 ## [0.3.6.5] — 2026-05-21
 
 ### Added

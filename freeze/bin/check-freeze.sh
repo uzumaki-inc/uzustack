@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # check-freeze.sh — /freeze skill の PreToolUse hook
 # stdin から JSON を読み、file_path が freeze 境界内かを check する。
-# block するなら {"permissionDecision":"deny","message":"..."} を、許可なら {} を返す。
+# block するなら hookSpecificOutput permissionDecision: "deny" を、許可なら {} を返す。
 set -euo pipefail
 
 # stdin を読む
@@ -74,6 +74,8 @@ case "$FILE_PATH" in
     mkdir -p ~/.uzustack/analytics 2>/dev/null || true
     echo '{"event":"hook_fire","skill":"freeze","pattern":"boundary_deny","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")'"}' >> ~/.uzustack/analytics/skill-usage.jsonl 2>/dev/null || true
 
-    printf '{"permissionDecision":"deny","message":"[freeze] Blocked: %s は freeze 境界 (%s) の外です。freeze された directory 内の編集のみ許可されます。"}\n' "$FILE_PATH" "$FREEZE_DIR"
+    FILE_PATH_ESC=$(printf '%s' "$FILE_PATH" | sed 's/"/\\"/g')
+    FREEZE_DIR_ESC=$(printf '%s' "$FREEZE_DIR" | sed 's/"/\\"/g')
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[freeze] Blocked: %s は freeze 境界 (%s) の外です。freeze された directory 内の編集のみ許可されます。"}}\n' "$FILE_PATH_ESC" "$FREEZE_DIR_ESC"
     ;;
 esac
