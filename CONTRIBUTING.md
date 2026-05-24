@@ -17,9 +17,9 @@ PR / Issue / 翻訳改善・新スキル提案・バグ修正、いずれの Con
 
 ---
 
-## Phase 進捗（2026-05-17 時点）
+## Phase 進捗（2026-05-24 時点）
 
-uzustack は Phase 0c → 1 → 2 → 3 → 3.5 を経て、**Phase 3 + Phase 3.5 で「型の取り込み」が完了**（PR #120 merged 2026-05-02）。Phase 3.5 完遂時点で **動作する translated skill 26 件 + 14 件（翻訳済 stub） = top-level 40 directory** が揃った状態に到達。 その後 Phase 3.6 + Phase 4 cluster sub-task 1 で **動作する translated skill が 30 件** に増加（履歴は下記）。 守期間全体は Phase 0c〜Phase 6 (Phase 6 完了で守完走) と位置付け、 守破離の **守の完成** は Phase 6（browse 機構実装 + 14 件スキルの動作実装）で達成予定。
+uzustack は Phase 0c → 1 → 2 → 3 → 3.5 を経て、**Phase 3 + Phase 3.5 で「型の取り込み」が完了**（PR #120 merged 2026-05-02）。Phase 3.5 完遂時点で **動作する translated skill 26 件 + 14 件（翻訳済 stub） = top-level 40 directory** が揃った状態に到達。 Phase 3.6（完遂 2026-05-15、 v0.3.5.2）で OSS 公開準備 + 守完走判定 reframe、 続く **Phase 4 cluster「絆を結ぶ」 を v0.4.0.0（2026-05-24、 PR #192 / Closes #183）にて完遂宣言**。 Phase 4 cluster sub-task 1 で **動作する translated skill が 30 件** に増加（履歴は下記）。 守期間全体は Phase 0c〜Phase 6 (Phase 6 完了で守完走) と位置付け、 守破離の **守の完成** は Phase 6（browse 機構実装 + 14 件スキルの動作実装）で達成予定。
 
 **現在の uzustack 状態**：
 
@@ -28,22 +28,23 @@ uzustack は Phase 0c → 1 → 2 → 3 → 3.5 を経て、**Phase 3 + Phase 3.
 - 採用定義: `type: translated` + `status` が空 / `in-progress` / `ACTIVE` のいずれか（= `phase6-reserved` 以外）
 - (1) browser 機構と (2) ワークフロー skill の依存関係: 詳細は [docs/uzustack/phase6-pending-skills.md](docs/uzustack/phase6-pending-skills.md) と [ARCHITECTURE.md](ARCHITECTURE.md#1-browser-機構-と-2-ワークフロー-skill-の依存関係) 参照
 
-**skill 数増減 history（2026-05-02 → 2026-05-17）**：
+**skill 数増減 history（2026-05-02 → 2026-05-24）**：
 
 - Phase 3.5 完遂時（PR #120 merged 2026-05-02）: 動作 **26** 件 + Phase 6 stub 14 件 = top-level 40
 - Phase 3.6 step-82（PR #127 merged 2026-05-04）: learn skill 翻訳化 = 動作 **27** 件
 - Phase 4 PR-A（PR #153 merged 2026-05-15）: freeze + unfreeze pair 翻訳化 = 動作 **29** 件
 - Phase 4 PR-B（PR #154 merged 2026-05-15）: guard 翻訳化（careful + freeze combo）= 動作 **30** 件
 - Phase 4 PR-C（PR #158 merged 2026-05-17）: gstack 専用 dir 削除規律明確化（doc 整理 only、 stub 作成は Phase 6 温存）= 動作 **30** 件（変動なし）
+- Phase 4 後半 PR #173-#192（2026-05-18〜2026-05-24）: preamble core resolver port + hook 機構の発動経路検証 + skill 連鎖検証 + close path 規律補強。 skill 数変動なし（動作 30 件維持）、 v0.4.0.0 で Phase 4 完遂宣言
 
-**Phase 3.6（進行中、 メンテナー個人領域）**：メンテナー個人 Obsidian vault の Approach B Full Migration を 2026-05-05 に実施。 step note の frontmatter schema 完備 + TaskNotes 系 plugin の view configuration を整備し、 Phase 4 着手前の「メンテナー運用基盤」 を確立。 詳細はメンテナー個人領域に閉じる（uzustack repo のコード変更ゼロ）。
+**Phase 3.6（完遂、 メンテナー個人領域）**：メンテナー個人 Obsidian vault の Approach B Full Migration を 2026-05-05 に実施。 step note の frontmatter schema 完備 + TaskNotes 系 plugin の view configuration を整備し、 Phase 4 着手前の「メンテナー運用基盤」 を確立。 詳細はメンテナー個人領域に閉じる（uzustack repo のコード変更ゼロ）。
 
 **Phase 3.6 続き（PR #138 merged 2026-05-09）**：browse 機構必須 14 skill を Phase 6 で実装検討 stub として正式に明文化。 守完走判定 base を 31 → 30 skill に再定義 (= 非依存 28 + optional 2)。 fact-check で devex-review を browse 必須側に reclassify、 autoplan を非依存側に reclassify。 ARCHITECTURE.md / README.md / CONTRIBUTING.md / CHANGELOG.md / docs/uzustack/ + 14 skill SKILL.md.tmpl warning block 統一配置 + 新規 doc 2 件 (phase6-pending-skills.md / phase6-warning-block.md)。 詳細は CHANGELOG.md [0.3.5.1] entry / issue #138 を参照。
 
 **Phase 4 / 5 / 6 への接続**：
 
-- **Phase 4「絆を結ぶ」**: hook + 連鎖機構を runtime 上に実装。`freeze` / `unfreeze` skill pair 翻訳 + `investigate` の hook 復活 + obsidian-audit 系の連鎖実装
-- **Phase 5「記憶が編まれる」**: learnings 機構実装。`{{LEARNINGS_*}}` placeholder 展開 + `learn` skill 翻訳 + マシン間記憶同期 skill 連携
+- **Phase 4「絆を結ぶ」（完遂、 v0.4.0.0、 2026-05-24、 PR #192 / Closes #183）**: hook + 連鎖機構を runtime 上に実装し、 4 軸完備 (= preamble core resolver port + hook 機構の発動経路検証 + skill 連鎖検証 + close path 規律補強)。 `freeze` / `unfreeze` / `guard` skill pair 翻訳 + `investigate` の hook 復活 + skill 連鎖 chain pair 3 件 verdict + bin smoke-test CI gate + `_upstream/gstack/` 直接 import 全廃 + mirror drift detection CI 化を達成。 詳細は [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md) Phase 4 cluster section 参照
+- **Phase 5「橋を架ける」（着手準備、 Phase 4 完遂後）**: upstream 統合の準備段階。 `_upstream-sync/` 骨格設計 + browse 実機検証準備 + 依存グラフ可視化 + Phase 6 の 14 skill 3 選択肢判定の素材集め。 learnings 機構実装 (`{{LEARNINGS_*}}` placeholder wire は v0.3.6.1 / PR-D1 で既に完了済、 残 epic = 学習履歴 storage + `learn` skill 翻訳 + マシン間記憶同期 skill 連携) は Phase 5 と並走または Phase 5 後の別 epic として実施 (元 Phase 5「記憶が編まれる」 framing からの再位置づけ、 v0.4.0.0 で確定)
 - **Phase 6「守の完成」**: browse 機構実装（Playwright + Chromium + browser-manager + Chrome extension）+ 14 件 browse 機構必須スキル (browse / qa / qa-only / canary / benchmark / make-pdf / design-review / design-consultation / devex-review / land-and-deploy / open-uzustack-browser / pair-agent / connect-chrome / setup-browser-cookies) の動作実装。実装が完了した瞬間が **守の完成**
 
 各 Phase の主要 PR # と完遂事項の詳細は [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md) を参照してください。
@@ -330,7 +331,7 @@ push / PR ごとに `bun run skill:validate` を実行し、`type: translated` s
   - `{{PREAMBLE}}` placeholder：Phase 4（v0.3.6.1、PR-D1）で core resolver port 済、空展開から実体（お帰りメッセージ / voice 指令 / lake-intro / confusion protocol / continuous checkpoint / writing style 等）へ移行
   - `{{LEARNINGS_SEARCH}}` / `{{LEARNINGS_LOG}}` placeholder：Phase 3.6（v0.3.5.2、PR #151）で learnings resolver port 済
   - `{{GBRAIN_CONTEXT_LOAD}}` / `{{GBRAIN_SAVE_RESULTS}}` placeholder：未取り込み（後続 PR で対応予定）
-  - `hooks:` frontmatter（`freeze` 等の他 skill との連携）：Phase 4 残作業 #166 で発動経路検証中
+  - `hooks:` frontmatter（`freeze` 等の他 skill との連携）：Phase 4（v0.3.6.6、PR #182 / Closes #166）で発動経路検証完了
   - bash 内の `~/.claude/skills/gstack/bin/*` 呼び出しは uzustack 版バイナリ（`bin/uzustack-config` 等）へ置換
 - **メソッド本体**（Iron Law、Phase 構造、Important Rules、レポート形式 等）は **原文忠実に翻訳**
 

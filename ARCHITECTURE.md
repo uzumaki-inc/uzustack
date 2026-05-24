@@ -70,7 +70,7 @@ skill 実行の中間成果物をプロジェクト別 namespace で保存：
 
 - **プロジェクト別 namespace**：SLUG は `bin/uzustack-slug` が git remote URL から導出（例：`uzumaki-inc-uzustack`）。プロジェクト跨ぎを防ぐ
 - **プロジェクト本体を汚さない**：state は `$HOME` 配下、コード / docs リポジトリには残さない
-- **クロスマシン同期**（Phase 5 で実装予定）：gbrain による Supabase 連携 backup
+- **クロスマシン同期**（Phase 5+ で実装、 元 Phase 5「記憶が編まれる」 framing 由来。 詳細 framing は下記 Phase progression 参照）：gbrain による Supabase 連携 backup
 
 この設計は gstack の pattern（`~/.gstack/projects/{SLUG}/`）を踏襲。
 
@@ -102,7 +102,7 @@ uzustack の runtime は **約 50 個の bin script** + テンプレート機構
 - `uzustack-config` — config 読み書き（`~/.uzustack/config.yaml`）
 - `uzustack-next-version` — VERSION bump（gstack-next-version の翻訳）
 - `dev-setup` / `dev-teardown` — メンテナー symlink 展開 / 解除
-- `uzustack-gbrain-*` — クロスマシン記憶同期 binary（gbrain 系、Phase 5 で本格活用予定）
+- `uzustack-gbrain-*` — クロスマシン記憶同期 binary（gbrain 系、Phase 5+ で本格活用予定。 詳細 framing は下記 Phase progression 参照）
 
 完全リストは `bin/` ディレクトリを直接参照（PR #40 / PR #42 / PR #44 / PR #46 / PR #48 で翻訳）。
 
@@ -147,7 +147,7 @@ voice 規約 v1（Phase 3 bin 翻訳）+ v2（Phase 3.5 plan / strategy / design
 - `checkpoints/` — `context-save` skill の保存先（`{timestamp}-{title}.md`）
 - `timeline.jsonl` — skill 実行の time series log
 - `evals/` — paid eval 結果（gstack 由来、Phase 6 で本格活用）
-- `learnings/` — 学習履歴（Phase 5 で実装予定）
+- `learnings/` — 学習履歴（Phase 5+ で実装予定。 `{{LEARNINGS_*}}` placeholder wire は v0.3.6.1 / PR-D1 で完了済、 残 epic = 学習履歴 storage + 同期 skill 実装）
 - 他、各 skill が必要に応じた sub-directory を作成
 
 **SLUG 解決**：`bin/uzustack-slug` が git remote URL を sanitize して slug 化（例：`https://github.com/uzumaki-inc/uzustack` → `uzumaki-inc-uzustack`）。
@@ -200,9 +200,10 @@ uzustack はこの 2 構成要素を **部分的依存** として引き受け�
 | 段階 | Phase | 状態 |
 |---|---|---|
 | **守** | 0c〜3.5（完了 2026-05-02） | gstack を subtree で取り込み、型を確立。runtime + Type 1 翻訳 + Phase 6 予約スタブ合計 40 skill が揃った |
-| **守** | 3.6（進行中） | 土台を構造化。`_upstream-sync/` directory 設計 + root file 4 件先行取込み + browse 機構必須 14 skill の Phase 6 待ち明文化統一 |
-| **守** | 4 | hook + 連鎖機構（`freeze` / `unfreeze` skill pair 翻訳 + `investigate` の hook 復活）|
-| **破** | 6（着手予定） | browse 機構実装（Playwright + Chromium + browser-manager + extension）。 14 skill の動作実装で守完走判定 30 skill から 43 skill 範囲に拡張 |
+| **守** | 3.6（完遂 2026-05-15、 v0.3.5.2） | 土台を構造化。`_upstream-sync/` directory 設計 + root file 4 件先行取込み + browse 機構必須 14 skill の Phase 6 待ち明文化統一 + 守完走判定 reframe |
+| **守** | 4「絆を結ぶ」（完遂 2026-05-24、 v0.4.0.0、 PR #192 / Closes #183） | hook + 連鎖機構を runtime 上に実装。 4 軸完備 (preamble core resolver port + hook 機構の発動経路検証 + skill 連鎖検証 + close path 規律補強)。 `freeze` / `unfreeze` / `guard` skill pair 翻訳 + `investigate` の hook 復活 + skill 連鎖 chain pair 3 件 verdict + bin smoke-test CI gate + `_upstream/gstack/` 直接 import 全廃 |
+| **守** | 5「橋を架ける」（着手準備） | upstream 統合の準備段階。 `_upstream-sync/` 骨格設計 + browse 実機検証準備 + 依存グラフ可視化 + Phase 6 の 14 skill 3 選択肢判定の素材集め。 learnings 機構実装 (元 Phase 5「記憶が編まれる」 framing) は Phase 5 と並走または Phase 5 後の別 epic として再位置づけ |
+| **守** | 6「守の完成」（着手予定） | browse 機構実装（Playwright + Chromium + browser-manager + Chrome extension）+ 14 skill の動作実装で守完走判定 30 skill から 44 skill 範囲に拡張。 実装が完了した瞬間が **守の完成**。 完成後の Phase 6 で取り得る 3 つの選択肢 (= 完璧複製の継続 / 破への移行 / 撤退) は下記 section 参照 |
 
 各 Phase の主要 PR # と完遂事項の詳細は [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md)、守破離の概念詳細は [README.md](README.md#守破離uzustack-の進化段階) を参照。
 
@@ -281,6 +282,6 @@ git subtree pull --prefix _upstream/gstack https://github.com/garrytan/gstack.gi
 - [CLAUDE.md](CLAUDE.md) — Claude Code session 向け project context
 - [CHANGELOG.md](CHANGELOG.md) — release notes
 - [ETHOS.md](ETHOS.md) — 構築哲学・原則（Boil the Lake / Search Before Building / User Sovereignty / Build for Yourself）
-- [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md) — Phase 0c〜現在（Phase 4 進行中）進捗 + 主要 PR # 内訳
+- [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md) — Phase 0c〜現在（Phase 4 完遂、 Phase 5 着手準備）進捗 + 主要 PR # 内訳
 - [docs/uzustack/translation-voice-guide.md](docs/uzustack/translation-voice-guide.md) — 翻訳 voice ガイド + 訳語表
 - [docs/uzustack/translation-rebase-fixes.md](docs/uzustack/translation-rebase-fixes.md) — rebase 時 uzustack 独自 fix
