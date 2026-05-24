@@ -24,8 +24,8 @@ jobs:
       - uses: actions/checkout@v4
       - id: list
         run: |
-          # destructive (symlink 操作 / uninstall / git init / settings 書込) と library file を除外
-          EXCLUDE='^(dev-setup|dev-teardown|uzustack-gbrain-lib\.sh|uzustack-uninstall|uzustack-brain-uninstall|uzustack-brain-init|uzustack-relink)$'
+          # destructive (symlink 操作 / uninstall / git init/clone / settings 書込) と library file を除外
+          EXCLUDE='^(dev-setup|dev-teardown|uzustack-gbrain-lib\.sh|uzustack-uninstall|uzustack-brain-uninstall|uzustack-brain-init|uzustack-relink|uzustack-gbrain-install)$'
           BINS=$(ls bin/ | grep -vE "$EXCLUDE" | jq -R -s -c 'split("\n") | map(select(length > 0))')
           # F3: empty bin list が silent SUCCESS にならないよう sanity guard
           COUNT=$(echo "$BINS" | jq 'length')

@@ -87,7 +87,8 @@ Step 2 が認識する全 install path のいずれかが symlink の場合、`b
 消す（Step 4 の `git reset --hard origin/main` / `mv "$INSTALL_DIR" "$INSTALL_DIR.bak"`）ため、
 dev-mode では upgrade を実行しない。
 
-Step 2 と同じ 6 path を symlink check 対象にする（順序も Step 2 と同じ）：
+Step 2 の 6 install path 条件を 4 base path に集約して symlink check 対象にする
+（`.git` suffix 重複を除去、 順序は Step 2 と同じ）：
 
 ```bash
 _DEV_LINK=""
@@ -103,11 +104,15 @@ for _CANDIDATE in \
 done
 
 if [ -n "$_DEV_LINK" ]; then
-  _DEV_TARGET=$(readlink "$_DEV_LINK")
+  _DEV_TARGET_RAW=$(readlink "$_DEV_LINK")
   # 相対 symlink の場合に絶対 path を解決 (BSD readlink + GNU readlink 両対応)
-  case "$_DEV_TARGET" in
-    /*) ;;  # already absolute
-    *) _DEV_TARGET=$(cd "$(dirname "$_DEV_LINK")" 2>/dev/null && cd "$_DEV_TARGET" 2>/dev/null && pwd) ;;
+  case "$_DEV_TARGET_RAW" in
+    /*) _DEV_TARGET="$_DEV_TARGET_RAW" ;;  # already absolute
+    *)
+      _DEV_TARGET=$(cd "$(dirname "$_DEV_LINK")" 2>/dev/null && cd "$_DEV_TARGET_RAW" 2>/dev/null && pwd)
+      # dangling 相対 symlink: cd chain が失敗したら raw readlink 出力を fallback
+      [ -z "$_DEV_TARGET" ] && _DEV_TARGET="$_DEV_TARGET_RAW"
+      ;;
   esac
   echo "DEV_MODE_DETECTED: $_DEV_LINK → $_DEV_TARGET"
   echo "Skipping upgrade — your symlinked working tree is the source of truth."
