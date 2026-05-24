@@ -1,0 +1,86 @@
+name: bin smoke test
+
+# Phase 4 L2-19 class regression gate.
+# 全 bin/ entry に --help → no-args の順で smoke run、
+# stderr に import error / stack trace が出たら fail。
+# 副作用 (file write / network / symlink 操作) は exclude list で除外。
+
+on:
+  pull_request:
+    paths:
+      - 'bin/**'
+      - '_upstream/gstack/test/helpers/**'
+      - '.github/workflows/bin-smoke-test.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      bins: ${{ steps.list.outputs.bins }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        run: |
+          # destructive (symlink 操作 / uninstall / git init/clone / settings 書込) と library file を除外
+          EXCLUDE='^(dev-setup|dev-teardown|uzustack-gbrain-lib\.sh|uzustack-uninstall|uzustack-brain-uninstall|uzustack-brain-init|uzustack-relink|uzustack-gbrain-install)$'
+          BINS=$(ls bin/ | grep -vE "$EXCLUDE" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          # F3: empty bin list が silent SUCCESS にならないよう sanity guard
+          COUNT=$(echo "$BINS" | jq 'length')
+          if [ "$COUNT" -lt 30 ]; then
+            echo "::error::discover found only $COUNT bins (expected >= 30). EXCLUDE regex too broad?"
+            exit 1
+          fi
+          echo "bins=$BINS" >> "$GITHUB_OUTPUT"
+          echo "Discovered $COUNT bins:"
+          echo "$BINS" | jq -r '.[]'
+
+  smoke-test:
+    needs: discover
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    strategy:
+      fail-fast: false
+      matrix:
+        bin: ${{ fromJson(needs.discover.outputs.bins) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: smoke test ${{ matrix.bin }}
+        env:
+          BIN_NAME: ${{ matrix.bin }}
+        run: |
+          set +e
+          BIN="bin/$BIN_NAME"
+
+          # Step 1: --help 試行 (flag invoke path)
+          HELP_STDERR=$(timeout 15 "$BIN" --help 2>&1 >/dev/null)
+          HELP_CODE=$?
+          COMBINED_STDERR="$HELP_STDERR"
+
+          # Step 2: --help が cleanly 走らなかったら no-args fallback
+          # (= bin が --help を持たない、 または usage exit する)
+          if [ "$HELP_CODE" -ne 0 ]; then
+            NOARG_STDERR=$(timeout 15 "$BIN" 2>&1 >/dev/null)
+            COMBINED_STDERR="$HELP_STDERR
+          --- no-args fallback ---
+          $NOARG_STDERR"
+          fi
+
+          # Step 3: import error / stack trace pattern check
+          # L2-19 class = "Cannot find module" 系を catch
+          # 注: `^FATAL:` 単独は legitimate な uncaught exception (e.g. bin/uzustack-model-benchmark
+          # line 166 `console.error('FATAL:', err)`) を false-positive で catch するため除外。
+          # FATAL を伴う import error は MODULE_NOT_FOUND 等の別 alternation で catch される。
+          PATTERN='Cannot find module|Cannot find package|MODULE_NOT_FOUND|ERR_MODULE_NOT_FOUND|^Traceback|^TypeError:|^ReferenceError:|^SyntaxError:|at file:///|at /home/runner/'
+          if echo "$COMBINED_STDERR" | grep -qE "$PATTERN"; then
+            echo "::error file=bin/$BIN_NAME::FAIL: import error or stack trace detected"
+            echo "--- stderr ---"
+            echo "$COMBINED_STDERR"
+            exit 1
+          fi
+          echo "PASS: $BIN_NAME (help_code=$HELP_CODE)"
