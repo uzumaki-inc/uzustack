@@ -6,6 +6,42 @@ uzustack の release notes。フォーマットは [Keep a Changelog](https://ke
 
 ---
 
+## [0.4.0.0] — 2026-05-24
+
+**Phase 4 cluster 「絆を結ぶ」 完遂宣言。** Phase 4 cluster epic #152 (= preamble core resolver port + skill 連鎖検証 + close path 規律補強) の全 acceptance を満たし MINOR bump で release。
+
+### Added
+
+- **bin smoke-test CI gate** — `.github/workflows/bin-smoke-test.yml` 新規。 `bin/` 配下の uzustack-prefixed 約 44 個を `--help` で smoke-run、 import 解決 / 構造的破綻 / dev-mode skip 整合性を PR ごとに verify。 path drift / hooks bash 失敗 / dev-symlink 不整合 を再発防止。 EXCLUDE 規律 (`uzustack-brain-init` / `uzustack-relink` / `uzustack-gbrain-install` 等の non-help binary) + dangling symlink fallback + 4-base-path dev-mode 検出を装備 (PR #187 / Closes #186)
+- **mirror file drift detection CI 化** — bin-smoke-test workflow に `drift-check` job 追加。 `test/helpers/` の 7 mirror file (benchmark-runner / benchmark-judge / pricing + providers/{types,claude,gpt,gemini}) について upstream との bit-for-bit 比較 (= 各 file 冒頭 5 行 drift 確認 JSDoc header を除く)。 subtree pull 月次 PR で drift があれば CI fail (PR #191 / Closes #188)
+- **CONTRIBUTING.md に mirror sync 規律 section 追加** — uzustack コードが `_upstream/gstack/` を直接 import しないよう、 mirror 複製した file の subtree pull 後の手動 sync 手順を明文化。 bash snippet は `$(head -5)` の trailing newline strip bug を回避する file-based merge approach (= `head -5 > tmp; cat tmp upstream > local`) で 5 行 header の line 5 空行を保持
+
+### Changed
+
+- **`scripts/resolvers/browse.ts` の `_upstream/gstack/browse/src/commands.ts` 直接 import を inline 化** — `COMMAND_DESCRIPTIONS` 定数 (browse コマンド名 / カテゴリ / 説明文の対応表 90 行) を file 内に inline 複製。 冒頭 JSDoc に「upstream `_upstream/gstack/browse/src/commands.ts` line 87-177 からの data clone、 subtree pull 時に drift していないか手動 sync 確認」 を明記 (PR #191)
+- **`bin/uzustack-model-benchmark` の 5 import path を `_upstream/gstack/test/helpers/` 直接 import から `test/helpers/` mirror 経由に切替** — uzustack root に `test/helpers/` + `test/helpers/providers/` の 7 file を upstream から mirror 複製。 self-contained (= 7 file 内 relative import 閉じている) + 各 file 冒頭 drift 確認 JSDoc 5 行 prepend (PR #191)
+- **`uzustack-upgrade` skill に dev-mode 検出 + skip 案内追加** — symlinked dev install (`bin/dev-setup` で展開) の場合、 upgrade を skip して案内表示。 4 base path (`~/src/uzustack` / `~/uzustack` / `~/code/uzustack` / cwd) + 相対 symlink target 絶対 path 解決 + dangling symlink fallback で dev-mode 確実検出 (PR #187 / Closes #186 L2-18)
+
+### Fixed
+
+- **`bin/uzustack-model-benchmark` の `_upstream/gstack/test/helpers/` 直接 import を解消** — 元 PR #176 でテンプレ翻訳時に L2-19 として導入された問題、 PR #187 で D4 (A2 hybrid) として「`_upstream` 直接 import 維持」 path で一旦 land したが、 設計規律「subtree pull 上書き領域への依存を全廃」 に照らして B 方針 (= 両 site とも file 複製) で revert + 永続解決 (PR #191 / Closes #188)
+- **`investigate` skill の hooks block を翻訳漏れから復活** — upstream `_upstream/gstack/investigate/SKILL.md.tmpl` の `hooks: PreToolUse (Edit + Write → freeze/bin/check-freeze.sh、 debug scope boundary check)` が uzustack 翻訳版で完全消失していた。 復活 + statusMessage を voice 規約 v1 の English-locked + Japanese gloss pattern で「デバッグ scope の境界をチェック中...」 と翻案 (PR #182 / Closes #166)
+- **`freeze/bin/check-freeze.sh` の hook output を新 format に migrate** — 旧 format (`{"permissionDecision":"deny","message":"..."}`) は現行 Claude Code に無視される format で、 freeze hook が silent に block 失敗していた可能性。 `hookSpecificOutput.hookEventName: "PreToolUse"` で wrap + `message` field → `permissionDecisionReason` に置換 (PR #182)
+- **`package.json` version の long-standing drift 修正** — `VERSION` file = 0.3.6.6 に対して `package.json.version` = 0.3.6.1 で historic skew があった。 本 release で 0.4.0.0 に sync、 以降は `/ship` Step 12 idempotency check (DRIFT_STALE_PKG state) が自動検知
+
+### Notes
+
+- **Phase 4 cluster epic #152 = Closes #183 (Phase 4 完遂宣言)**。 4 軸完備:
+  1. preamble core resolver port (PR #173 〜 PR #181、 v0.3.6.0 〜 v0.3.6.5)
+  2. hook 機構の発動経路検証 (PR #182、 v0.3.6.6 / Closes #166)
+  3. skill 連鎖検証 (PR #182 chain pair 3 件 + L1/L2 batched verify)
+  4. close path 規律補強 (PR #187 / Closes #186 + PR #191 / Closes #188)
+- **stacked PR pattern の事故 + 復旧記録**: PR #189 を `--delete-branch` で先行 PR #187 を merge した結果、 base branch 削除で auto-close + reopen 不可になった。 PR #191 として same head branch を main base で resurrection、 audit trail として PR #189 (CLOSED) を保持。 次回以降は stacked PR の base は `--delete-branch` を flag せず保持する規律 (= 学習候補)
+- **#190 close 経緯**: PR #189/#191 起票時に follow-up として `browse.ts inline COMMAND_DESCRIPTIONS の drift detection CI 化` issue を起票したが、 workflow.md 規律「step 着手 = issue 起票を機械適用しない」 に照らして browse skill 実装方針未決定段階での先走起票として close。 browse skill 実装方針確定後に再評価
+- **release bundle MINOR bump = Phase 4 完遂宣言の signal**: gstack convention の 4-tuple monotonic では MINOR bump (= 2 桁目) は「mini-milestone」、 守破離の守期間中の Phase cluster 完遂タイミングで使用。 次は Phase 5「橋を架ける」 着手
+
+---
+
 ## [0.3.6.6] — 2026-05-22
 
 ### Added
