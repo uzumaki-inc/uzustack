@@ -81,6 +81,27 @@ echo "$_REMOTE_VER $_NEW_LEVEL $(date +%s)" > "$_SNOOZE_FILE"
 ユーザーに伝える：「Update checks disabled. Run `~/.claude/skills/uzustack/bin/uzustack-config set update_check true` to re-enable.」
 現在の skill を継続する。
 
+### Step 1.5: dev-mode（メンテナー作業環境）を検出して skip
+
+`$HOME/.claude/skills/uzustack` が symlink の場合、`bin/dev-setup` で活性化された
+**メンテナー dev-mode** である。upgrade フローは working tree の commit されていない変更を silent に
+消す（Step 4 の `git reset --hard origin/main` / `mv "$INSTALL_DIR" "$INSTALL_DIR.bak"`）ため、
+dev-mode では upgrade を実行しない。
+
+```bash
+if [ -L "$HOME/.claude/skills/uzustack" ]; then
+  _DEV_TARGET=$(readlink "$HOME/.claude/skills/uzustack")
+  echo "DEV_MODE_DETECTED: symlink → $_DEV_TARGET"
+  echo "Skipping upgrade — your symlinked working tree is the source of truth."
+  echo "To pull upstream changes, run 'cd $_DEV_TARGET && git pull' yourself."
+  echo "To exit dev-mode, run 'bin/dev-teardown' in the repo, then '/uzustack-upgrade' again."
+  exit 0
+fi
+```
+
+bash block が `DEV_MODE_DETECTED:` を出力した場合、Step 2 以降の全 step を skip して
+ユーザーへの案内を伝えて終了する。
+
 ### Step 2: install type を判別
 
 ```bash
@@ -248,6 +269,19 @@ What's New を表示した後、ユーザーが元々呼び出していた skill
 ## Standalone usage
 
 `/uzustack-upgrade` を直接呼び出した場合（preamble 経由でない場合）：
+
+0. dev-mode 検出（メンテナー作業環境では skip、 上記 Inline flow Step 1.5 と同等）：
+```bash
+if [ -L "$HOME/.claude/skills/uzustack" ]; then
+  _DEV_TARGET=$(readlink "$HOME/.claude/skills/uzustack")
+  echo "DEV_MODE_DETECTED: symlink → $_DEV_TARGET"
+  echo "Skipping upgrade — your symlinked working tree is the source of truth."
+  echo "To pull upstream changes, run 'cd $_DEV_TARGET && git pull' yourself."
+  echo "To exit dev-mode, run 'bin/dev-teardown' in the repo, then '/uzustack-upgrade' again."
+  exit 0
+fi
+```
+`DEV_MODE_DETECTED:` が出た場合、以降の step を skip してユーザーへの案内を伝えて終了する。
 
 1. fresh な update check を強制（cache を bypass）：
 ```bash
