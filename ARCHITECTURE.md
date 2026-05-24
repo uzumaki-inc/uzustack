@@ -281,6 +281,6 @@ git subtree pull --prefix _upstream/gstack https://github.com/garrytan/gstack.gi
 - [CLAUDE.md](CLAUDE.md) — Claude Code session 向け project context
 - [CHANGELOG.md](CHANGELOG.md) — release notes
 - [ETHOS.md](ETHOS.md) — 構築哲学・原則（Boil the Lake / Search Before Building / User Sovereignty / Build for Yourself）
-- [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md) — Phase 0c〜現在（Phase 4 進行中）進捗 + 主要 PR # 内訳
+- [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md) — Phase 0c〜現在（Phase 4 完遂、 Phase 5 着手準備）進捗 + 主要 PR # 内訳
 - [docs/uzustack/translation-voice-guide.md](docs/uzustack/translation-voice-guide.md) — 翻訳 voice ガイド + 訳語表
 - [docs/uzustack/translation-rebase-fixes.md](docs/uzustack/translation-rebase-fixes.md) — rebase 時 uzustack 独自 fix

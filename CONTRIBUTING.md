@@ -330,7 +330,7 @@ push / PR ごとに `bun run skill:validate` を実行し、`type: translated` s
   - `{{PREAMBLE}}` placeholder：Phase 4（v0.3.6.1、PR-D1）で core resolver port 済、空展開から実体（お帰りメッセージ / voice 指令 / lake-intro / confusion protocol / continuous checkpoint / writing style 等）へ移行
   - `{{LEARNINGS_SEARCH}}` / `{{LEARNINGS_LOG}}` placeholder：Phase 3.6（v0.3.5.2、PR #151）で learnings resolver port 済
   - `{{GBRAIN_CONTEXT_LOAD}}` / `{{GBRAIN_SAVE_RESULTS}}` placeholder：未取り込み（後続 PR で対応予定）
-  - `hooks:` frontmatter（`freeze` 等の他 skill との連携）：Phase 4 残作業 #166 で発動経路検証中
+  - `hooks:` frontmatter（`freeze` 等の他 skill との連携）：Phase 4（v0.3.6.6、PR #182 / Closes #166）で発動経路検証完了
   - bash 内の `~/.claude/skills/gstack/bin/*` 呼び出しは uzustack 版バイナリ（`bin/uzustack-config` 等）へ置換
 - **メソッド本体**（Iron Law、Phase 構造、Important Rules、レポート形式 等）は **原文忠実に翻訳**
 
