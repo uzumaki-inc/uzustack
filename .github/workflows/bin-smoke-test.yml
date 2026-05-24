@@ -9,6 +9,7 @@ on:
   pull_request:
     paths:
       - 'bin/**'
+      - 'test/helpers/**'
       - '_upstream/gstack/test/helpers/**'
       - '.github/workflows/bin-smoke-test.yml'
   push:
@@ -16,6 +17,46 @@ on:
   workflow_dispatch:
 
 jobs:
+  drift-check:
+    # test/helpers/ mirror が upstream と bit-for-bit 同期しているか検証 (header 5 行除く)。
+    # #188 で確立した mirror 規律を CI で enforce。
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - name: verify test/helpers/ mirror in sync with _upstream
+        run: |
+          set +e
+          MIRRORS="benchmark-runner.ts benchmark-judge.ts pricing.ts providers/types.ts providers/claude.ts providers/gpt.ts providers/gemini.ts"
+          DRIFT=0
+          for f in $MIRRORS; do
+            LOCAL="test/helpers/$f"
+            UPSTREAM="_upstream/gstack/test/helpers/$f"
+            if [ ! -f "$LOCAL" ]; then
+              echo "::error file=$LOCAL::missing mirror file"
+              DRIFT=1
+              continue
+            fi
+            if [ ! -f "$UPSTREAM" ]; then
+              echo "::error file=$UPSTREAM::missing upstream source — file may have been moved/deleted by subtree pull. update mirror or fix grep target."
+              DRIFT=1
+              continue
+            fi
+            if ! diff -q <(tail -n +6 "$LOCAL") "$UPSTREAM" > /dev/null 2>&1; then
+              echo "::error file=$LOCAL::DRIFT detected: $LOCAL differs from $UPSTREAM (modulo 5-line header)"
+              echo "--- drift diff ---"
+              diff <(tail -n +6 "$LOCAL") "$UPSTREAM" | head -30
+              DRIFT=1
+            fi
+          done
+          if [ "$DRIFT" -eq 0 ]; then
+            echo "All 7 mirror files in sync with upstream ✓"
+          else
+            echo ""
+            echo "FIX: re-run 'cp _upstream/gstack/test/helpers/<file> test/helpers/<file>' then re-prepend the 5-line header. See CONTRIBUTING.md mirror-sync section."
+          fi
+          exit "$DRIFT"
+
   discover:
     runs-on: ubuntu-latest
     outputs:
