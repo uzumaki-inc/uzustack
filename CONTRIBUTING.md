@@ -209,7 +209,7 @@ uzustack は upstream の以下 2 site を **mirror 複製** で参照してい�
 
 **自動 drift detection（CI 化済）**: `.github/workflows/bin-smoke-test.yml` の `drift-check` job が PR ごとに `test/helpers/` 側 mirror が upstream と bit-for-bit 一致しているか（header 5 行除く）を verify します。 drift があれば `::error` で fail。
 
-注: browse.ts inline COMMAND_DESCRIPTIONS の drift detection は #190 で別途追跡（regex 抽出 + 比較が必要なため別 scope）。 現状は手動 review に依存。
+注: browse.ts inline COMMAND_DESCRIPTIONS の drift detection は手動 review に依存（regex 抽出 + 比較が必要で test/helpers/ の file-level diff より複雑）。 browse skill 実装方針 (= upstream browse.ts 全体に対する戦略) 確定後に CI 化判断する。
 
 **subtree pull 後の手動 sync 手順**: 月次の subtree pull PR で `_upstream/gstack/test/helpers/<file>` が更新されていた場合、 同 PR 内で uzustack 側 mirror も update：
 
