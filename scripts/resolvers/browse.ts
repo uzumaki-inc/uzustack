@@ -2,13 +2,15 @@
  * Browse resolver — COMMAND_REFERENCE / SNAPSHOT_FLAGS / BROWSE_SETUP を emit。
  *
  * uzustack には browse binary の実体 source (browse/src/) が無い (Phase 6 予約)。
- * このため:
- * - COMMAND_DESCRIPTIONS は upstream gstack の data export から import (commands.ts は
- *   playwright / diff package を runtime import しない pure data なので安全)。
+ * このため 2 site とも upstream からの data clone を本 file 内に inline:
+ * - COMMAND_DESCRIPTIONS は upstream `_upstream/gstack/browse/src/commands.ts` line 87-177
+ *   の data clone (issue #188 / PR #189 で _upstream 直接 import を全廃、 詳細 JSDoc は
+ *   定数定義直前を参照)。
  * - SNAPSHOT_FLAGS は upstream の snapshot.ts が `import * as Diff from 'diff'` 経由で
  *   未インストール package を引きずるため、 データ部のみ local に inline。
- *   月次 subtree pull で _upstream/gstack/browse/src/snapshot.ts の SNAPSHOT_FLAGS と
- *   drift していないか手動 sync 確認すること。
+ * 月次 subtree pull で `_upstream/gstack/browse/src/commands.ts` と
+ * `_upstream/gstack/browse/src/snapshot.ts` の両 data と drift していないか手動 sync 確認すること
+ * (mirror sync 手順は CONTRIBUTING.md「mirror file の sync」 section 参照)。
  */
 import type { TemplateContext } from './types';
 

@@ -204,7 +204,8 @@ uzustack は upstream の以下 2 site を **mirror 複製** で参照してい�
 | uzustack 側 | upstream | 複製方式 |
 |---|---|---|
 | `test/helpers/` (7 file) | `_upstream/gstack/test/helpers/` | file mirror（各 file 冒頭に 5 行 drift 確認 JSDoc を prepend） |
-| `scripts/resolvers/browse.ts` の inline `COMMAND_DESCRIPTIONS` | `_upstream/gstack/browse/src/commands.ts` line 87-177 | data inline |
+| `scripts/resolvers/browse.ts` の inline `COMMAND_DESCRIPTIONS` | `_upstream/gstack/browse/src/commands.ts` line 87-177 | data inline（issue #188 / PR #189 で _upstream 直接 import を全廃） |
+| `scripts/resolvers/browse.ts` の inline `SNAPSHOT_FLAGS` | `_upstream/gstack/browse/src/snapshot.ts` line 53-70 | data inline（Phase 3 以前から、 upstream snapshot.ts の `import * as Diff from 'diff'` 依存を避けるため） |
 
 **自動 drift detection（CI 化済）**: `.github/workflows/bin-smoke-test.yml` の `drift-check` job が PR ごとに `test/helpers/` 側 mirror が upstream と bit-for-bit 一致しているか（header 5 行除く）を verify します。 drift があれば `::error` で fail。
 
@@ -213,13 +214,17 @@ uzustack は upstream の以下 2 site を **mirror 複製** で参照してい�
 **subtree pull 後の手動 sync 手順**: 月次の subtree pull PR で `_upstream/gstack/test/helpers/<file>` が更新されていた場合、 同 PR 内で uzustack 側 mirror も update：
 
 ```bash
-# 1. 該当 mirror file を upstream から再 copy（5 行 header を保持しつつ）
+# 1. 該当 mirror file を upstream から再 copy（5 行 header を保持しつつ、 file-based merge で
+#    line 5 の空行も保持する。 bash の $(head -5 ...) は trailing newlines を strip するため
+#    HEADER 変数経由だと line 5 空行が失われて drift detection が永続 fail する）
 for f in benchmark-runner.ts benchmark-judge.ts pricing.ts providers/types.ts providers/claude.ts providers/gpt.ts providers/gemini.ts; do
-  if ! diff -q <(tail -n +6 "test/helpers/$f") "_upstream/gstack/test/helpers/$f" > /dev/null 2>&1; then
-    HEADER=$(head -5 "test/helpers/$f")
-    cp "_upstream/gstack/test/helpers/$f" "test/helpers/$f"
-    # 既存 header を再 prepend
-    printf '%s\n%s' "$HEADER" "$(cat test/helpers/$f)" > "test/helpers/$f"
+  LOCAL="test/helpers/$f"
+  UPSTREAM="_upstream/gstack/test/helpers/$f"
+  if ! diff -q <(tail -n +6 "$LOCAL") "$UPSTREAM" > /dev/null 2>&1; then
+    HEADER_TMP=$(mktemp)
+    head -5 "$LOCAL" > "$HEADER_TMP"
+    cat "$HEADER_TMP" "$UPSTREAM" > "$LOCAL"
+    rm -f "$HEADER_TMP"
     echo "synced: $f"
   fi
 done
