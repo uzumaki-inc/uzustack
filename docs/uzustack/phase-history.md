@@ -111,7 +111,7 @@ uzustack の **初回 OSS 公開** と、それに伴う **守完走判定の再
 - **PR-D4a** (v0.3.6.4、 PR #180、 Refs #176): design resolver port、 10 placeholder を stub から wired に切替
 - **PR-D4b** (v0.3.6.5、 PR #181、 **Closes #176**): review + testing + review-army resolvers port、 17 placeholder を stub から wired に切替、 issue #176「preamble + resolvers 翻訳完遂」 を完遂
 
-PR-D1〜PR-D4b の累積で stub 43 placeholder のうち 42 件が実体に wire、 残 1 件は host=codex 時の意図的空展開 (`REVIEW_ARMY` 等)。 PR-D4b の Closes #176 = 「preamble + resolvers 翻訳完遂」 を意味する。
+PR-D1〜PR-D4b の累積で stub 43 placeholder を全て実体に wire (= 残 stub 0)。 PR-D4b の Closes #176 = 「preamble + resolvers 翻訳完遂」 を意味する。 一部 placeholder (例: `REVIEW_ARMY` / `CODEX_SECOND_OPINION` / `ADVERSARIAL_STEP` / `CODEX_PLAN_REVIEW`) は host=codex 時に runtime 内部で空文字列を返す挙動 (= wire はされているが output が空)、 これは「placeholder が stub のまま」 とは別概念。
 
 ### Phase 4 軸 2: hook 機構の発動経路検証 (PR #182、 v0.3.6.6、 Closes #166)
 

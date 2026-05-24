@@ -44,7 +44,7 @@ uzustack は Phase 0c → 1 → 2 → 3 → 3.5 を経て、**Phase 3 + Phase 3.
 **Phase 4 / 5 / 6 への接続**：
 
 - **Phase 4「絆を結ぶ」（完遂、 v0.4.0.0、 2026-05-24、 PR #192 / Closes #183）**: hook + 連鎖機構を runtime 上に実装し、 4 軸完備 (= preamble core resolver port + hook 機構の発動経路検証 + skill 連鎖検証 + close path 規律補強)。 `freeze` / `unfreeze` / `guard` skill pair 翻訳 + `investigate` の hook 復活 + skill 連鎖 chain pair 3 件 verdict + bin smoke-test CI gate + `_upstream/gstack/` 直接 import 全廃 + mirror drift detection CI 化を達成。 詳細は [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md) Phase 4 cluster section 参照
-- **Phase 5「橋を架ける」（着手準備、 Phase 4 完遂後）**: upstream 統合の準備段階。 `_upstream-sync/` 骨格設計 + browse 実機検証準備 + 依存グラフ可視化 + Phase 6 の 14 skill 3 選択肢判定の素材集め。 learnings 機構実装 (`{{LEARNINGS_*}}` placeholder 展開 + `learn` skill 翻訳 + マシン間記憶同期 skill 連携) は Phase 5 と並走または Phase 5 後の別 epic として実施 (元 Phase 5「記憶が編まれる」 framing からの再位置づけ、 v0.4.0.0 で確定)
+- **Phase 5「橋を架ける」（着手準備、 Phase 4 完遂後）**: upstream 統合の準備段階。 `_upstream-sync/` 骨格設計 + browse 実機検証準備 + 依存グラフ可視化 + Phase 6 の 14 skill 3 選択肢判定の素材集め。 learnings 機構実装 (`{{LEARNINGS_*}}` placeholder wire は v0.3.6.1 / PR-D1 で既に完了済、 残 epic = 学習履歴 storage + `learn` skill 翻訳 + マシン間記憶同期 skill 連携) は Phase 5 と並走または Phase 5 後の別 epic として実施 (元 Phase 5「記憶が編まれる」 framing からの再位置づけ、 v0.4.0.0 で確定)
 - **Phase 6「守の完成」**: browse 機構実装（Playwright + Chromium + browser-manager + Chrome extension）+ 14 件 browse 機構必須スキル (browse / qa / qa-only / canary / benchmark / make-pdf / design-review / design-consultation / devex-review / land-and-deploy / open-uzustack-browser / pair-agent / connect-chrome / setup-browser-cookies) の動作実装。実装が完了した瞬間が **守の完成**
 
 各 Phase の主要 PR # と完遂事項の詳細は [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md) を参照してください。
