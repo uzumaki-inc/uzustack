@@ -197,6 +197,53 @@ gh pr create
 
 自動 PR の中に翻訳済み skill（`type: translated`）の上流変更が含まれていたら、[翻訳ガイド](#翻訳ガイドgstack-の英語スキルを翻訳する場合) の「rebase の手順」を参照して再翻訳します。uzustack 独自部分（`type: native`）は gstack 更新と無関係。
 
+### mirror file の sync（test/helpers/ + browse.ts inline COMMAND_DESCRIPTIONS）
+
+uzustack は upstream の以下 2 site を **mirror 複製** で参照しています（issue #188 / PR #189 で確立、 uzustack コードから `_upstream/gstack/` への直接 import を全廃するため）：
+
+| uzustack 側 | upstream | 複製方式 |
+|---|---|---|
+| `test/helpers/` (7 file) | `_upstream/gstack/test/helpers/` | file mirror（各 file 冒頭に 5 行 drift 確認 JSDoc を prepend） |
+| `scripts/resolvers/browse.ts` の inline `COMMAND_DESCRIPTIONS` | `_upstream/gstack/browse/src/commands.ts` line 87-177 | data inline（issue #188 / PR #189 で _upstream 直接 import を全廃） |
+| `scripts/resolvers/browse.ts` の inline `SNAPSHOT_FLAGS` | `_upstream/gstack/browse/src/snapshot.ts` line 53-70 | data inline（Phase 3 以前から、 upstream snapshot.ts の `import * as Diff from 'diff'` 依存を避けるため） |
+
+**自動 drift detection（CI 化済）**: `.github/workflows/bin-smoke-test.yml` の `drift-check` job が PR ごとに `test/helpers/` 側 mirror が upstream と bit-for-bit 一致しているか（header 5 行除く）を verify します。 drift があれば `::error` で fail。
+
+注: browse.ts inline COMMAND_DESCRIPTIONS の drift detection は手動 review に依存（regex 抽出 + 比較が必要で test/helpers/ の file-level diff より複雑）。 browse skill 実装方針 (= upstream browse.ts 全体に対する戦略) 確定後に CI 化判断する。
+
+**subtree pull 後の手動 sync 手順**: 月次の subtree pull PR で `_upstream/gstack/test/helpers/<file>` が更新されていた場合、 同 PR 内で uzustack 側 mirror も update：
+
+```bash
+# 1. 該当 mirror file を upstream から再 copy（5 行 header を保持しつつ、 file-based merge で
+#    line 5 の空行も保持する。 bash の $(head -5 ...) は trailing newlines を strip するため
+#    HEADER 変数経由だと line 5 空行が失われて drift detection が永続 fail する）
+for f in benchmark-runner.ts benchmark-judge.ts pricing.ts providers/types.ts providers/claude.ts providers/gpt.ts providers/gemini.ts; do
+  LOCAL="test/helpers/$f"
+  UPSTREAM="_upstream/gstack/test/helpers/$f"
+  if ! diff -q <(tail -n +6 "$LOCAL") "$UPSTREAM" > /dev/null 2>&1; then
+    HEADER_TMP=$(mktemp)
+    head -5 "$LOCAL" > "$HEADER_TMP"
+    cat "$HEADER_TMP" "$UPSTREAM" > "$LOCAL"
+    rm -f "$HEADER_TMP"
+    echo "synced: $f"
+  fi
+done
+
+# 2. local で drift-check 同等 logic を verify
+bash -c '
+MIRRORS="benchmark-runner.ts benchmark-judge.ts pricing.ts providers/types.ts providers/claude.ts providers/gpt.ts providers/gemini.ts"
+for f in $MIRRORS; do
+  diff -q <(tail -n +6 "test/helpers/$f") "_upstream/gstack/test/helpers/$f" > /dev/null || echo "DRIFT: $f"
+done
+'
+```
+
+drift detection が catch する failure mode:
+- file 削除 / rename（= `LOCAL` または `UPSTREAM` 不在 → `::error` + 該当 file 名表示）
+- content drift（= 内容差分 → `diff` head -30 で内容表示）
+
+**新規 mirror site の追加手順**: 将来 upstream の別 file を mirror する場合、 (1) `test/helpers/` 配下に複製、 (2) 5 行 header prepend、 (3) workflow の `MIRRORS` 環境変数に追加、 (4) 本 section の table に追記。
+
 ### `_upstream/gstack/setup` を実行しない（effect 軸）
 
 **禁止**：`_upstream/gstack/setup` の execution。 invocation method (= cd した手動 invocation / `bun test` 経由 / bin script からの spawn / 他いずれの経路でも) に関わらず、 **gstack setup script の execution 自体が禁止**。
