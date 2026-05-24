@@ -92,7 +92,9 @@ uzustack の **初回 OSS 公開** と、それに伴う **守完走判定の再
 
 ## Phase 4 cluster — 絆を結ぶ（PR #128〜PR #192、 完遂）
 
-**contributor 受け入れ準備の足腰** を固める段階。voice 規約の機械チェック基盤 + 並走発火源 skill の翻訳化 + CI gating の役割分離 + preamble core resolver port + hook 機構の発動経路検証 + skill 連鎖検証 + close path 規律補強の 4 軸完備で **v0.4.0.0（2026-05-24、 PR #192 / Closes #183）** にて完遂宣言。
+**contributor 受け入れ準備の足腰** を固める段階。voice 規約の機械チェック基盤 + 並走発火源 skill の翻訳化 + CI gating の役割分離 + preamble core resolver port + hook 機構の発動経路検証 + skill 連鎖検証 + close path 規律補強を経て、 **4 軸完備** で **v0.4.0.0（2026-05-24、 PR #192 / Closes #183）** にて完遂宣言。 ここで 4 軸とは: (1) preamble core resolver port + (2) hook 機構の発動経路検証 + (3) skill 連鎖検証 + (4) close path 規律補強。
+
+### Phase 4 着手期 (PR #128〜PR #173、 v0.3.6.0 milestone まで)
 
 - **voice 規約 機械チェック基盤**：PR #128（skill voice 規約 v1 機械チェック、Tier 1+2 達成、step-83 = `skill:validate` コマンドの起点）
 - **freeze + unfreeze + guard 翻訳化**（cluster の並走発火源 3 skill）：PR #153（`freeze` + `unfreeze` pair）/ PR #154（`guard` = `careful` + `freeze` combo）
@@ -100,20 +102,41 @@ uzustack の **初回 OSS 公開** と、それに伴う **守完走判定の再
 - **translation-voice-guide.md 構造再編**：PR #169（読者目的別 3 章構成 = translator / メンテナー / validator + Appendix A audit trail 化）
 - **周辺修正**：PR #156（`bunfig.toml` に `pathIgnorePatterns = ["**/_upstream/**"]` を追加、`bun test` が `_upstream/gstack/setup` を spawn して symlink を上書きする経路を block、Closes #155）/ PR #158（gstack 専用 dir 削除規律を「翻訳済のため不要」 と明確化、step-84-1 PR-C）
 - **release v0.3.6.0 bundle**：PR #173（9 PR を Phase 4 cluster 進行中の milestone として minor bump で bundle、VERSION + CHANGELOG drift 解消）
-- **preamble core resolver port**：PR-D1（v0.3.6.1、upstream gstack の `scripts/resolvers/preamble/` から 25 generator + 支援 file 3 個 = 計 28 file を port、`models.ts` / `jargon-list.json` / `model-overlay.ts` / `preamble.ts` / `question-tuning.ts` を含む、`scripts/resolvers/index.ts` に全 52 placeholder を wire/予約 = 9 wired + 43 stub、`{{PREAMBLE}}` placeholder が空展開から実体へ移行し全 41 skill の SKILL.md にお帰りメッセージ・voice 指令・lake-intro・confusion protocol・continuous checkpoint・writing style 等が展開、Refs #176）
 
-このフェーズで **Voice 規約 CI gating**（`skill:validate` の PR-trigger 自動実行 + 役割分離 workflow）+ **freeze / unfreeze / guard の発火経路整備** + **voice-guide の 3 章構成化**（translator / メンテナー / validator 別）が v0.3.6.0 milestone までに確立し、続いて **preamble core resolver の実体化**（v0.3.6.1、`{{PREAMBLE}}` の空展開を解消）が完成した。
+### Phase 4 軸 1: preamble core resolver port (PR #177-#181、 v0.3.6.1〜v0.3.6.5)
 
-- **preamble core resolver 後続 port**：PR-D2（v0.3.6.2、Closes #174）/ PR-D3（v0.3.6.3、Closes #175）/ PR-D4a（v0.3.6.4、PR #180 = design resolver port）/ PR-D4b（v0.3.6.5、PR #181 = review + testing + review-army resolvers port、 Closes #176）で stub 43 placeholder のうち 17 を実体に切替
-- **hook 機構の発動経路検証**：PR #182（v0.3.6.6、Closes #166）で `investigate` skill の hooks block 翻訳漏れ復活 + `freeze/bin/check-freeze.sh` の hook output 新 format migration + skill 連鎖 chain pair 3 件 verdict（Layer 1 / Layer 2 / Layer 3 batched verify 全完備）
-- **close path 規律補強**：PR #187（Closes #186）で bin smoke-test CI gate 新規（44 binary を `--help` で smoke-run、 import 解決 / 構造的破綻 / dev-mode skip 整合性を PR ごとに verify）+ `bin/uzustack-model-benchmark` L2-19 import fix + `uzustack-upgrade` dev-mode skip 案内追加。 PR #191（Closes #188、 元 PR #189 resurrection）で `_upstream/gstack/` 直接 import 全廃（browse.ts inline + test/helpers/ mirror 7 file）+ mirror drift detection CI 化 + CONTRIBUTING mirror sync 規律明文化 + bash snippet `$(head)` trailing newline strip bug fix
-- **Phase 4 完遂宣言**：PR #192（v0.4.0.0、 Closes #183、 2026-05-24）で MINOR bump release bundle、 `package.json` long-standing drift（0.3.6.1 → 0.4.0.0）も同時 sync 解消
+- **PR-D1** (v0.3.6.1、 PR #177): upstream gstack の `scripts/resolvers/preamble/` から 25 generator + 支援 file 3 個 = 計 28 file を port、 `models.ts` / `jargon-list.json` / `model-overlay.ts` / `preamble.ts` / `question-tuning.ts` を含む。 `scripts/resolvers/index.ts` に全 52 placeholder を wire/予約 = 9 wired + 43 stub。 `{{PREAMBLE}}` placeholder が空展開から実体へ移行し全 41 skill の SKILL.md にお帰りメッセージ・voice 指令・lake-intro・confusion protocol・continuous checkpoint・writing style 等が展開。 Refs #176
+- **PR-D2** (v0.3.6.2、 PR #178、 Refs #176): utility resolvers port、 `utility.ts` に 6 関数追加、 6 placeholder を stub から wired に切替
+- **PR-D3** (v0.3.6.3、 PR #179、 Refs #176): medium resolvers port、 `composition.ts` / `constants.ts` 他 8 file (~620 行)、 9 placeholder を stub から wired に切替
+- **PR-D4a** (v0.3.6.4、 PR #180、 Refs #176): design resolver port、 10 placeholder を stub から wired に切替
+- **PR-D4b** (v0.3.6.5、 PR #181、 **Closes #176**): review + testing + review-army resolvers port、 17 placeholder を stub から wired に切替、 issue #176「preamble + resolvers 翻訳完遂」 を完遂
 
-このフェーズで **Phase 4 cluster 4 軸（preamble core resolver port + hook 機構の発動経路検証 + skill 連鎖検証 + close path 規律補強）が完備** し、 守破離の守期間における「絆を結ぶ」 段階を完遂。 次は Phase 5「橋を架ける」（`_upstream-sync/` 骨格 + browse 実機検証準備 + 依存グラフ可視化、 Phase 6 の 14 skill 3 選択肢判定の素材集め）へ。
+PR-D1〜PR-D4b の累積で stub 43 placeholder のうち 42 件が実体に wire、 残 1 件は host=codex 時の意図的空展開 (`REVIEW_ARMY` 等)。 PR-D4b の Closes #176 = 「preamble + resolvers 翻訳完遂」 を意味する。
 
-### Phase 4 cluster で確立した learning (= 後続 Phase に carry)
+### Phase 4 軸 2: hook 機構の発動経路検証 (PR #182、 v0.3.6.6、 Closes #166)
 
-- **stacked PR pattern + `--delete-branch` 事故**：PR #187 を `--delete-branch` で merge した結果、 stacked PR #189 の base branch が削除されて auto-close + reopen 不可になった。 PR #191 として same head branch を main rebase 後 resurrection。 学習：stacked PR の base merge では `--delete-branch` flag せず、 stacked head land 後に base 手動 cleanup
+- `investigate` skill の hooks block 翻訳漏れ復活 (upstream `_upstream/gstack/investigate/SKILL.md.tmpl` の `hooks: PreToolUse (Edit + Write → freeze/bin/check-freeze.sh)` が uzustack 翻訳版で完全消失していたのを復活)
+- `freeze/bin/check-freeze.sh` の hook output 新 format migration (旧 `{"permissionDecision":"deny","message":"..."}` → `hookSpecificOutput.hookEventName: "PreToolUse"` で wrap + `permissionDecisionReason` field 置換)
+- skill 連鎖 chain pair 3 件 verdict (Layer 1 / Layer 2 / Layer 3 batched verify 全完備)
+
+### Phase 4 軸 3: skill 連鎖検証 (PR #182 内、 chain pair 3 件)
+
+PR #182 内で実施。 Phase 4 多 skill 連鎖の発動経路を 3 chain pair で verify、 Layer 1/2/3 の batched verify を完備。
+
+### Phase 4 軸 4: close path 規律補強 (PR #187 + PR #191、 Closes #186 + Closes #188)
+
+- **PR #187 (Closes #186)**: `.github/workflows/bin-smoke-test.yml` 新規 (44 binary を `--help` で smoke-run、 import 解決 / 構造的破綻 / dev-mode skip 整合性を PR ごとに verify) + `bin/uzustack-model-benchmark` L2-19 import fix + `uzustack-upgrade` dev-mode skip 案内追加
+- **PR #191 (Closes #188、 元 PR #189 resurrection)**: `_upstream/gstack/` 直接 import 全廃 (browse.ts inline + test/helpers/ mirror 7 file) + mirror drift detection CI 化 + CONTRIBUTING mirror sync 規律明文化 + bash snippet `$(head)` trailing newline strip bug fix
+
+### Phase 4 完遂宣言 (PR #192、 v0.4.0.0、 Closes #183、 2026-05-24)
+
+MINOR bump release bundle で Phase 4 cluster epic #152/#183 を 完遂。 `package.json` long-standing drift (0.3.6.1 → 0.4.0.0) も同時 sync 解消。
+
+このフェーズで **Phase 4 cluster 4 軸完備** し、 守破離の守期間における「絆を結ぶ」 段階を完遂。 次は Phase 5「橋を架ける」 (= `_upstream-sync/` 骨格 + browse 実機検証準備 + 依存グラフ可視化、 Phase 6 の 14 skill 3 選択肢判定の素材集め) へ。 learnings 機構実装は Phase 5 とは別の epic として Phase 5+ で並走または Phase 5 後に実施。
+
+**Phase 4 cluster で確立した learning** (= 後続 Phase に carry):
+
+- **stacked PR pattern + `--delete-branch` 事故**：PR #187 を `--delete-branch` で merge した結果、 stacked PR #189 の base branch が削除されて auto-close + reopen 不可になった。 PR #191 として same head branch を main rebase 後 resurrection。 学習：stacked PR の base merge では `--delete-branch` を flag せず、 stacked head land 後に base 手動 cleanup
 - **issue 化判断軸の機械適用違反**：PR #189/#191 起票時に follow-up として #190 (browse.ts inline drift detection CI 化) を起票したが、 workflow.md 規律「step 着手 = issue 起票を機械適用しない」 違反として user 指摘で close。 browse skill 実装方針未決定段階の先走起票
 - **VERSION ↔ package.json drift の自動検知**：`/ship` Step 12 idempotency check (DRIFT_STALE_PKG state) で package.json の version skew を auto 検知する仕組みが PR-D4b 以降で稼働。 v0.4.0.0 release で long-standing 0.3.6.1 → 0.4.0.0 sync
 

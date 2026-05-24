@@ -222,7 +222,7 @@ uzustack は **uzustack プロジェクト全体** として、守破離の段�
 | **破**（Phase 6 完了後） | 個別スキルが Type 2 → Type 3 の進化を繰り返す |
 | **離** | gstack 由来（Type 1）が全て Type 3 化 or 削除された独立期 |
 
-**Phase 3 + Phase 3.5 で型の取り込み完了（2026-05-02）**: runtime（bin 約 50 個 + テンプレート機構 + voice 翻案ガイドライン v1/v2 + ETHOS.md）と動作する Type 1 実翻訳 26 skill + browse 機構必須 14 skill (翻訳済 stub) = 翻訳完了 40 skill が揃った。**Phase 4「絆を結ぶ」 完遂（v0.4.0.0、2026-05-24、PR #192 / Closes #183）**：preamble core resolver port + hook 機構の発動経路検証 + skill 連鎖検証 + close path 規律補強の 4 軸完備。 続く Phase 5（橋を架ける）/ Phase 6（記憶機構）で **守の完成**（browse 機構実装 + 14 skill の動作実装）を達成予定。Phase 0c〜現在（Phase 4 完遂、 Phase 5 着手準備）の詳細は [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md) を参照。
+**Phase 3 + Phase 3.5 で型の取り込み完了（2026-05-02）**: runtime（bin 約 50 個 + テンプレート機構 + voice 翻案ガイドライン v1/v2 + ETHOS.md）と動作する Type 1 実翻訳 26 skill + browse 機構必須 14 skill (翻訳済 stub) = 翻訳完了 40 skill が揃った。**Phase 4「絆を結ぶ」 完遂（v0.4.0.0、2026-05-24、PR #192 / Closes #183）**：preamble core resolver port + hook 機構の発動経路検証 + skill 連鎖検証 + close path 規律補強の 4 軸完備。 続く Phase 5（橋を架ける = upstream 統合準備）/ Phase 6（守の完成 = browse 機構実装 + 14 skill の動作実装）で **守の完成** を達成予定。 learnings 機構実装 (元 Phase 5「記憶が編まれる」 framing) は v0.4.0.0 で Phase 5「橋を架ける」 採用に伴い、 Phase 5 と並走または Phase 5 後の別 epic として再位置づけ。 Phase 0c〜現在（Phase 4 完遂、 Phase 5 着手準備）の詳細は [docs/uzustack/phase-history.md](docs/uzustack/phase-history.md) を参照。
 
 ---
 
