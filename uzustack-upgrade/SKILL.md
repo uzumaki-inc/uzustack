@@ -82,15 +82,34 @@ echo "$_REMOTE_VER $_NEW_LEVEL $(date +%s)" > "$_SNOOZE_FILE"
 
 ### Step 1.5: dev-mode（メンテナー作業環境）を検出して skip
 
-`$HOME/.claude/skills/uzustack` が symlink の場合、`bin/dev-setup` で活性化された
+Step 2 が認識する全 install path のいずれかが symlink の場合、`bin/dev-setup` で活性化された
 **メンテナー dev-mode** である。upgrade フローは working tree の commit されていない変更を silent に
 消す（Step 4 の `git reset --hard origin/main` / `mv "$INSTALL_DIR" "$INSTALL_DIR.bak"`）ため、
 dev-mode では upgrade を実行しない。
 
+Step 2 と同じ 6 path を symlink check 対象にする（順序も Step 2 と同じ）：
+
 ```bash
-if [ -L "$HOME/.claude/skills/uzustack" ]; then
-  _DEV_TARGET=$(readlink "$HOME/.claude/skills/uzustack")
-  echo "DEV_MODE_DETECTED: symlink → $_DEV_TARGET"
+_DEV_LINK=""
+for _CANDIDATE in \
+  "$HOME/.claude/skills/uzustack" \
+  "$HOME/.uzustack/repos/uzustack" \
+  ".claude/skills/uzustack" \
+  ".agents/skills/uzustack"; do
+  if [ -L "$_CANDIDATE" ]; then
+    _DEV_LINK="$_CANDIDATE"
+    break
+  fi
+done
+
+if [ -n "$_DEV_LINK" ]; then
+  _DEV_TARGET=$(readlink "$_DEV_LINK")
+  # 相対 symlink の場合に絶対 path を解決 (BSD readlink + GNU readlink 両対応)
+  case "$_DEV_TARGET" in
+    /*) ;;  # already absolute
+    *) _DEV_TARGET=$(cd "$(dirname "$_DEV_LINK")" 2>/dev/null && cd "$_DEV_TARGET" 2>/dev/null && pwd) ;;
+  esac
+  echo "DEV_MODE_DETECTED: $_DEV_LINK → $_DEV_TARGET"
   echo "Skipping upgrade — your symlinked working tree is the source of truth."
   echo "To pull upstream changes, run 'cd $_DEV_TARGET && git pull' yourself."
   echo "To exit dev-mode, run 'bin/dev-teardown' in the repo, then '/uzustack-upgrade' again."
@@ -269,11 +288,27 @@ What's New を表示した後、ユーザーが元々呼び出していた skill
 
 `/uzustack-upgrade` を直接呼び出した場合（preamble 経由でない場合）：
 
-0. dev-mode 検出（メンテナー作業環境では skip、 上記 Inline flow Step 1.5 と同等）：
+0. dev-mode 検出（メンテナー作業環境では skip、 上記 Inline flow Step 1.5 と同等、 6 path check）：
 ```bash
-if [ -L "$HOME/.claude/skills/uzustack" ]; then
-  _DEV_TARGET=$(readlink "$HOME/.claude/skills/uzustack")
-  echo "DEV_MODE_DETECTED: symlink → $_DEV_TARGET"
+_DEV_LINK=""
+for _CANDIDATE in \
+  "$HOME/.claude/skills/uzustack" \
+  "$HOME/.uzustack/repos/uzustack" \
+  ".claude/skills/uzustack" \
+  ".agents/skills/uzustack"; do
+  if [ -L "$_CANDIDATE" ]; then
+    _DEV_LINK="$_CANDIDATE"
+    break
+  fi
+done
+
+if [ -n "$_DEV_LINK" ]; then
+  _DEV_TARGET=$(readlink "$_DEV_LINK")
+  case "$_DEV_TARGET" in
+    /*) ;;
+    *) _DEV_TARGET=$(cd "$(dirname "$_DEV_LINK")" 2>/dev/null && cd "$_DEV_TARGET" 2>/dev/null && pwd) ;;
+  esac
+  echo "DEV_MODE_DETECTED: $_DEV_LINK → $_DEV_TARGET"
   echo "Skipping upgrade — your symlinked working tree is the source of truth."
   echo "To pull upstream changes, run 'cd $_DEV_TARGET && git pull' yourself."
   echo "To exit dev-mode, run 'bin/dev-teardown' in the repo, then '/uzustack-upgrade' again."

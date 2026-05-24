@@ -24,11 +24,17 @@ jobs:
       - uses: actions/checkout@v4
       - id: list
         run: |
-          # destructive (symlink 操作 / uninstall) と library file を除外
-          EXCLUDE='^(dev-setup|dev-teardown|uzustack-gbrain-lib\.sh|uzustack-uninstall|uzustack-brain-uninstall)$'
+          # destructive (symlink 操作 / uninstall / git init / settings 書込) と library file を除外
+          EXCLUDE='^(dev-setup|dev-teardown|uzustack-gbrain-lib\.sh|uzustack-uninstall|uzustack-brain-uninstall|uzustack-brain-init|uzustack-relink)$'
           BINS=$(ls bin/ | grep -vE "$EXCLUDE" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          # F3: empty bin list が silent SUCCESS にならないよう sanity guard
+          COUNT=$(echo "$BINS" | jq 'length')
+          if [ "$COUNT" -lt 30 ]; then
+            echo "::error::discover found only $COUNT bins (expected >= 30). EXCLUDE regex too broad?"
+            exit 1
+          fi
           echo "bins=$BINS" >> "$GITHUB_OUTPUT"
-          echo "Discovered bins:"
+          echo "Discovered $COUNT bins:"
           echo "$BINS" | jq -r '.[]'
 
   smoke-test:
@@ -67,7 +73,10 @@ jobs:
 
           # Step 3: import error / stack trace pattern check
           # L2-19 class = "Cannot find module" 系を catch
-          PATTERN='Cannot find module|Cannot find package|MODULE_NOT_FOUND|ERR_MODULE_NOT_FOUND|^Traceback|^TypeError:|^ReferenceError:|^SyntaxError:|^FATAL:|at file:///|at /home/runner/'
+          # 注: `^FATAL:` 単独は legitimate な uncaught exception (e.g. bin/uzustack-model-benchmark
+          # line 166 `console.error('FATAL:', err)`) を false-positive で catch するため除外。
+          # FATAL を伴う import error は MODULE_NOT_FOUND 等の別 alternation で catch される。
+          PATTERN='Cannot find module|Cannot find package|MODULE_NOT_FOUND|ERR_MODULE_NOT_FOUND|^Traceback|^TypeError:|^ReferenceError:|^SyntaxError:|at file:///|at /home/runner/'
           if echo "$COMBINED_STDERR" | grep -qE "$PATTERN"; then
             echo "::error file=bin/$BIN_NAME::FAIL: import error or stack trace detected"
             echo "--- stderr ---"
