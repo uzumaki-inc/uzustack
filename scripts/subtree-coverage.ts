@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Parity audit — gstack subtree vs uzustack top の対応 file 機械判定。
+ * Subtree coverage — gstack subtree vs uzustack top の対応 file 機械判定。
  *
  * `_upstream/gstack/` 配下の全 tracked file について uzustack 側の対応 file 存在を判定し、
  * 4 値に分類する：
@@ -41,7 +41,7 @@ interface FileEntry {
   reason: string;
 }
 
-interface AuditSummary {
+interface CoverageSummary {
   total: number;
   a: number;
   b1: number;
@@ -86,8 +86,8 @@ function extractStatus(absPath: string): string | null {
   }
 }
 
-// ─── main audit ────────────────────────────────────────────
-function audit(): FileEntry[] {
+// ─── main survey ────────────────────────────────────────────
+function survey(): FileEntry[] {
   const rawList = execSync(`git ls-files ${GSTACK_SUBTREE}`, {
     cwd: ROOT,
     encoding: 'utf-8',
@@ -165,7 +165,7 @@ function audit(): FileEntry[] {
   return entries;
 }
 
-function buildSummary(entries: FileEntry[]): AuditSummary {
+function buildSummary(entries: FileEntry[]): CoverageSummary {
   return {
     total: entries.length,
     a: entries.filter(e => e.category === 'a').length,
@@ -181,7 +181,7 @@ const jsonMode = args.includes('--json');
 const onlyIdx = args.indexOf('--only');
 const filterCategory = onlyIdx >= 0 ? (args[onlyIdx + 1] as Category) : null;
 
-const entries = audit();
+const entries = survey();
 const summary = buildSummary(entries);
 const filtered = filterCategory
   ? entries.filter(e => e.category === filterCategory)
@@ -190,7 +190,7 @@ const filtered = filterCategory
 if (jsonMode) {
   console.log(JSON.stringify({ summary, entries: filtered }, null, 2));
 } else {
-  console.log('=== parity audit summary ===');
+  console.log('=== subtree coverage summary ===');
   console.log(`  total: ${summary.total}`);
   console.log(`  (a) 完璧複製: ${summary.a}`);
   console.log(`  (b1) 意図的 stub: ${summary.b1}`);
