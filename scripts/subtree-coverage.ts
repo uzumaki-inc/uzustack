@@ -6,13 +6,13 @@
  * 4 値に分類する：
  *
  *   (a) 完璧複製       — 両側存在 + frontmatter `status` が「予約 status」 でない
- *   (b1) 意図的 stub   — file 存在 + frontmatter `status` が「予約 status」 (= 14 件 Phase 6 予約等)
+ *   (b1) 意図的 stub   — file 存在 + frontmatter `status` が「予約 status」 (= `RESERVED_STATUSES` 参照)
  *   (b2) 意図的取り込まない — 対応 file 不在 + `docs/uzustack/intentionally-excluded-files.md` 記載
  *   (c) 漏れ           — 上記いずれにも該当しない
  *
  * D2 (upstream_sync 自動化) の baseline、月次 subtree pull 後の drift detection に活用。
  *
- * 「予約 status」 は将来の phase 拡張で増える前提 (= `RESERVED_STATUSES` Set で集約、 phase7-reserved 等の追加点)。
+ * 「予約 status」 は将来の phase 拡張で増える前提 (= `RESERVED_STATUSES` Set で集約)。
  *
  * Modes:
  *   default                                — human-readable summary + (c) 一覧
@@ -52,7 +52,7 @@ interface CoverageSummary {
 }
 
 // ─── 予約 status: (b1) 意図的 stub の source-of-truth ────────────
-// 将来の phase 拡張で増える前提 (= phase7-reserved 等の追加点を本 Set に集約)
+// 将来の phase 拡張で増える予約 status を本 Set に集約 (= 追加時は entry を足すだけ)
 const RESERVED_STATUSES = new Set([
   'phase6-reserved',
 ]);
@@ -108,29 +108,25 @@ function survey(): FileEntry[] {
     .filter(p => p.length > 0)
     .map(p => p.replace(`${GSTACK_SUBTREE}/`, ''));
 
-  // Pass 1: SKILL.md.tmpl の status を cache + 予約 status skill dir 特定
-  // 配下 file は parent dir 経由で (b1) 判定 (= 2-pass で重複 read を回避)
-  const statusCache = new Map<string, string | null>();
+  // Pass 1: SKILL.md.tmpl の exists + status を cache + 予約 status skill dir 特定
+  // 配下 file は parent dir 経由で (b1) 判定 (= 重複 fs call を回避)
+  const tmplExistsCache = new Map<string, boolean>();
+  const statusCache = new Map<string, string>();
   const reservedSkillDirs = new Set<string>();
   for (const gpath of gstackFiles) {
     if (!gpath.endsWith('/SKILL.md.tmpl')) continue;
-    const uzPath = expectedUzustackPath(gpath);
-    const uzAbs = path.join(ROOT, uzPath);
-    if (!fs.existsSync(uzAbs)) continue;
+    const uzAbs = path.join(ROOT, expectedUzustackPath(gpath));
+    const exists = fs.existsSync(uzAbs);
+    tmplExistsCache.set(gpath, exists);
+    if (!exists) continue;
     const status = extractStatus(uzAbs);
-    statusCache.set(gpath, status);
-    if (status && RESERVED_STATUSES.has(status)) {
-      reservedSkillDirs.add(gpath.replace(/\/SKILL\.md\.tmpl$/, ''));
+    if (status) {
+      statusCache.set(gpath, status);
+      if (RESERVED_STATUSES.has(status)) {
+        reservedSkillDirs.add(gpath.replace(/\/SKILL\.md\.tmpl$/, ''));
+      }
     }
   }
-
-  // O(1) lookup: gpath の最上位 directory を抽出して Set check
-  const reservedDirOf = (gpath: string): string | null => {
-    const idx = gpath.indexOf('/');
-    if (idx < 0) return null;
-    const parent = gpath.slice(0, idx);
-    return reservedSkillDirs.has(parent) ? parent : null;
-  };
 
   // Pass 2: per-file 判定
   const entries: FileEntry[] = [];
@@ -138,22 +134,24 @@ function survey(): FileEntry[] {
   for (const gpath of gstackFiles) {
     const uzPath = expectedUzustackPath(gpath);
     const uzAbs = path.join(ROOT, uzPath);
-    const uzExists = fs.existsSync(uzAbs);
+    const uzExists = tmplExistsCache.get(gpath) ?? fs.existsSync(uzAbs);
 
     let category: Category;
     let reason: string;
 
-    const reservedDir = reservedDirOf(gpath);
+    // O(1) lookup: gpath の最上位 directory が予約 skill か
+    const slashIdx = gpath.indexOf('/');
+    const parent = slashIdx >= 0 ? gpath.slice(0, slashIdx) : null;
+    const reservedDir = parent && reservedSkillDirs.has(parent) ? parent : null;
+
     if (reservedDir !== null) {
       category = 'b1';
       reason = gpath === `${reservedDir}/SKILL.md.tmpl`
         ? `意図的 stub (予約 status、 skill: ${reservedDir})`
         : `意図的 stub (予約 skill 配下、 parent: ${reservedDir})`;
     } else if (uzExists) {
-      // SKILL.md.tmpl は Pass 1 で cache 済、 それ以外は status null
-      const status = uzPath.endsWith('SKILL.md.tmpl')
-        ? (statusCache.get(gpath) ?? null)
-        : null;
+      // SKILL.md.tmpl は Pass 1 で cache 済 (= 非 tmpl path は undefined)
+      const status = statusCache.get(gpath);
       category = 'a';
       reason = status
         ? `完璧複製 candidate (uzustack 側存在、 status: ${status})`
@@ -195,12 +193,11 @@ const filterCategory = onlyIdx >= 0 ? (args[onlyIdx + 1] as Category) : null;
 
 const entries = survey();
 const summary = buildSummary(entries);
-const missing = entries.filter(e => e.category === 'c');
-const filtered = filterCategory
-  ? entries.filter(e => e.category === filterCategory)
-  : entries;
 
 if (jsonMode) {
+  const filtered = filterCategory
+    ? entries.filter(e => e.category === filterCategory)
+    : entries;
   console.log(JSON.stringify({ summary, entries: filtered }, null, 2));
 } else {
   console.log('=== subtree coverage summary ===');
@@ -210,10 +207,12 @@ if (jsonMode) {
   console.log(`  (b2) 意図的取り込まない: ${summary.b2}`);
   console.log(`  (c) 漏れ: ${summary.c}`);
   console.log();
-  if (missing.length > 0) {
+  if (summary.c > 0) {
     console.log('=== (c) 漏れ list ===');
-    for (const e of missing) {
-      console.log(`  - ${e.gstack_path}  →  ${e.uzustack_path}`);
+    for (const e of entries) {
+      if (e.category === 'c') {
+        console.log(`  - ${e.gstack_path}  →  ${e.uzustack_path}`);
+      }
     }
   }
 }
